@@ -1,0 +1,18 @@
+{
+  "name": "@radio-wash/source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "prepare": "nx g @nx-dotnet/core:restore"
+  },
+  "private": true,
+  "dependencies": {
+    "@nx-dotnet/core": "^2.5.0",
+    "empty": "0.10.1"
+  },
+  "devDependencies": {
+    "@nx/js": "20.8.0",
+    "@nx/workspace": "20.8.0",
+    "nx": "20.8.0"
+  }
+}
