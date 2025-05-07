@@ -16,6 +16,10 @@ builder.Services.Configure<SpotifySettings>(
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));
 
+// Database configuration
+builder.Services.AddDbContext<RadioWashDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 // Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -90,6 +94,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddHttpLogging(o => { });
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -98,37 +103,19 @@ if (app.Environment.IsDevelopment())
   app.UseHttpLogging();
   app.UseSwagger();
   app.UseSwaggerUI();
+
+  // Apply migrations in development
+  using (var scope = app.Services.CreateScope())
+  {
+    var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+    dbContext.Database.Migrate();
+  }
 }
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-  var forecast = Enumerable.Range(1, 5).Select(index =>
-      new WeatherForecast
-      (
-          DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-          Random.Shared.Next(-20, 55),
-          summaries[Random.Shared.Next(summaries.Length)]
-      ))
-      .ToArray();
-  return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-  public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
