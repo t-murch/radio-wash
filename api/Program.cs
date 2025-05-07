@@ -24,7 +24,7 @@ builder.Services.AddDbContext<RadioWashDbContext>(options =>
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
-// builder.Services.AddScoped<ISpotifyService, SpotifyService>();
+builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 // builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 
 // JWT Authentication
