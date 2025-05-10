@@ -11,8 +11,8 @@ public class RadioWashDbContext : DbContext
 
   public DbSet<User> Users { get; set; } = null!;
   public DbSet<UserToken> UserTokens { get; set; } = null!;
-  // public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
-  // public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
+  public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
+  public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
@@ -34,10 +34,10 @@ public class RadioWashDbContext : DbContext
               .HasForeignKey<UserToken>(e => e.UserId)
               .OnDelete(DeleteBehavior.Cascade);
 
-      // entity.HasMany(e => e.Jobs)
-      //         .WithOne(e => e.User)
-      //         .HasForeignKey(e => e.UserId)
-      //         .OnDelete(DeleteBehavior.Cascade);
+      entity.HasMany(e => e.Jobs)
+              .WithOne(e => e.User)
+              .HasForeignKey(e => e.UserId)
+              .OnDelete(DeleteBehavior.Cascade);
     });
 
     // UserToken configuration
@@ -53,33 +53,33 @@ public class RadioWashDbContext : DbContext
     });
 
     // CleanPlaylistJob configuration
-    // modelBuilder.Entity<CleanPlaylistJob>(entity =>
-    // {
-    //   entity.HasKey(e => e.Id);
-    //   entity.HasIndex(e => e.UserId);
-    //   entity.Property(e => e.SourcePlaylistId).IsRequired();
-    //   entity.Property(e => e.SourcePlaylistName).IsRequired();
-    //   entity.Property(e => e.Status).IsRequired();
-    //   entity.Property(e => e.CreatedAt).IsRequired();
-    //   entity.Property(e => e.UpdatedAt).IsRequired();
-    //
-    //   entity.HasMany(e => e.TrackMappings)
-    //           .WithOne(e => e.Job)
-    //           .HasForeignKey(e => e.JobId)
-    //           .OnDelete(DeleteBehavior.Cascade);
-    // });
+    modelBuilder.Entity<CleanPlaylistJob>(entity =>
+    {
+      entity.HasKey(e => e.Id);
+      entity.HasIndex(e => e.UserId);
+      entity.Property(e => e.SourcePlaylistId).IsRequired();
+      entity.Property(e => e.SourcePlaylistName).IsRequired();
+      entity.Property(e => e.Status).IsRequired();
+      entity.Property(e => e.CreatedAt).IsRequired();
+      entity.Property(e => e.UpdatedAt).IsRequired();
+
+      entity.HasMany(e => e.TrackMappings)
+              .WithOne(e => e.Job)
+              .HasForeignKey(e => e.JobId)
+              .OnDelete(DeleteBehavior.Cascade);
+    });
 
     // TrackMapping configuration
-    // modelBuilder.Entity<TrackMapping>(entity =>
-    // {
-    //   entity.HasKey(e => e.Id);
-    //   entity.HasIndex(e => e.JobId);
-    //   entity.Property(e => e.SourceTrackId).IsRequired();
-    //   entity.Property(e => e.SourceTrackName).IsRequired();
-    //   entity.Property(e => e.SourceArtistName).IsRequired();
-    //   entity.Property(e => e.IsExplicit).IsRequired();
-    //   entity.Property(e => e.HasCleanMatch).IsRequired();
-    //   entity.Property(e => e.CreatedAt).IsRequired();
-    // });
+    modelBuilder.Entity<TrackMapping>(entity =>
+    {
+      entity.HasKey(e => e.Id);
+      entity.HasIndex(e => e.JobId);
+      entity.Property(e => e.SourceTrackId).IsRequired();
+      entity.Property(e => e.SourceTrackName).IsRequired();
+      entity.Property(e => e.SourceArtistName).IsRequired();
+      entity.Property(e => e.IsExplicit).IsRequired();
+      entity.Property(e => e.HasCleanMatch).IsRequired();
+      entity.Property(e => e.CreatedAt).IsRequired();
+    });
   }
 }

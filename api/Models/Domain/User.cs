@@ -11,6 +11,6 @@ public class User
 
   // Navigation properties
   public UserToken? Token { get; set; }
-  // public ICollection<CleanPlaylistJob> Jobs { get; set; } = new List<CleanPlaylistJob>();
+  public ICollection<CleanPlaylistJob> Jobs { get; set; } = new List<CleanPlaylistJob>();
 }
 
