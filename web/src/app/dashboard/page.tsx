@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getUserPlaylists, validateToken } from '@/services/api';
 
 interface User {
   id: number;
@@ -62,21 +63,24 @@ export default function DashboardPage() {
     const parsedUser = JSON.parse(storedUser) as User;
     setUser(parsedUser);
 
+    // validateTokenAsync(parsedUser.id);
+
     // Load user data
     loadUserData(parsedUser.id);
   }, [router]);
 
+  // const validateTokenAsync = async (userId: number) => {
+  //   return await validateToken(userId);
+  // };
   const loadUserData = async (userId: number) => {
     try {
       setLoading(true);
       setError(null);
 
+      await validateToken(userId);
+
       // Load playlists
-      const playlistsResponse = await fetch(
-        `http://localhost:5159/api/playlist/user/${userId}`
-      );
-      if (!playlistsResponse.ok) throw new Error('Failed to load playlists');
-      const playlistsData = await playlistsResponse.json();
+      const playlistsData = await getUserPlaylists(userId);
       setPlaylists(playlistsData);
 
       // Load jobs

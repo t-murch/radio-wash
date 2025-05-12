@@ -1,4 +1,3 @@
-using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
 
 namespace RadioWash.Api.Services.Interfaces;

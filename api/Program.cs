@@ -1,4 +1,5 @@
 using System.Text;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,6 +10,15 @@ using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Hangfire configuration
+// GlobalConfiguration.Configuration.UseInMemoryStorage();
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseInMemoryStorage());
+// .UseSQLiteStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(
@@ -61,6 +71,7 @@ builder.Services.AddCors(options =>
 });
 
 // Add services to the container
+builder.Services.AddHangfireServer();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -117,5 +128,8 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Configure Hangfire
+app.UseHangfireDashboard();
 
 app.Run();

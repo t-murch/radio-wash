@@ -1,76 +1,169 @@
-# RadioWash
+# Spotify Clean Playlist Generator (RadioWash)
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+Create clean versions of your Spotify playlists by finding non-explicit alternatives to explicit tracks.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is almost ready ✨.
+## Project Overview
 
-Run `npx nx graph` to visually explore what got created. Now, let's get you up to speed!
+RadioWash is a web application that allows Spotify users to create "clean" versions of their playlists by automatically replacing explicit tracks with their clean alternatives when available. The application uses the Spotify API to:
 
-## Finish your CI setup
+1. Authenticate with your Spotify account
+2. List your existing playlists
+3. Analyze playlists for explicit content
+4. Find clean alternatives for explicit tracks
+5. Create a new "clean" playlist with the alternatives
 
-[Click here to finish setting up your workspace!](https://cloud.nx.app/connect/WJmhwpI5qn)
+## Technical Stack
 
+This project is built as an NX monorepo with:
 
-## Run tasks
+- **Backend**: ASP.NET Core 8 API with Entity Framework Core
+- **Frontend**: Next.js 15 with React, TypeScript, and Tailwind CSS
+- **Database**: SQL Server (configurable)
 
-To run tasks with Nx use:
+## Prerequisites
 
-```sh
-npx nx <target> <project-name>
+To run this project, you'll need:
+
+1. [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+2. [Node.js](https://nodejs.org/) (v18+)
+3. [pnpm](https://pnpm.io/installation) (v8+)
+4. ~~[SQL Server](https://www.microsoft.com/en-us/sql-server/sql-server-downloads) (or SQL Server Express)~~
+5. A Spotify Developer account and registered application
+
+## Setup Instructions
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/yourusername/radiowash.git
+cd radiowash
 ```
 
-For example:
+### 2. Install Dependencies
 
-```sh
-npx nx build myproject
+```bash
+pnpm install
 ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+### 3. Register a Spotify Developer Application
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/)
+2. Create a new application
+3. Set the redirect URI to `http://localhost:3000/auth/callback`
+4. Note your Client ID and Client Secret
 
-## Add new projects
+### 4. Configure the Backend
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
+1. Update the Spotify credentials in `api/appsettings.json`:
 
-To install a new plugin you can use the `nx add` command. Here's an example of adding the React plugin:
-```sh
-npx nx add @nx/react
+```json
+"Spotify": {
+  "ClientId": "YOUR_SPOTIFY_CLIENT_ID",
+  "ClientSecret": "YOUR_SPOTIFY_CLIENT_SECRET",
+  "RedirectUri": "http://localhost:3000/auth/callback",
+  "Scopes": [
+    "user-read-private",
+    "user-read-email",
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "playlist-modify-public",
+    "playlist-modify-private"
+  ]
+}
 ```
 
-Use the plugin's generator to create new projects. For example, to create a new React app or library:
+2. Update the JWT secret in `api/appsettings.json`:
 
-```sh
-# Generate an app
-npx nx g @nx/react:app demo
-
-# Generate a library
-npx nx g @nx/react:lib some-lib
+```json
+"Jwt": {
+  "Secret": "YOUR_SUPER_SECRET_JWT_KEY_THAT_SHOULD_BE_AT_LEAST_32_CHARACTERS_LONG",
+  "Issuer": "RadioWash",
+  "Audience": "RadioWashFrontend",
+  "ExpirationInMinutes": 1440
+}
 ```
 
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
+3. Set up your database connection string in `api/appsettings.json`:
 
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=RadioWash;Trusted_Connection=True;MultipleActiveResultSets=true"
+}
+```
 
+### 5. Run Database Migrations
 
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```bash
+cd api
+dotnet ef database update
+cd ..
+```
 
-## Install Nx Console
+### 6. Start the Application
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+Start the backend API:
 
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```bash
+npx nx serve api --configuration=https
+```
 
-## Useful links
+In a new terminal, start the frontend:
 
-Learn more:
+```bash
+npx nx serve web:dev --experimental-https
+```
 
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## Usage
 
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+1. Open your browser and navigate to `http://127.0.0.1:3000`
+2. Click on "Connect with Spotify"
+3. Authorize the application to access your Spotify account
+4. Select a playlist you want to clean
+5. Click "Create Clean Playlist"
+6. Wait for the job to complete
+7. Enjoy your new clean playlist on Spotify!
+
+## Features
+
+- **Authentication**: Secure Spotify OAuth 2.0 authentication
+- **Playlist Management**: View all your Spotify playlists
+- **Clean Playlist Creation**: Automatically find clean alternatives for explicit tracks
+- **Job Tracking**: Monitor the progress of your clean playlist creation jobs
+- **Track Mapping**: View detailed mappings between explicit tracks and their clean alternatives
+
+## Architecture
+
+The application follows a clean architecture approach:
+
+- **Domain Models**: Represent the core business entities
+- **Data Access**: Entity Framework Core for database operations
+- **Services**: Business logic for authentication, Spotify API integration, and playlist processing
+- **API Controllers**: RESTful endpoints for frontend communication
+- **React Components**: Modular UI components for the frontend
+- **API Service**: Frontend service for communication with the backend
+
+## Limitations
+
+- Not all explicit tracks have clean alternatives available on Spotify
+- The track matching algorithm uses string similarity and may not always find the correct match
+- The application requires Spotify API access, which may have rate limits
+
+## Future Enhancements
+
+- Improved track matching algorithm
+- Batch processing of multiple playlists
+- Custom filtering options (profanity, themes, etc.)
+- User preferences for replacement strategies
+- Support for Apple Music and other streaming platforms
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+- [Spotify Web API](https://developer.spotify.com/documentation/web-api/)
+- [NX](https://nx.dev/)
+- [ASP.NET Core](https://docs.microsoft.com/en-us/aspnet/core/)
+- [Next.js](https://nextjs.org/)
+- [Tailwind CSS](https://tailwindcss.com/)

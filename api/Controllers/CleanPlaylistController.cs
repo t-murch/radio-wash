@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
@@ -95,11 +96,11 @@ public class CleanPlaylistController : ControllerBase
   /// Manually triggers processing of a job (for testing purposes)
   /// </summary>
   [HttpPost("job/{jobId}/process")]
-  public async Task<IActionResult> ProcessJob(int jobId)
+  public IActionResult ProcessJob(int jobId)
   {
     try
     {
-      await _cleanPlaylistService.ProcessJobAsync(jobId);
+      BackgroundJob.Enqueue(() => _cleanPlaylistService.ProcessJobAsync(jobId));
       return Ok(new { message = "Job processing started" });
     }
     catch (Exception ex)
