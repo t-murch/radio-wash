@@ -1,5 +1,6 @@
 'use client';
 
+import { getLoginUrl, handleCallback } from '@/services/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -19,57 +20,43 @@ export default function Page() {
       return;
     }
 
+    const handleCallbackAsync = async (code: string, state: string) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const data = await handleCallback(code, state);
+
+        // Store token and user data in localStorage
+        localStorage.setItem('radiowash_token', data.token);
+        localStorage.setItem('radiowash_user', JSON.stringify(data.user));
+
+        // Redirect to dashboard
+        router.push('/dashboard');
+      } catch (error) {
+        console.error('Authentication error:', error);
+        setError('Authentication failed. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     // Handle callback with code
-    handleCallback(code, state || '');
-  }, [searchParams]);
+    handleCallbackAsync(code, state || '');
+  }, [router, searchParams]);
 
   const handleLogin = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:5159/api/auth/login', {
-        credentials: 'include',
-      });
-      const data = await response.json();
+      const data = await getLoginUrl();
 
       // Redirect to Spotify authorization page
-      window.location.href = data.url;
+      window.location.href = data;
     } catch (error) {
       console.error('Authentication error:', error);
       setError('Failed to start authentication process. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCallback = async (code: string, state: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(
-        `http://localhost:5159/api/auth/callback?code=${code}&state=${state}`,
-        {
-          credentials: 'include',
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Authentication failed');
-      }
-
-      const data = await response.json();
-
-      // Store token and user data in localStorage
-      localStorage.setItem('radiowash_token', data.token);
-      localStorage.setItem('radiowash_user', JSON.stringify(data.user));
-
-      // Redirect to dashboard
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Authentication error:', error);
-      setError('Authentication failed. Please try again.');
     } finally {
       setLoading(false);
     }

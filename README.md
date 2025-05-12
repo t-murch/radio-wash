@@ -49,7 +49,7 @@ pnpm install
 
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/)
 2. Create a new application
-3. Set the redirect URI to `http://localhost:3000/auth/callback`
+3. Set the redirect URI to `https://127.0.0.1:3000/auth`
 4. Note your Client ID and Client Secret
 
 ### 4. Configure the Backend
@@ -60,7 +60,7 @@ pnpm install
 "Spotify": {
   "ClientId": "YOUR_SPOTIFY_CLIENT_ID",
   "ClientSecret": "YOUR_SPOTIFY_CLIENT_SECRET",
-  "RedirectUri": "http://localhost:3000/auth/callback",
+  "RedirectUri": "https://127.0.0.1:3000/auth",
   "Scopes": [
     "user-read-private",
     "user-read-email",
@@ -72,7 +72,13 @@ pnpm install
 }
 ```
 
-2. Update the JWT secret in `api/appsettings.json`:
+2. The Spotify API does not allow for `localhost` as a redirect URI. Update the allowed origins in `api/appsettings.json`:
+
+```json
+"AllowedOrigins": "http://localhost:3000;https://localhost:3000;http://127.0.0.1:3000;https://127.0.0.1:3000"
+```
+
+3. Update the JWT secret in `api/appsettings.json`:
 
 ```json
 "Jwt": {
@@ -83,11 +89,11 @@ pnpm install
 }
 ```
 
-3. Set up your database connection string in `api/appsettings.json`:
+4. Set up your database connection string in `api/appsettings.json`:
 
 ```json
 "ConnectionStrings": {
-  "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=RadioWash;Trusted_Connection=True;MultipleActiveResultSets=true"
+  "DefaultConnection": "Data Source=radiowash.db"
 }
 ```
 

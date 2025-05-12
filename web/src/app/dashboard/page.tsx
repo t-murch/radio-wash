@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUserPlaylists, validateToken } from '@/services/api';
+import {
+  createCleanPlaylistJob,
+  getUserJobs,
+  getUserPlaylists,
+  validateToken,
+} from '@/services/api';
 
 interface User {
   id: number;
@@ -84,11 +89,7 @@ export default function DashboardPage() {
       setPlaylists(playlistsData);
 
       // Load jobs
-      const jobsResponse = await fetch(
-        `http://localhost:5159/api/cleanplaylist/user/${userId}/jobs`
-      );
-      if (!jobsResponse.ok) throw new Error('Failed to load jobs');
-      const jobsData = await jobsResponse.json();
+      const jobsData = await getUserJobs(userId);
       setJobs(jobsData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -108,23 +109,11 @@ export default function DashboardPage() {
       const targetName =
         customName.trim() || `Clean - ${selectedPlaylist.name}`;
 
-      const response = await fetch(
-        `http://localhost:5159/api/cleanplaylist/user/${user.id}/job`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sourcePlaylistId: selectedPlaylist.id,
-            targetPlaylistName: targetName,
-          }),
-        }
+      const jobData = await createCleanPlaylistJob(
+        user.id,
+        selectedPlaylist.id,
+        targetName
       );
-
-      if (!response.ok) throw new Error('Failed to create clean playlist');
-
-      const jobData = await response.json();
       setJobs((prevJobs) => [jobData, ...prevJobs]);
 
       // Reset form
@@ -151,11 +140,7 @@ export default function DashboardPage() {
     if (!user) return;
 
     try {
-      const jobsResponse = await fetch(
-        `http://localhost:5159/api/cleanplaylist/user/${user.id}/jobs`
-      );
-      if (!jobsResponse.ok) throw new Error('Failed to load jobs');
-      const jobsData = await jobsResponse.json();
+      const jobsData = await getUserJobs(user.id);
       setJobs(jobsData);
     } catch (error) {
       console.error('Error refreshing jobs:', error);

@@ -70,7 +70,8 @@ export const handleCallback = async (
   state: string
 ): Promise<{ token: string; user: User }> => {
   const response = await fetch(
-    `${API_BASE_URL}/auth/callback?code=${code}&state=${state}`
+    `${API_BASE_URL}/auth/callback?code=${code}&state=${state}`,
+    { credentials: 'include' }
   );
   if (!response.ok) {
     throw new Error('Authentication failed');
