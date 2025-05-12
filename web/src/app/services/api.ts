@@ -96,7 +96,12 @@ export const validateToken = async (userId: number): Promise<boolean> => {
 
 // Playlist functions
 export const getUserPlaylists = async (userId: number): Promise<Playlist[]> => {
-  const response = await fetch(`${API_BASE_URL}/playlist/user/${userId}`);
+  const token = localStorage.getItem('radiowash_token');
+  const response = await fetch(`${API_BASE_URL}/playlist/user/${userId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   if (!response.ok) {
     throw new Error('Failed to get playlists');
   }
@@ -107,8 +112,14 @@ export const getPlaylistTracks = async (
   userId: number,
   playlistId: string
 ): Promise<Track[]> => {
+  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
-    `${API_BASE_URL}/playlist/user/${userId}/playlist/${playlistId}/tracks`
+    `${API_BASE_URL}/playlist/user/${userId}/playlist/${playlistId}/tracks`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
   );
   if (!response.ok) {
     throw new Error('Failed to get playlist tracks');
@@ -122,12 +133,14 @@ export const createCleanPlaylistJob = async (
   sourcePlaylistId: string,
   targetPlaylistName?: string
 ): Promise<Job> => {
+  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         sourcePlaylistId,
@@ -144,8 +157,14 @@ export const createCleanPlaylistJob = async (
 };
 
 export const getUserJobs = async (userId: number): Promise<Job[]> => {
+  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
-    `${API_BASE_URL}/cleanplaylist/user/${userId}/jobs`
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/jobs`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
   );
   if (!response.ok) {
     throw new Error('Failed to get jobs');
@@ -154,8 +173,14 @@ export const getUserJobs = async (userId: number): Promise<Job[]> => {
 };
 
 export const getJob = async (userId: number, jobId: number): Promise<Job> => {
+  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
-    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
   );
   if (!response.ok) {
     throw new Error('Failed to get job');
@@ -167,8 +192,14 @@ export const getJobTrackMappings = async (
   userId: number,
   jobId: number
 ): Promise<TrackMapping[]> => {
+  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
-    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
   );
   if (!response.ok) {
     throw new Error('Failed to get track mappings');
