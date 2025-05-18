@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -13,7 +14,6 @@ using RadioWash.Api.Services.Interfaces;
 var builder = WebApplication.CreateBuilder(args);
 
 // Hangfire configuration
-// GlobalConfiguration.Configuration.UseInMemoryStorage();
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
     .UseSimpleAssemblyNameTypeSerializer()
@@ -72,6 +72,11 @@ builder.Services.AddCors(options =>
 
 // Add services to the container
 builder.Services.AddHangfireServer();
+builder.Services.AddHealthChecks();
+builder.Services.AddHttpsRedirection(options =>
+{
+  options.HttpsPort = 443;
+});
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -123,13 +128,12 @@ if (app.Environment.IsDevelopment())
   }
 }
 
-app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHealthChecks("/healthz");
 app.MapControllers();
 
 // Configure Hangfire
 app.UseHangfireDashboard();
-
 app.Run();
