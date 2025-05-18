@@ -57,7 +57,9 @@ export interface TrackMapping {
 
 // Auth functions
 export const getLoginUrl = async (): Promise<string> => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`);
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    credentials: 'include',
+  });
   if (!response.ok) {
     throw new Error('Failed to get login URL');
   }
