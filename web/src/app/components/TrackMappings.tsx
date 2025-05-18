@@ -38,7 +38,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
       case 'explicit':
         return trackMappings.filter((m) => m.isExplicit);
       case 'clean':
-        return trackMappings.filter((m) => !m.isExplicit);
+        return trackMappings.filter((m) => m.hasCleanMatch);
       case 'unmatched':
         return trackMappings.filter((m) => m.isExplicit && !m.hasCleanMatch);
       default:
@@ -82,7 +82,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                 ? ` (${trackMappings.filter((m) => m.isExplicit).length})`
                 : null}
               {f === 'clean'
-                ? ` (${trackMappings.filter((m) => !m.isExplicit).length})`
+                ? ` (${trackMappings.filter((m) => m.hasCleanMatch).length})`
                 : null}
               {f === 'unmatched'
                 ? ` (${
@@ -152,17 +152,17 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {mapping.sourceArtistName}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {mapping.isExplicit ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          Explicit
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Clean
-                        </span>
-                      )}
-                    </td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"> */}
+                    {/*   {mapping.hasCleanMatch ? ( */}
+                    {/*     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"> */}
+                    {/*       Clean */}
+                    {/*     </span> */}
+                    {/*   ) : ( */}
+                    {/*     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"> */}
+                    {/*       Explicit */}
+                    {/*     </span> */}
+                    {/*   )} */}
+                    {/* </td> */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {mapping.isExplicit ? (
                         mapping.hasCleanMatch ? (

@@ -81,10 +81,10 @@ export default function JobDetailsPage() {
           {user && (
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push('/')}
                 className="text-sm text-gray-500 hover:text-gray-700"
               >
-                Back to Dashboard
+                Back Home
               </button>
             </div>
           )}
@@ -225,13 +225,13 @@ export default function JobDetailsPage() {
         ) : (
           <div className="text-center p-8">
             <p className="text-gray-500">
-              Job not found or you don't have access to it.
+              Job not found or you don&apos;t have access to it.
             </p>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/')}
               className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
             >
-              Back to Dashboard
+              Back Home
             </button>
           </div>
         )}

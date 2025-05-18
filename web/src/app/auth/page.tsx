@@ -32,7 +32,7 @@ export default function Page() {
         localStorage.setItem('radiowash_user', JSON.stringify(data.user));
 
         // Redirect to dashboard
-        router.push('/dashboard');
+        router.push('/');
       } catch (error) {
         console.error('Authentication error:', error);
         setError('Authentication failed. Please try again.');
