@@ -1,0 +1,22 @@
+# directories
+**/bin/
+**/obj/
+**/out/
+
+# files
+Dockerfile*
+**/*.trx
+**/*.md
+**/*.ps1
+**/*.cmd
+**/*.sh
+
+# ignore files
+**/*.ignore
+
+# logs
+**/*.log
+
+# Node dependecies
+**/node_modules/
+

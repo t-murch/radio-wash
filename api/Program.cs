@@ -1,5 +1,6 @@
 using System.Text;
 using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,8 +18,7 @@ builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UseInMemoryStorage());
-// .UseSQLiteStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+    .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(
@@ -28,7 +28,7 @@ builder.Services.Configure<JwtSettings>(
 
 // Database configuration
 builder.Services.AddDbContext<RadioWashDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Services
 builder.Services.AddHttpClient();
