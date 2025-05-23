@@ -21,12 +21,14 @@ WORKDIR /app
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost:8080/healthz || exit 1
+  CMD curl -f http://localhost:80/healthz || exit 1
 
 # Create non-root user for security
 RUN adduser --disabled-password --gecos "" appuser
 USER appuser
 
+ENV ASPNETCORE_URLS=http://+:80
+EXPOSE 80
 # Copy published app and set entry point
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "RadioWash.Api.dll"]

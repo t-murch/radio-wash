@@ -49,6 +49,6 @@ jobs:
         with:
           inlineScript: |
             az webapp config appsettings set --resource-group radio-wash_group --name radiowash-api --settings \
-              Spotify__ClientId=${{ secrets.SPOTIFY_CLIENT_ID }} \
-              Spotify__ClientSecret=${{ secrets.SPOTIFY_CLIENT_SECRET }} \
-              Jwt__Secret=${{ secrets.JWT_SECRET }}
+            "Spotify__ClientId=${{ secrets.SPOTIFY_CLIENT_ID }}" \
+            "Spotify__ClientSecret=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
+            "Jwt__Secret=${{ secrets.JWT_SECRET }}"
