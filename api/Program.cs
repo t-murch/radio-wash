@@ -119,12 +119,23 @@ if (app.Environment.IsDevelopment())
   app.UseHttpLogging();
   app.UseSwagger();
   app.UseSwaggerUI();
+}
 
-  // Apply migrations in development
-  using (var scope = app.Services.CreateScope())
+// Apply migrations in development
+using (var scope = app.Services.CreateScope())
+{
+  var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+  var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+  try
   {
-    var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
     dbContext.Database.Migrate();
+    logger.LogInformation("Database migrations applied successfully");
+  }
+  catch (Exception ex)
+  {
+    logger.LogError(ex, "Error applying database migrations");
+    throw; // Re-throw to prevent startup with bad database state
   }
 }
 

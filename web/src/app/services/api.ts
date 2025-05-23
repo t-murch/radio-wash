@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://localhost:5159/api';
+const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5159/') + 'api';
 
 export interface User {
   id: number;

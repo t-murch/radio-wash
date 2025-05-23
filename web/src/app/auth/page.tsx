@@ -2,9 +2,9 @@
 
 import { getLoginUrl, handleCallback } from '@/services/api';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 
-export default function Page() {
+function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -98,5 +98,29 @@ export default function Page() {
         </div>
       </div>
     </div>
+  );
+}
+
+function AuthPageFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-xl shadow-md">
+        <div className="text-center">
+          <h1 className="text-3xl font-extrabold text-gray-900">RadioWash</h1>
+          <p className="mt-2 text-gray-600">Loading authentication...</p>
+        </div>
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<AuthPageFallback />}>
+      <AuthPageContent />
+    </Suspense>
   );
 }

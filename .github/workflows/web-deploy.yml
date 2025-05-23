@@ -1,4 +1,4 @@
-name: Deploy Web to Azure Static Web Apps
+name: Deploy Web to Azure Container Apps
 
 on:
   push:
@@ -6,36 +6,88 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/web-deploy.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY_NAME: radiowash
+  APP_NAME: radiowash-web
+  RESOURCE_GROUP: radio-wash_group
+  CONTAINER_APPS_ENVIRONMENT: radiowash-env
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v1
         with:
-          node-version: '22'
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build web application
-        run: pnpm nx build web
-        env:
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
-
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Log in to ACR
+        uses: docker/login-action@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.STATIC_WEB_APPS_API_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: 'upload'
-          app_location: '/dist/web'
-          api_location: ''
-          output_location: ''
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./web/Dockerfile
+          push: true
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:latest
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Check if container app exists
+            if az containerapp show --name ${{ env.APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &> /dev/null; then
+              echo "Updating existing container app..."
+              az containerapp update \
+                --name ${{ env.APP_NAME }} \
+                --resource-group ${{ env.RESOURCE_GROUP }} \
+                --image ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }} \
+                --set-env-vars NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+            else
+              echo "Creating new container app..."
+              az containerapp create \
+                --name ${{ env.APP_NAME }} \
+                --resource-group ${{ env.RESOURCE_GROUP }} \
+                --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
+                --image ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }} \
+                --target-port 3000 \
+                --ingress 'external' \
+                --min-replicas 0 \
+                --max-replicas 10 \
+                --cpu 0.25 \
+                --memory 0.5Gi \
+                --env-vars NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} \
+                --registry-server ${{ secrets.ACR_LOGIN_SERVER }} \
+                --registry-username ${{ secrets.ACR_USERNAME }} \
+                --registry-password ${{ secrets.ACR_PASSWORD }}
+            fi
+
+      - name: Get Container App URL
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            FQDN=$(az containerapp show \
+              --name ${{ env.APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --query properties.configuration.ingress.fqdn \
+              --output tsv)
+            echo "🚀 Frontend deployed to: https://$FQDN"
+            echo "FRONTEND_URL=https://$FQDN" >> $GITHUB_ENV
