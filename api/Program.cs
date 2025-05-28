@@ -20,6 +20,8 @@ builder.Services.AddHangfire(config => config
     .UseRecommendedSerializerSettings()
     .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
+builder.Services.AddMemoryCache();
+
 // Configuration
 builder.Services.Configure<SpotifySettings>(
     builder.Configuration.GetSection(SpotifySettings.SectionName));

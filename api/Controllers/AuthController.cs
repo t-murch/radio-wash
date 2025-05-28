@@ -1,6 +1,6 @@
 // api/Controllers/AuthController.cs
 using Microsoft.AspNetCore.Mvc;
-using RadioWash.Api.Models.DTO;
+using Microsoft.Extensions.Caching.Memory;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Controllers;
@@ -11,13 +11,16 @@ public class AuthController : ControllerBase
 {
   private readonly IAuthService _authService;
   private readonly ILogger<AuthController> _logger;
+  private readonly IMemoryCache _memoryCache;
 
   public AuthController(
       IAuthService authService,
-      ILogger<AuthController> logger)
+      ILogger<AuthController> logger,
+      IMemoryCache memoryCache)
   {
     _authService = authService;
     _logger = logger;
+    _memoryCache = memoryCache;
   }
 
   /// <summary>
@@ -31,15 +34,8 @@ public class AuthController : ControllerBase
       // Generate a random state to prevent CSRF attacks
       var state = Guid.NewGuid().ToString();
 
-      HttpContext.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
-      // Store state in session or cookie to validate later
-      HttpContext.Response.Cookies.Append("spotify_auth_state", state, new CookieOptions
-      {
-        HttpOnly = true,
-        Secure = true,
-        SameSite = SameSiteMode.None,
-        MaxAge = TimeSpan.FromMinutes(10)
-      });
+      // Store state in memory cache with 10 minute expiration
+      _memoryCache.Set($"auth_state_{state}", true, TimeSpan.FromMinutes(10));
 
       // Generate authorization URL
       var authUrl = _authService.GenerateAuthUrl(state);
@@ -61,21 +57,16 @@ public class AuthController : ControllerBase
   {
     try
     {
-      // Verify state parameter to prevent CSRF attacks
-      if (!HttpContext.Request.Cookies.TryGetValue("spotify_auth_state", out var storedState) || state != storedState)
+
+      // Retrieve state from memory cache
+      if (!_memoryCache.TryGetValue($"auth_state_{state}", out _))
       {
-        // Log the state mismatch
-        _logger.LogWarning("State mismatch: expected {ExpectedState}, received {ReceivedState}", storedState, state);
-        // Log all cookeis
-        foreach (var cookie in HttpContext.Request.Cookies)
-        {
-          _logger.LogInformation("Cookie: {CookieName}={CookieValue}", cookie.Key, cookie.Value);
-        }
-        return BadRequest(new { error = "State validation failed" });
+        _logger.LogWarning("State not found in cache: {State}", state);
+        return BadRequest(new { error = "Invalid or expired state" });
       }
 
-      // Clear the state cookie
-      HttpContext.Response.Cookies.Delete("spotify_auth_state");
+      // Remove state from cache after validation
+      _memoryCache.Remove($"auth_state_{state}");
 
       // Exchange authorization code for access token
       var authResponse = await _authService.HandleCallbackAsync(code);
