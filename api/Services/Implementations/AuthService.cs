@@ -44,7 +44,7 @@ public class AuthService : IAuthService
         {
             { "client_id", _spotifySettings.ClientId },
             { "response_type", "code" },
-            { "redirect_uri", $"{_spotifySettings.RedirectUri}" },
+            { "redirect_uri", _spotifySettings.RedirectUri },
             { "state", state },
             { "scope", scopes },
             { "show_dialog", "true" }
