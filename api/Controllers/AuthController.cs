@@ -1,4 +1,3 @@
-// api/Controllers/AuthController.cs
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using RadioWash.Api.Services.Interfaces;
