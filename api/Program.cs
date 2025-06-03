@@ -4,6 +4,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -76,6 +77,9 @@ builder.Services.AddAuthentication(options =>
   };
 });
 
+// Configure SignalR to use user ID from JWT
+builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
+builder.Services.AddSignalR();
 // CORS
 builder.Services.AddCors(options =>
 {
