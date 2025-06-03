@@ -1,13 +1,17 @@
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
+using RadioWash.Api.Hubs;
 using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Services;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -58,7 +62,26 @@ builder.Services.AddAuthentication(options =>
     ValidAudience = jwtSettings.Audience,
     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
   };
+
+  // Configure JWT authentication for SignalR
+  options.Events = new JwtBearerEvents
+  {
+    OnMessageReceived = context =>
+    {
+      var accessToken = context.Request.Query["access_token"];
+      var path = context.HttpContext.Request.Path;
+      if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+      {
+        context.Token = accessToken;
+      }
+      return Task.CompletedTask;
+    }
+  };
 });
+
+// Configure SignalR to use user ID from JWT
+builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
+builder.Services.AddSignalR();
 
 // CORS
 builder.Services.AddCors(options =>
@@ -146,6 +169,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/healthz");
 app.MapControllers();
+app.MapHub<JobStatusHub>("/hubs/job-status");
 
 // Configure Hangfire
 app.UseHangfireDashboard();

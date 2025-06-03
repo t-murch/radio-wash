@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import LandingPage from './components/LandingPage';
+import LandingPage from './components/ux/LandingPage';
 
 export default function HomePage() {
   const router = useRouter();

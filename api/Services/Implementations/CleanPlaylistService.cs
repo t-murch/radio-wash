@@ -1,5 +1,7 @@
 using Hangfire;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using RadioWash.Api.Hubs;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
@@ -14,17 +16,20 @@ public class CleanPlaylistService : ICleanPlaylistService
   private readonly ISpotifyService _spotifyService;
   private readonly ILogger<CleanPlaylistService> _logger;
   private readonly IServiceScopeFactory _serviceScopeFactory;
+  private readonly IHubContext<JobStatusHub> _hubContext;
 
   public CleanPlaylistService(
       RadioWashDbContext dbContext,
       ISpotifyService spotifyService,
       ILogger<CleanPlaylistService> logger,
-      IServiceScopeFactory serviceScopeFactory)
+      IServiceScopeFactory serviceScopeFactory,
+      IHubContext<JobStatusHub> hubContext)
   {
     _dbContext = dbContext;
     _spotifyService = spotifyService;
     _logger = logger;
     _serviceScopeFactory = serviceScopeFactory;
+    _hubContext = hubContext;
   }
 
   public async Task<CleanPlaylistJobDto> CreateJobAsync(int userId, CreateCleanPlaylistJobDto request)
@@ -55,8 +60,6 @@ public class CleanPlaylistService : ICleanPlaylistService
     await _dbContext.SaveChangesAsync();
 
     // Start processing the job asynchronously
-    // Note: In a production environment, this would be handled by a background job processor
-    // _ = Task.Run(() => ProcessJobAsync(job.Id));
     BackgroundJob.Enqueue(() => ProcessJobAsync(job.Id));
 
     return MapToDto(job);
@@ -104,6 +107,17 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
 
+      // Send SignalR update
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobStatusChanged", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        UpdatedAt = job.UpdatedAt
+      });
+
       // Get all tracks from the source playlist
       var tracks = await _spotifyService.GetPlaylistTracksAsync(job.UserId, job.SourcePlaylistId);
       job.TotalTracks = tracks.Count;
@@ -163,11 +177,34 @@ public class CleanPlaylistService : ICleanPlaylistService
 
         _dbContext.TrackMappings.Add(trackMapping);
 
+        // Send track processed update
+        await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("TrackProcessed", new TrackProcessedDto
+        {
+          JobId = job.Id,
+          SourceTrackName = trackMapping.SourceTrackName,
+          SourceArtistName = trackMapping.SourceArtistName,
+          IsExplicit = trackMapping.IsExplicit,
+          HasCleanMatch = trackMapping.HasCleanMatch,
+          TargetTrackName = trackMapping.TargetTrackName,
+          TargetArtistName = trackMapping.TargetArtistName
+        });
+
         // Periodically save progress
         if (job.ProcessedTracks % 10 == 0 || job.ProcessedTracks == job.TotalTracks)
         {
           job.UpdatedAt = DateTime.UtcNow;
           await _dbContext.SaveChangesAsync();
+
+          // Send progress update
+          await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobProgressUpdate", new JobUpdateDto
+          {
+            JobId = job.Id,
+            Status = job.Status.ToString(),
+            ProcessedTracks = job.ProcessedTracks,
+            TotalTracks = job.TotalTracks,
+            MatchedTracks = job.MatchedTracks,
+            UpdatedAt = job.UpdatedAt
+          });
         }
       }
 
@@ -181,6 +218,17 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.Status = JobStatus.Completed;
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
+
+      // Send completion notification
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobCompleted", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        UpdatedAt = job.UpdatedAt
+      });
     }
     catch (Exception ex)
     {
@@ -191,6 +239,18 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.ErrorMessage = ex.Message;
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
+
+      // Send failure notification
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobFailed", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        ErrorMessage = job.ErrorMessage,
+        UpdatedAt = job.UpdatedAt
+      });
     }
   }
 
@@ -214,6 +274,17 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
 
+      // Send SignalR update
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobStatusChanged", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        UpdatedAt = job.UpdatedAt
+      });
+
       // Get all tracks from the source playlist
       var tracks = await _spotifyService.GetPlaylistTracksAsync(job.UserId, job.SourcePlaylistId);
       job.TotalTracks = tracks.Count;
@@ -273,11 +344,34 @@ public class CleanPlaylistService : ICleanPlaylistService
 
         _dbContext.TrackMappings.Add(trackMapping);
 
+        // Send track processed update
+        await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("TrackProcessed", new TrackProcessedDto
+        {
+          JobId = job.Id,
+          SourceTrackName = trackMapping.SourceTrackName,
+          SourceArtistName = trackMapping.SourceArtistName,
+          IsExplicit = trackMapping.IsExplicit,
+          HasCleanMatch = trackMapping.HasCleanMatch,
+          TargetTrackName = trackMapping.TargetTrackName,
+          TargetArtistName = trackMapping.TargetArtistName
+        });
+
         // Periodically save progress
         if (job.ProcessedTracks % 10 == 0 || job.ProcessedTracks == job.TotalTracks)
         {
           job.UpdatedAt = DateTime.UtcNow;
           await _dbContext.SaveChangesAsync();
+
+          // Send progress update
+          await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobProgressUpdate", new JobUpdateDto
+          {
+            JobId = job.Id,
+            Status = job.Status.ToString(),
+            ProcessedTracks = job.ProcessedTracks,
+            TotalTracks = job.TotalTracks,
+            MatchedTracks = job.MatchedTracks,
+            UpdatedAt = job.UpdatedAt
+          });
         }
       }
 
@@ -291,6 +385,17 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.Status = JobStatus.Completed;
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
+
+      // Send completion notification
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobCompleted", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        UpdatedAt = job.UpdatedAt
+      });
     }
     catch (Exception ex)
     {
@@ -301,6 +406,18 @@ public class CleanPlaylistService : ICleanPlaylistService
       job.ErrorMessage = ex.Message;
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
+
+      // Send failure notification
+      await _hubContext.Clients.Group($"user-{job.UserId}").SendAsync("JobFailed", new JobUpdateDto
+      {
+        JobId = job.Id,
+        Status = job.Status.ToString(),
+        ProcessedTracks = job.ProcessedTracks,
+        TotalTracks = job.TotalTracks,
+        MatchedTracks = job.MatchedTracks,
+        ErrorMessage = job.ErrorMessage,
+        UpdatedAt = job.UpdatedAt
+      });
     }
   }
 
