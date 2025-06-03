@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
+using RadioWash.Api.Hubs;
 using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Services;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -80,6 +82,7 @@ builder.Services.AddAuthentication(options =>
 // Configure SignalR to use user ID from JWT
 builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 builder.Services.AddSignalR();
+
 // CORS
 builder.Services.AddCors(options =>
 {
@@ -166,6 +169,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/healthz");
 app.MapControllers();
+app.MapHub<JobStatusHub>("/hubs/job-status");
 
 // Configure Hangfire
 app.UseHangfireDashboard();
