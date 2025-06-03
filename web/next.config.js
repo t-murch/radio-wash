@@ -19,6 +19,9 @@ const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../../'),
   // Optional: Enable if you need image optimization
   images: {
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     domains: ['i.scdn.co', 'mosaic.scdn.co'], // Spotify image domains
   },
 };
