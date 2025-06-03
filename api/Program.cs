@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -57,6 +58,21 @@ builder.Services.AddAuthentication(options =>
     ValidIssuer = jwtSettings.Issuer,
     ValidAudience = jwtSettings.Audience,
     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
+  };
+
+  // Configure JWT authentication for SignalR
+  options.Events = new JwtBearerEvents
+  {
+    OnMessageReceived = context =>
+    {
+      var accessToken = context.Request.Query["access_token"];
+      var path = context.HttpContext.Request.Path;
+      if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+      {
+        context.Token = accessToken;
+      }
+      return Task.CompletedTask;
+    }
   };
 });
 
