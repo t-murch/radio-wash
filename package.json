@@ -7,6 +7,7 @@
   },
   "private": true,
   "dependencies": {
+    "@microsoft/signalr": "^8.0.7",
     "@nx-dotnet/core": "^2.5.0",
     "empty": "0.10.1",
     "lucide-react": "^0.511.0",

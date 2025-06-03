@@ -157,48 +157,48 @@ export default function LandingPage() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-16 bg-white">
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                step: 1,
-                title: 'Connect Your Spotify',
-                url: '/screenshots/test-signup.png',
-                description:
-                  'Securely connect your Spotify account with one click',
-              },
-              {
-                step: 2,
-                title: 'Select Playlist',
-                url: '/screenshots/test01.png',
-                description:
-                  'Choose any playlist you want to clean from your library',
-              },
-              {
-                step: 3,
-                title: 'Get Clean Version',
-                url: '/screenshots/test02.png',
-                description:
-                  'We create a new playlist with clean alternatives automatically',
-              },
-            ].map((item) => (
-              <div key={item.step} className="text-center">
-                <div className="bg-green-100 text-green-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
-                  {item.step}
-                </div>
-                <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
-                <div className="border rounded-lg overflow-hidden shadow-md mb-4 bg-gray-100 h-40 flex items-center justify-center">
-                  <Image src={item.url} alt={''} width={352} height={160} />
-                </div>
-                <p className="text-gray-600">{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* <section id="how-it-works" className="py-16 bg-white"> */}
+      {/*   <div className="max-w-6xl mx-auto px-4"> */}
+      {/*     <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2> */}
+      {/**/}
+      {/*     <div className="grid md:grid-cols-3 gap-8"> */}
+      {/*       {[ */}
+      {/*         { */}
+      {/*           step: 1, */}
+      {/*           title: 'Connect Your Spotify', */}
+      {/*           url: '/screenshots/test-signup.png', */}
+      {/*           description: */}
+      {/*             'Securely connect your Spotify account with one click', */}
+      {/*         }, */}
+      {/*         { */}
+      {/*           step: 2, */}
+      {/*           title: 'Select Playlist', */}
+      {/*           url: '/screenshots/test01.png', */}
+      {/*           description: */}
+      {/*             'Choose any playlist you want to clean from your library', */}
+      {/*         }, */}
+      {/*         { */}
+      {/*           step: 3, */}
+      {/*           title: 'Get Clean Version', */}
+      {/*           url: '/screenshots/test02.png', */}
+      {/*           description: */}
+      {/*             'We create a new playlist with clean alternatives automatically', */}
+      {/*         }, */}
+      {/*       ].map((item) => ( */}
+      {/*         <div key={item.step} className="text-center"> */}
+      {/*           <div className="bg-green-100 text-green-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold"> */}
+      {/*             {item.step} */}
+      {/*           </div> */}
+      {/*           <h3 className="text-xl font-semibold mb-3">{item.title}</h3> */}
+      {/*           <div className="border rounded-lg overflow-hidden shadow-md mb-4 bg-gray-100 h-40 flex items-center justify-center"> */}
+      {/*             <Image src={item.url} alt={''} width={352} height={160} /> */}
+      {/*           </div> */}
+      {/*           <p className="text-gray-600">{item.description}</p> */}
+      {/*         </div> */}
+      {/*       ))} */}
+      {/*     </div> */}
+      {/*   </div> */}
+      {/* </section> */}
 
       {/* Features */}
       <section id="features" className="py-16 bg-gray-50">
