@@ -110,13 +110,13 @@ cd ..
 Start the backend API:
 
 ```bash
-npx nx serve api --configuration=https
+pnpm run dev:api
 ```
 
 In a new terminal, start the frontend:
 
 ```bash
-npx nx serve web:dev --experimental-https
+pnpm run dev:web
 ```
 
 ## Usage
