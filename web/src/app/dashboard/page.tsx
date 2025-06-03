@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   createCleanPlaylistJob,
@@ -8,6 +8,8 @@ import {
   getUserPlaylists,
   validateToken,
 } from '@/services/api';
+import { useSignalR } from '@/hooks/useSignalR';
+import { JobUpdate, signalRService } from '@/services/signalr';
 
 interface User {
   id: number;
@@ -54,6 +56,28 @@ export default function DashboardPage() {
   );
   const [customName, setCustomName] = useState('');
   const [processingPlaylist, setProcessingPlaylist] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+
+  const { isConnected } = useSignalR(token);
+
+  // Handle real-time job updates
+  const handleJobUpdate = useCallback((update: JobUpdate) => {
+    setJobs((prevJobs) =>
+      prevJobs.map((job) =>
+        job.id === update.jobId
+          ? {
+              ...job,
+              status: update.status,
+              processedTracks: update.processedTracks,
+              totalTracks: update.totalTracks,
+              matchedTracks: update.matchedTracks,
+              errorMessage: update.errorMessage,
+              updatedAt: update.updatedAt,
+            }
+          : job
+      )
+    );
+  }, []);
 
   useEffect(() => {
     // Check if user is logged in
@@ -67,16 +91,35 @@ export default function DashboardPage() {
 
     const parsedUser = JSON.parse(storedUser) as User;
     setUser(parsedUser);
-
-    // validateTokenAsync(parsedUser.id);
+    setToken(storedToken);
 
     // Load user data
     loadUserData(parsedUser.id);
   }, [router]);
 
-  // const validateTokenAsync = async (userId: number) => {
-  //   return await validateToken(userId);
-  // };
+  // Set up SignalR listeners for all jobs
+  useEffect(() => {
+    if (!isConnected || !jobs.length) return;
+
+    jobs.forEach((job) => {
+      if (job.status === 'Processing' || job.status === 'Created') {
+        signalRService.subscribeToJob(job.id).catch(console.error);
+      }
+    });
+
+    signalRService.onJobStatusChanged(handleJobUpdate);
+    signalRService.onJobProgressUpdate(handleJobUpdate);
+    signalRService.onJobCompleted(handleJobUpdate);
+    signalRService.onJobFailed(handleJobUpdate);
+
+    return () => {
+      jobs.forEach((job) => {
+        signalRService.unsubscribeFromJob(job.id).catch(console.error);
+      });
+      signalRService.removeAllListeners();
+    };
+  }, [isConnected, jobs, handleJobUpdate]);
+
   const loadUserData = async (userId: number) => {
     try {
       setLoading(true);
@@ -354,7 +397,7 @@ export default function DashboardPage() {
                     {jobs.map((job) => (
                       <div
                         key={job.id}
-                        className="border rounded-lg p-4"
+                        className="border rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
                         onClick={() => router.push(`/jobs/${job.id}`)}
                       >
                         <h3 className="font-semibold text-gray-900">
@@ -384,7 +427,7 @@ export default function DashboardPage() {
                           <div className="mt-3">
                             <div className="bg-gray-200 rounded-full h-2.5">
                               <div
-                                className="bg-blue-600 h-2.5 rounded-full"
+                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
                                 style={{
                                   width: `${
                                     job.totalTracks > 0
@@ -415,10 +458,11 @@ export default function DashboardPage() {
                             </p>
                             {job.targetPlaylistId && (
                               <button
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   job.targetPlaylistId &&
-                                  openSpotifyPlaylist(job.targetPlaylistId)
-                                }
+                                    openSpotifyPlaylist(job.targetPlaylistId);
+                                }}
                                 className="mt-2 text-sm bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
                               >
                                 Open in Spotify
