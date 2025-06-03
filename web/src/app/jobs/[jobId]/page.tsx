@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Job, User, getJob } from '@/services/api';
-import TrackMappings from '@/components/TrackMappings';
+import TrackMappings from '@/components/ux/TrackMappings';
+import { useSignalR, useJobUpdates } from '@/hooks/useSignalR';
+import { JobUpdate, TrackProcessed } from '@/services/signalr';
 
 export default function JobDetailsPage() {
   const router = useRouter();
@@ -14,6 +16,35 @@ export default function JobDetailsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [recentTracks, setRecentTracks] = useState<TrackProcessed[]>([]);
+
+  const { isConnected } = useSignalR(token);
+
+  // Handle real-time job updates
+  const handleJobUpdate = useCallback((update: JobUpdate) => {
+    setJob((prevJob) =>
+      prevJob && prevJob.id === update.jobId
+        ? {
+            ...prevJob,
+            status: update.status,
+            processedTracks: update.processedTracks,
+            totalTracks: update.totalTracks,
+            matchedTracks: update.matchedTracks,
+            errorMessage: update.errorMessage,
+            updatedAt: update.updatedAt,
+          }
+        : prevJob
+    );
+  }, []);
+
+  // Handle track processed events
+  const handleTrackProcessed = useCallback((track: TrackProcessed) => {
+    setRecentTracks((prev) => [track, ...prev.slice(0, 4)]);
+  }, []);
+
+  // Subscribe to job updates
+  useJobUpdates(job?.id || null, handleJobUpdate, handleTrackProcessed);
 
   useEffect(() => {
     // Check if user is logged in
@@ -27,6 +58,7 @@ export default function JobDetailsPage() {
 
     const parsedUser = JSON.parse(storedUser) as User;
     setUser(parsedUser);
+    setToken(storedToken);
 
     // Load job data
     loadJobData(parsedUser.id, parseInt(jobId));
@@ -123,6 +155,11 @@ export default function JobDetailsPage() {
                   >
                     Refresh
                   </button>
+                  {isConnected && (
+                    <span className="text-xs text-green-600 px-2 py-1">
+                      ● Live
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -182,7 +219,7 @@ export default function JobDetailsPage() {
                   </h3>
                   <div className="bg-gray-200 rounded-full h-4">
                     <div
-                      className="bg-blue-600 h-4 rounded-full"
+                      className="bg-blue-600 h-4 rounded-full transition-all duration-500"
                       style={{
                         width: `${
                           job.totalTracks > 0
@@ -192,6 +229,29 @@ export default function JobDetailsPage() {
                       }}
                     ></div>
                   </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {job.processedTracks} of {job.totalTracks} tracks processed
+                  </p>
+
+                  {/* Real-time track processing feed */}
+                  {isConnected && recentTracks.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        Currently Processing
+                      </h4>
+                      <div className="space-y-1">
+                        {recentTracks.map((track, index) => (
+                          <div
+                            key={`${track.sourceTrackName}-${index}`}
+                            className="text-sm text-gray-600 animate-fade-in"
+                          >
+                            {track.hasCleanMatch ? '✓' : '✗'}{' '}
+                            {track.sourceTrackName} - {track.sourceArtistName}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
