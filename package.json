@@ -11,6 +11,8 @@
   "dependencies": {
     "@microsoft/signalr": "^8.0.7",
     "@nx-dotnet/core": "^2.5.0",
+    "@tanstack/react-query": "^5.80.3",
+    "@tanstack/react-query-devtools": "^5.80.3",
     "empty": "0.10.1",
     "lucide-react": "^0.511.0",
     "next": "~15.2.4",
