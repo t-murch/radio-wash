@@ -1,5 +1,3 @@
-using System.Reflection;
-using System.Security.Claims;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -17,24 +15,11 @@ using RadioWash.Api.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Hangfire configuration
-builder.Services.AddHangfire(config => config
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
-
-builder.Services.AddMemoryCache();
-
 // Configuration
-builder.Services.Configure<SpotifySettings>(
-    builder.Configuration.GetSection(SpotifySettings.SectionName));
-builder.Services.Configure<JwtSettings>(
-    builder.Configuration.GetSection(JwtSettings.SectionName));
-
-// Database configuration
-builder.Services.AddDbContext<RadioWashDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
+var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
+var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // Services
 builder.Services.AddHttpClient();
@@ -43,8 +28,26 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 
-// JWT Authentication
-var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
+// Database
+builder.Services.AddDbContext<RadioWashDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Memory Cache
+builder.Services.AddMemoryCache();
+
+// CORS
+builder.Services.AddCors(options =>
+{
+  options.AddPolicy("AllowFrontend", policy =>
+  {
+    policy.WithOrigins(frontendUrl)
+          .AllowAnyMethod()
+          .AllowAnyHeader()
+          .AllowCredentials();
+  });
+});
+
+// Authentication
 builder.Services.AddAuthentication(options =>
 {
   options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -58,57 +61,50 @@ builder.Services.AddAuthentication(options =>
     ValidateAudience = true,
     ValidateLifetime = true,
     ValidateIssuerSigningKey = true,
-    ValidIssuer = jwtSettings.Issuer,
+    // Using the null-forgiving operator (!) to suppress the CS8602 warning.
+    ValidIssuer = jwtSettings!.Issuer,
     ValidAudience = jwtSettings.Audience,
     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
   };
 
-  // Configure JWT authentication for SignalR
   options.Events = new JwtBearerEvents
   {
+    // This event allows us to read the token from a cookie for both API and SignalR
     OnMessageReceived = context =>
     {
-      var accessToken = context.Request.Query["access_token"];
+      // For SignalR hubs, also check cookies during negotiation
       var path = context.HttpContext.Request.Path;
-      if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+      if (path.StartsWithSegments("/hubs"))
       {
-        context.Token = accessToken;
+        context.Token = context.Request.Cookies["rw-auth-token"];
+      }
+      else
+      {
+        context.Token = context.Request.Cookies["rw-auth-token"];
       }
       return Task.CompletedTask;
     }
   };
 });
 
-// Configure SignalR to use user ID from JWT
+// Hangfire
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+builder.Services.AddHangfireServer();
+
+// SignalR
 builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 builder.Services.AddSignalR();
 
-// CORS
-builder.Services.AddCors(options =>
-{
-  options.AddPolicy("AllowFrontend", policy =>
-  {
-    policy.WithOrigins(builder.Configuration["AllowedOrigins"].Split(';'))
-          .AllowAnyMethod()
-          .AllowAnyHeader()
-          .AllowCredentials();
-  });
-});
 
-// Add services to the container
-builder.Services.AddHangfireServer();
-builder.Services.AddHealthChecks();
-builder.Services.AddHttpsRedirection(options =>
-{
-  options.HttpsPort = 443;
-});
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
   c.SwaggerDoc("v1", new OpenApiInfo { Title = "RadioWash API", Version = "v1" });
-
-  // Configure Swagger to use JWT Authentication
   c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
   {
     Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
@@ -134,14 +130,10 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddHttpLogging(o => { });
-
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
-  app.UseHttpLogging();
   app.UseSwagger();
   app.UseSwaggerUI();
 }
@@ -160,17 +152,14 @@ using (var scope = app.Services.CreateScope())
   catch (Exception ex)
   {
     logger.LogError(ex, "Error applying database migrations");
-    throw; // Re-throw to prevent startup with bad database state
+    throw;
   }
 }
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapHealthChecks("/healthz");
 app.MapControllers();
-app.MapHub<JobStatusHub>("/hubs/job-status");
-
-// Configure Hangfire
+app.MapHub<JobStatusHub>("/hubs/job-status").RequireCors("AllowFrontend");
 app.UseHangfireDashboard();
 app.Run();
