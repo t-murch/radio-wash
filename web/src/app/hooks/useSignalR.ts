@@ -9,7 +9,7 @@ export function useSignalR(token: string | null) {
 
     const connect = async () => {
       try {
-        await signalRService.connect(token);
+        await signalRService.connect();
         setIsConnected(true);
       } catch (error) {
         console.error('Failed to connect to SignalR:', error);

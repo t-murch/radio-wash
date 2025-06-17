@@ -1,0 +1,7 @@
+../api/
+../.git/
+../dist/
+../node_modules/
+../api.Test/
+../.nx/
+*.md
