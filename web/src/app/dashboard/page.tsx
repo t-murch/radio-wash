@@ -1,221 +1,137 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import {
   createCleanPlaylistJob,
   getUserJobs,
   getUserPlaylists,
-  validateToken,
-} from '@/services/api';
-import { useSignalR } from '@/hooks/useSignalR';
-import { JobUpdate, signalRService } from '@/services/signalr';
+  Job,
+  Playlist,
+} from '../services/api';
+import { JobUpdate, sseService } from '../services/sse';
+import { JobCard } from '@/components/ux/JobCard';
 
-interface User {
-  id: number;
-  spotifyId: string;
-  displayName: string;
-  email: string;
-  profileImageUrl?: string;
-}
-
-interface Playlist {
-  id: string;
-  name: string;
-  description?: string;
-  imageUrl?: string;
-  trackCount: number;
-  ownerId: string;
-  ownerName?: string;
-}
-
-interface Job {
-  id: number;
-  sourcePlaylistId: string;
-  sourcePlaylistName: string;
-  targetPlaylistId?: string;
-  targetPlaylistName?: string;
-  status: string;
-  errorMessage?: string;
-  totalTracks: number;
-  processedTracks: number;
-  matchedTracks: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(
-    null
+function DashboardLoading() {
+  return (
+    <div className="flex justify-center items-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-500"></div>
+        <p className="mt-4 text-lg text-gray-600">Loading Dashboard...</p>
+      </div>
+    </div>
   );
+}
+
+function Dashboard() {
+  const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [customName, setCustomName] = useState('');
-  const [processingPlaylist, setProcessingPlaylist] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-
-  const { isConnected } = useSignalR(token);
-
-  // Handle real-time job updates
-  const handleJobUpdate = useCallback((update: JobUpdate) => {
-    setJobs((prevJobs) =>
-      prevJobs.map((job) =>
-        job.id === update.jobId
-          ? {
-              ...job,
-              status: update.status,
-              processedTracks: update.processedTracks,
-              totalTracks: update.totalTracks,
-              matchedTracks: update.matchedTracks,
-              errorMessage: update.errorMessage,
-              updatedAt: update.updatedAt,
-            }
-          : job
-      )
-    );
-  }, []);
-
-  useEffect(() => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem('radiowash_user');
-    const storedToken = localStorage.getItem('radiowash_token');
-
-    if (!storedUser || !storedToken) {
-      router.push('/auth');
-      return;
-    }
-
-    const parsedUser = JSON.parse(storedUser) as User;
-    setUser(parsedUser);
-    setToken(storedToken);
-
-    // Load user data
-    loadUserData(parsedUser.id);
-  }, [router]);
-
-  // Set up SignalR listeners for all jobs
-  useEffect(() => {
-    if (!isConnected || !jobs.length) return;
-
-    jobs.forEach((job) => {
-      if (job.status === 'Processing' || job.status === 'Created') {
-        signalRService.subscribeToJob(job.id).catch(console.error);
-      }
-    });
-
-    signalRService.onJobStatusChanged(handleJobUpdate);
-    signalRService.onJobProgressUpdate(handleJobUpdate);
-    signalRService.onJobCompleted(handleJobUpdate);
-    signalRService.onJobFailed(handleJobUpdate);
-
-    return () => {
-      jobs.forEach((job) => {
-        signalRService.unsubscribeFromJob(job.id).catch(console.error);
-      });
-      signalRService.removeAllListeners();
-    };
-  }, [isConnected, jobs, handleJobUpdate]);
-
-  const loadUserData = async (userId: number) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      await validateToken(userId);
-
-      // Load playlists
-      const playlistsData = await getUserPlaylists(userId);
-      setPlaylists(playlistsData);
-
-      // Load jobs
-      const jobsData = await getUserJobs(userId);
-      setJobs(jobsData);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Failed to load your data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateCleanPlaylist = async () => {
-    if (!selectedPlaylist || !user) return;
-
-    try {
-      setProcessingPlaylist(true);
-      setError(null);
-
-      const targetName =
-        customName.trim() || `Clean - ${selectedPlaylist.name}`;
-
-      const jobData = await createCleanPlaylistJob(
-        user.id,
-        selectedPlaylist.id,
-        targetName
-      );
-      setJobs((prevJobs) => [jobData, ...prevJobs]);
-
-      // Reset form
-      setSelectedPlaylist(null);
-      setCustomName('');
-
-      // Show success message
-      alert(
-        "Clean playlist job created successfully! We'll process it in the background."
-      );
-    } catch (error) {
-      console.error('Error creating clean playlist:', error);
-      setError('Failed to create clean playlist. Please try again.');
-    } finally {
-      setProcessingPlaylist(false);
-    }
-  };
 
   const openSpotifyPlaylist = (playlistId: string) => {
     window.open(`https://open.spotify.com/playlist/${playlistId}`, '_blank');
   };
 
-  const refreshJobs = async () => {
-    if (!user) return;
+  const { data: playlists = [] } = useQuery<Playlist[]>({
+    queryKey: ['playlists', user?.id],
+    queryFn: () => getUserPlaylists(user?.id || 0),
+    enabled: !!user?.id,
+  });
+  const { data: jobs = [] } = useQuery<Job[]>({
+    queryKey: ['jobs', user?.id],
+    queryFn: () => getUserJobs(user?.id || 0),
+    enabled: !!user?.id,
+  });
 
-    try {
-      const jobsData = await getUserJobs(user.id);
-      setJobs(jobsData);
-    } catch (error) {
-      console.error('Error refreshing jobs:', error);
-    }
-  };
+  const createJobMutation = useMutation({
+    mutationFn: (vars: { sourcePlaylistId: string; targetName: string }) =>
+      createCleanPlaylistJob(
+        user?.id || 0,
+        vars.sourcePlaylistId,
+        vars.targetName
+      ),
+    onSuccess: async (newJob) => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      setSelectedPlaylistId('');
+      setCustomName('');
 
-  const handleLogout = () => {
-    localStorage.removeItem('radiowash_token');
-    localStorage.removeItem('radiowash_user');
-    router.push('/auth');
+      // Connect to SSE for the new job
+      sseService.connect(newJob.id);
+      console.log(`Connected to SSE for job ${newJob.id}`);
+    },
+  });
+
+  const handleJobUpdate = useCallback(
+    (update: JobUpdate) => {
+      queryClient.setQueryData<Job[]>(['jobs'], (oldJobs = []) =>
+        oldJobs.map((j) =>
+          j.id === update.jobId
+            ? { ...j, ...update, status: update.status.toString() }
+            : j
+        )
+      );
+    },
+    [queryClient]
+  );
+
+  // Set up SSE listeners and connect to active jobs
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Set up event listeners
+    sseService.onJobUpdate(handleJobUpdate);
+
+    // Connect to active jobs
+    const activeJobs = jobs.filter(
+      (job) => job.status === 'Processing' || job.status === 'Pending'
+    );
+
+    activeJobs.forEach((job) => {
+      sseService.connect(job.id);
+      console.log(`Connected to SSE for existing job ${job.id}`);
+    });
+
+    return () => {
+      sseService.offJobUpdate(handleJobUpdate);
+      sseService.disconnectAll();
+    };
+  }, [user?.id, handleJobUpdate, jobs]);
+
+  const handleCreatePlaylist = () => {
+    const selected = playlists.find((p) => p.id === selectedPlaylistId);
+    if (!selected) return;
+    const targetName = customName.trim() || `Clean - ${selected.name}`;
+    createJobMutation.mutate({ sourcePlaylistId: selected.id, targetName });
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">RadioWash</h1>
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+          <div className="flex items-center space-x-3">
+            <h1 className="text-2xl font-bold text-gray-800">RadioWash</h1>
+            <div className="flex items-center space-x-1"></div>
+          </div>
           {user && (
             <div className="flex items-center space-x-4">
-              <div className="text-gray-700">
-                {user.profileImageUrl && (
-                  <img
-                    src={user.profileImageUrl}
-                    alt={user.displayName}
-                    className="w-8 h-8 rounded-full inline mr-2"
-                  />
-                )}
-                <span>{user.displayName}</span>
-              </div>
+              <span className="text-gray-600 hidden sm:inline">
+                Welcome, {user.displayName}
+              </span>
+              <Image
+                src={user.profileImageUrl || `/user.svg`}
+                alt="User Profile"
+                className="rounded-full"
+                width={40}
+                height={40}
+                priority
+              />
               <button
-                onClick={handleLogout}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                onClick={logout}
+                className="text-sm font-medium text-gray-500 hover:text-gray-700"
               >
                 Logout
               </button>
@@ -223,274 +139,149 @@ export default function DashboardPage() {
           )}
         </div>
       </header>
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {error && (
-          <div
-            className="p-4 mb-6 text-sm text-red-700 bg-red-100 rounded-lg"
-            role="alert"
-          >
-            {error}
-          </div>
-        )}
 
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <p className="text-gray-500">Loading your data...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Playlists Section */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Your Playlists
-                </h2>
-
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h3 className="text-md font-semibold text-gray-700 mb-2">
-                    Create Clean Playlist
-                  </h3>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label
-                        htmlFor="playlist-select"
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Select a playlist
-                      </label>
-                      <select
-                        id="playlist-select"
-                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                        value={selectedPlaylist?.id || ''}
-                        onChange={(e) => {
-                          const selected = playlists.find(
-                            (p) => p.id === e.target.value
-                          );
-                          setSelectedPlaylist(selected || null);
-                        }}
-                      >
-                        <option value="">Select a playlist</option>
-                        {playlists.map((playlist) => (
-                          <option key={playlist.id} value={playlist.id}>
-                            {playlist.name} ({playlist.trackCount} tracks)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor="custom-name"
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Custom name (optional)
-                      </label>
-                      <input
-                        type="text"
-                        id="custom-name"
-                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                        placeholder={
-                          selectedPlaylist
-                            ? `Clean - ${selectedPlaylist.name}`
-                            : 'Clean - Playlist Name'
-                        }
-                        value={customName}
-                        onChange={(e) => setCustomName(e.target.value)}
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleCreateCleanPlaylist}
-                      disabled={!selectedPlaylist || processingPlaylist}
-                      className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                    >
-                      {processingPlaylist
-                        ? 'Processing...'
-                        : 'Create Clean Playlist'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {playlists.length === 0 ? (
-                    <p className="text-gray-500">
-                      No playlists found. Make sure you have playlists on
-                      Spotify.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {playlists.map((playlist) => (
-                        <div
-                          key={playlist.id}
-                          className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                          onClick={() => setSelectedPlaylist(playlist)}
-                        >
-                          <div className="aspect-square w-full bg-gray-200 rounded-md mb-2 overflow-hidden">
-                            {playlist.imageUrl ? (
-                              <img
-                                src={playlist.imageUrl}
-                                alt={playlist.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <span className="text-gray-400">No Image</span>
-                              </div>
-                            )}
-                          </div>
-                          <h3 className="font-semibold text-gray-900 truncate">
-                            {playlist.name}
-                          </h3>
-                          <p className="text-sm text-gray-500">
-                            {playlist.trackCount} tracks
-                          </p>
-                          <div className="flex justify-between mt-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedPlaylist(playlist);
-                              }}
-                              className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
-                            >
-                              Make Clean
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openSpotifyPlaylist(playlist.id);
-                              }}
-                              className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-md hover:bg-gray-200"
-                            >
-                              Open in Spotify
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div className="lg:col-span-3 space-y-8">
+            <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                Create a Clean Playlist
+              </h2>
+              <div className="space-y-4">
+                <select
+                  value={selectedPlaylistId}
+                  onChange={(e) => setSelectedPlaylistId(e.target.value)}
+                  className="block w-full p-3 border border-gray-300 rounded-md"
+                >
+                  <option value="">-- Choose a playlist --</option>
+                  {playlists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.trackCount} tracks)
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="New Playlist Name (Optional)"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  className="block w-full p-3 border border-gray-300 rounded-md"
+                />
+                <button
+                  onClick={handleCreatePlaylist}
+                  disabled={!selectedPlaylistId || createJobMutation.isPending}
+                  className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 disabled:opacity-50"
+                >
+                  {createJobMutation.isPending
+                    ? 'Working on it...'
+                    : 'Create Clean Version'}
+                </button>
               </div>
             </div>
 
-            {/* Jobs Section */}
-            <div className="space-y-6">
-              <div className="bg-white shadow rounded-lg p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Clean Playlist Jobs
-                  </h2>
-                  <button
-                    onClick={refreshJobs}
-                    className="text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                {jobs.length === 0 ? (
-                  <p className="text-gray-500">
-                    No jobs found. Create your first clean playlist above.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {jobs.map((job) => (
-                      <div
-                        key={job.id}
-                        className="border rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => router.push(`/jobs/${job.id}`)}
-                      >
-                        <h3 className="font-semibold text-gray-900">
-                          {job.targetPlaylistName}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          From: {job.sourcePlaylistName}
-                        </p>
-
-                        <div className="mt-2">
-                          <span
-                            className={`inline-block px-2 py-1 text-xs rounded-full ${
-                              job.status === 'Completed'
-                                ? 'bg-green-100 text-green-800'
-                                : job.status === 'Failed'
-                                ? 'bg-red-100 text-red-800'
-                                : job.status === 'Processing'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {job.status}
-                          </span>
-                        </div>
-
-                        {job.status === 'Processing' && (
-                          <div className="mt-3">
-                            <div className="bg-gray-200 rounded-full h-2.5">
-                              <div
-                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${
-                                    job.totalTracks > 0
-                                      ? (job.processedTracks /
-                                          job.totalTracks) *
-                                        100
-                                      : 0
-                                  }%`,
-                                }}
-                              ></div>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {job.processedTracks} of {job.totalTracks} tracks
-                              processed
-                            </p>
+            <div className="space-y-4">
+              {playlists.length === 0 ? (
+                <p className="text-gray-500">
+                  No playlists found. Make sure you have playlists on Spotify.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {playlists.map((playlist, idx) => (
+                    <div
+                      key={idx}
+                      className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => setSelectedPlaylistId(playlist.id)}
+                    >
+                      <div className="aspect-square w-full bg-gray-200 rounded-md mb-2 overflow-hidden">
+                        {playlist.imageUrl ? (
+                          <Image
+                            src={playlist.imageUrl}
+                            alt={playlist.name}
+                            // className="w-full h-full object-cover"
+                            className="object-cover"
+                            width={200}
+                            height={200}
+                            priority={idx < 7}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-gray-400">No Image</span>
                           </div>
                         )}
-
-                        {job.status === 'Completed' && (
-                          <div className="mt-3">
-                            <p className="text-sm text-gray-700">
-                              Found clean versions for {job.matchedTracks} of{' '}
-                              {job.totalTracks} tracks (
-                              {Math.round(
-                                (job.matchedTracks / job.totalTracks) * 100
-                              )}
-                              %)
-                            </p>
-                            {job.targetPlaylistId && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  job.targetPlaylistId &&
-                                    openSpotifyPlaylist(job.targetPlaylistId);
-                                }}
-                                className="mt-2 text-sm bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
-                              >
-                                Open in Spotify
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {job.status === 'Failed' && (
-                          <div className="mt-3">
-                            <p className="text-sm text-red-600">
-                              Error: {job.errorMessage || 'Unknown error'}
-                            </p>
-                          </div>
-                        )}
-
-                        <p className="text-xs text-gray-400 mt-2">
-                          Created: {new Date(job.createdAt).toLocaleString()}
-                        </p>
                       </div>
-                    ))}
-                  </div>
+                      <h3 className="font-semibold text-gray-900 truncate">
+                        {playlist.name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {playlist.trackCount} tracks
+                      </p>
+                      <div className="flex justify-between mt-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlaylistId(playlist.id);
+                          }}
+                          className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
+                        >
+                          Make Clean
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openSpotifyPlaylist(playlist.id);
+                          }}
+                          className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-md hover:bg-gray-200"
+                        >
+                          Open in Spotify
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                Job Status
+              </h2>
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                {jobs.length > 0 ? (
+                  jobs.map((job) => <JobCard key={job.id} job={job} />)
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No jobs yet.</p>
                 )}
               </div>
             </div>
           </div>
-        )}
+        </div>
       </main>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If the auth state is resolved and the user is not authenticated,
+    // redirect them to the login page.
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/auth');
+    }
+  }, [isLoading, isAuthenticated, router]);
+
+  // While loading or if not authenticated (before redirect), show a loading screen.
+  if (isLoading || !isAuthenticated) {
+    return <DashboardLoading />;
+  }
+
+  // Once authenticated, render the dashboard.
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <Dashboard />
+    </Suspense>
   );
 }
