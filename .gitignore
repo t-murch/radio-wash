@@ -44,3 +44,17 @@ Thumbs.db
 # Next.js
 .next
 out
+
+# Sensitive configuration files
+api/appsettings.Development.json
+api/appsettings.json
+web/.env.local
+web/.env.production
+*.env
+**/appsettings.*.json
+!**/appsettings.example.json
+certificates/
+*.pem
+*.key
+*.p12
+*.pfx
