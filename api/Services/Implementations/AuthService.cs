@@ -37,6 +37,29 @@ public class AuthService : IAuthService
     _tokenService = tokenService;
   }
 
+  public async Task<UserDto?> GetUserByIdAsync(int userId)
+  {
+    var user = await _dbContext.Users
+        .AsNoTracking()
+        .FirstOrDefaultAsync(u => u.Id == userId);
+
+    if (user == null)
+    {
+      return null;
+    }
+
+    return new UserDto
+    {
+      Id = user.Id,
+      SpotifyId = user.SpotifyId,
+      DisplayName = user.DisplayName,
+      Email = user.Email,
+      // You might need to fetch the profile image URL from Spotify again or store it.
+      // For simplicity, we'll leave it null here if not stored on the user model.
+      ProfileImageUrl = null
+    };
+  }
+
   public string GenerateAuthUrl(string state)
   {
     var scopes = string.Join(" ", _spotifySettings.Scopes);
@@ -59,7 +82,7 @@ public class AuthService : IAuthService
     var authResponse = await GetTokensFromCodeAsync(code);
     var userProfile = await GetUserProfileAsync(authResponse.AccessToken);
     var user = await GetOrCreateUserAsync(userProfile, authResponse);
-    var jwtToken = await GenerateJwtTokenAsync(user);
+    var jwtToken = await GenerateJwtToken(user);
 
     return new AuthResponseDto
     {
@@ -93,7 +116,6 @@ public class AuthService : IAuthService
       _dbContext.Users.Add(user);
       await _dbContext.SaveChangesAsync();
 
-      // Create user token
       var userToken = new UserToken
       {
         UserId = user.Id,
@@ -107,12 +129,10 @@ public class AuthService : IAuthService
     }
     else
     {
-      // Update user information
       user.DisplayName = profile.DisplayName;
       user.Email = profile.Email;
       user.UpdatedAt = DateTime.UtcNow;
 
-      // Update token if exists, or create a new one
       if (user.Token != null)
       {
         await _tokenService.UpdateTokenAsync(
@@ -141,16 +161,17 @@ public class AuthService : IAuthService
     return user;
   }
 
-  public async Task<string> GenerateJwtTokenAsync(User user)
+  public Task<string> GenerateJwtToken(User user)
   {
     var tokenHandler = new JwtSecurityTokenHandler();
     var key = Encoding.ASCII.GetBytes(_jwtSettings.Secret);
 
     var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.SpotifyId),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.Name, user.SpotifyId)
+            new(ClaimTypes.Name, user.DisplayName)
         };
 
     var tokenDescriptor = new SecurityTokenDescriptor
@@ -165,70 +186,7 @@ public class AuthService : IAuthService
     };
 
     var token = tokenHandler.CreateToken(tokenDescriptor);
-    return tokenHandler.WriteToken(token);
-  }
-
-  public async Task<bool> ValidateTokenAsync(int userId)
-  {
-    var userToken = await _tokenService.GetUserTokenAsync(userId);
-
-    if (userToken == null)
-    {
-      return false;
-    }
-
-    // If token is expired, try to refresh it
-    if (userToken.ExpiresAt <= DateTime.UtcNow)
-    {
-      try
-      {
-        var refreshResponse = await RefreshTokenAsync(userToken.RefreshToken);
-        await _tokenService.UpdateTokenAsync(
-            userToken,
-            refreshResponse.AccessToken,
-            refreshResponse.RefreshToken ?? userToken.RefreshToken,
-            refreshResponse.ExpiresIn
-        );
-        return true;
-      }
-      catch (Exception)
-      {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  public async Task<SpotifyAuthResponse> RefreshTokenAsync(string refreshToken)
-  {
-    var request = new HttpRequestMessage(HttpMethod.Post, _spotifySettings.TokenUrl);
-
-    var content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            { "grant_type", "refresh_token" },
-            { "refresh_token", refreshToken },
-            { "client_id", _spotifySettings.ClientId },
-            { "client_secret", _spotifySettings.ClientSecret }
-        });
-
-    request.Content = content;
-
-    var response = await _httpClient.SendAsync(request);
-    response.EnsureSuccessStatusCode();
-
-    var jsonResponse = await response.Content.ReadAsStringAsync();
-    var tokenResponse = JsonSerializer.Deserialize<SpotifyAuthResponse>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    );
-
-    if (tokenResponse == null)
-    {
-      throw new Exception("Failed to deserialize token response");
-    }
-
-    return tokenResponse;
+    return Task.FromResult(tokenHandler.WriteToken(token));
   }
 
   private async Task<SpotifyAuthResponse> GetTokensFromCodeAsync(string code)
@@ -263,7 +221,7 @@ public class AuthService : IAuthService
     return tokenResponse;
   }
 
-  private async Task<SpotifyUserProfile> GetUserProfileAsync(string accessToken)
+  public async Task<SpotifyUserProfile> GetUserProfileAsync(string accessToken)
   {
     var request = new HttpRequestMessage(HttpMethod.Get, $"{_spotifySettings.ApiBaseUrl}/me");
     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
