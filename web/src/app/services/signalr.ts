@@ -24,36 +24,39 @@ class SignalRService {
   private connection: signalR.HubConnection | null = null;
   private connectionPromise: Promise<void> | null = null;
 
-  async connect(token: string): Promise<void> {
+  async connect(): Promise<void> {
     if (this.connection?.state === signalR.HubConnectionState.Connected) {
       return;
     }
 
     const hubUrl = `${
-      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5159'
+      process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159'
     }/hubs/job-status`;
+
+    const logLevel =
+      process.env.NODE_ENV === 'production'
+        ? signalR.LogLevel.Warning
+        : signalR.LogLevel.Information;
 
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
-        accessTokenFactory: () => token,
-        transport:
-          signalR.HttpTransportType.WebSockets |
-          signalR.HttpTransportType.ServerSentEvents,
+        withCredentials: true,
+        transport: signalR.HttpTransportType.WebSockets
       })
       .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Information)
+      .configureLogging(logLevel)
       .build();
 
     // Connection state logging
     this.connection.onreconnecting(() =>
-      console.log('SignalR: Reconnecting...')
+      console.debug('SignalR: Reconnecting...')
     );
     this.connection.onreconnected(() => console.log('SignalR: Reconnected'));
-    this.connection.onclose(() => console.log('SignalR: Connection closed'));
+    this.connection.onclose(() => console.debug('SignalR: Connection closed'));
 
     this.connectionPromise = this.connection.start();
     await this.connectionPromise;
-    console.log('SignalR: Connected');
+    console.debug('SignalR: Connected');
   }
 
   async disconnect(): Promise<void> {
