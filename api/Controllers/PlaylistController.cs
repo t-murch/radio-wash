@@ -28,6 +28,8 @@ public class PlaylistController : ControllerBase
   {
     try
     {
+      // log this userId
+      _logger.LogDebug("Getting playlists for user {UserId}", userId);
       var playlists = await _spotifyService.GetUserPlaylistsAsync(userId);
       return Ok(playlists);
     }

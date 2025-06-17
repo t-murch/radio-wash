@@ -1,4 +1,6 @@
-import './global.css';
+import { AuthProvider } from './contexts/Authcontext';
+import './globals.css';
+import { QueryProvider } from './providers/QueryProvider';
 
 export const metadata = {
   title: 'RadioWash - The Playlist Washer',
@@ -12,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <QueryProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </QueryProvider>
+      </body>
     </html>
   );
 }

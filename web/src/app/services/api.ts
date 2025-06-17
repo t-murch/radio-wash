@@ -1,6 +1,7 @@
-const API_BASE_URL =
-  (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5159/') + 'api';
+export const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
+// --- Interfaces (assuming they are defined as before) ---
 export interface User {
   id: number;
   spotifyId: string;
@@ -8,7 +9,6 @@ export interface User {
   email: string;
   profileImageUrl?: string;
 }
-
 export interface Playlist {
   id: string;
   name: string;
@@ -18,17 +18,6 @@ export interface Playlist {
   ownerId: string;
   ownerName?: string;
 }
-
-export interface Track {
-  id: string;
-  name: string;
-  artist: string;
-  album: string;
-  albumCover?: string;
-  isExplicit: boolean;
-  uri: string;
-}
-
 export interface Job {
   id: number;
   sourcePlaylistId: string;
@@ -56,156 +45,90 @@ export interface TrackMapping {
   hasCleanMatch: boolean;
 }
 
-// Auth functions
-export const getLoginUrl = async (): Promise<string> => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to get login URL');
-  }
-  const data = await response.json();
-  return data.url;
-};
+// --- API Functions (Refactored for Cookie Auth) ---
 
-export const handleCallback = async (
-  code: string,
-  state: string
-): Promise<{ token: string; user: User }> => {
-  const response = await fetch(
-    `${API_BASE_URL}/auth/callback?code=${code}&state=${state}`,
-    { credentials: 'include' }
-  );
-  if (!response.ok) {
-    throw new Error('Authentication failed');
-  }
-  return await response.json();
-};
-
-export const validateToken = async (userId: number): Promise<boolean> => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/auth/validate?userId=${userId}`
-    );
-    if (!response.ok) {
-      return false;
-    }
-    const data = await response.json();
-    return data.valid;
-  } catch (error) {
-    return false;
-  }
-};
-
-// Playlist functions
-export const getUserPlaylists = async (userId: number): Promise<Playlist[]> => {
-  const token = localStorage.getItem('radiowash_token');
-  const response = await fetch(`${API_BASE_URL}/playlist/user/${userId}`, {
+const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include', // Automatically sends cookies
     headers: {
-      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
     },
   });
+
   if (!response.ok) {
-    throw new Error('Failed to get playlists');
+    const errorBody = await response.text();
+    console.error(
+      `API Error: ${response.status} ${response.statusText}`,
+      errorBody
+    );
+    throw new Error(`Request failed: ${response.statusText}`);
   }
-  return await response.json();
+
+  // Handle cases where response might be empty (e.g., 204 No Content)
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.indexOf('application/json') !== -1) {
+    return response.json();
+  }
+  return;
 };
 
-export const getPlaylistTracks = async (
+// --- Auth Functions ---
+export const getMe = (): Promise<User> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/me`);
+
+export const logout = (): Promise<void> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/logout`, { method: 'POST' });
+
+// --- Playlist Functions ---
+export const getUserPlaylists = (userId: number): Promise<Playlist[]> =>
+  fetchWithCredentials(`${API_BASE_URL}/playlist/user/${userId}`);
+
+export const getJobTrackMappings = (
   userId: number,
-  playlistId: string
-): Promise<Track[]> => {
-  const token = localStorage.getItem('radiowash_token');
-  const response = await fetch(
-    `${API_BASE_URL}/playlist/user/${userId}/playlist/${playlistId}/tracks`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  jobId: number
+): Promise<TrackMapping> =>
+  fetchWithCredentials(
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`
   );
-  if (!response.ok) {
-    throw new Error('Failed to get playlist tracks');
-  }
-  return await response.json();
-};
 
-// Clean playlist functions
-export const createCleanPlaylistJob = async (
+// --- Job Functions ---
+export const getUserJobs = (userId: number): Promise<Job[]> =>
+  fetchWithCredentials(`${API_BASE_URL}/cleanplaylist/user/${userId}/jobs`);
+
+export const createCleanPlaylistJob = (
   userId: number,
   sourcePlaylistId: string,
   targetPlaylistName?: string
 ): Promise<Job> => {
-  const token = localStorage.getItem('radiowash_token');
-  const response = await fetch(
+  return fetchWithCredentials(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        sourcePlaylistId,
-        targetPlaylistName,
-      }),
+      body: JSON.stringify({ sourcePlaylistId, targetPlaylistName }),
     }
   );
-
-  if (!response.ok) {
-    throw new Error('Failed to create clean playlist job');
-  }
-
-  return await response.json();
 };
 
-export const getUserJobs = async (userId: number): Promise<Job[]> => {
-  const token = localStorage.getItem('radiowash_token');
-  const response = await fetch(
-    `${API_BASE_URL}/cleanplaylist/user/${userId}/jobs`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-  if (!response.ok) {
-    throw new Error('Failed to get jobs');
-  }
-  return await response.json();
-};
+export const getJobDetails = async (
+  userId: number,
+  jobId: number
+): Promise<Job> => {
+  const API_BASE_URL =
+    (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
-export const getJob = async (userId: number, jobId: number): Promise<Job> => {
-  const token = localStorage.getItem('radiowash_token');
   const response = await fetch(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
     }
   );
-  if (!response.ok) {
-    throw new Error('Failed to get job');
-  }
-  return await response.json();
-};
 
-export const getJobTrackMappings = async (
-  userId: number,
-  jobId: number
-): Promise<TrackMapping[]> => {
-  const token = localStorage.getItem('radiowash_token');
-  const response = await fetch(
-    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
   if (!response.ok) {
-    throw new Error('Failed to get track mappings');
+    throw new Error(`Failed to get job: ${response.statusText}`);
   }
-  return await response.json();
+
+  return response.json();
 };
