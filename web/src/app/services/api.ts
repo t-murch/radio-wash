@@ -88,7 +88,7 @@ export const getUserPlaylists = (userId: number): Promise<Playlist[]> =>
 export const getJobTrackMappings = (
   userId: number,
   jobId: number
-): Promise<TrackMapping> =>
+): Promise<TrackMapping[]> =>
   fetchWithCredentials(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`
   );
