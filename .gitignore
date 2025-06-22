@@ -58,3 +58,13 @@ certificates/
 *.key
 *.p12
 *.pfx
+
+# .NET Core
+bin/
+obj/
+*.user
+*.suo
+*.cache
+project.lock.json
+*.nuget.props
+*.nuget.targets
