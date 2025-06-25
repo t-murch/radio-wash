@@ -7,20 +7,36 @@ import {
   useCallback,
   useMemo,
 } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   getMe,
   User,
-  logout as apiLogout,
-  API_BASE_URL,
+  MusicService,
+  SignUpRequest,
+  SignInRequest,
+  signUp as apiSignUp,
+  signIn as apiSignIn,
+  signOut as apiSignOut,
+  getConnectedServices,
+  connectSpotify,
+  connectAppleMusic,
+  disconnectService as apiDisconnectService,
 } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
+  connectedServices: MusicService[];
   isAuthenticated: boolean;
   isLoading: boolean;
+  signUp: (data: SignUpRequest) => Promise<void>;
+  signIn: (data: SignInRequest) => Promise<void>;
+  signOut: () => Promise<void>;
+  connectSpotify: () => void;
+  connectAppleMusic: () => void;
+  disconnectService: (service: string) => Promise<void>;
+  // Legacy methods for backward compatibility
   login: () => void;
-  logout: () => void; // Changed to void for simplicity with hard redirect
+  logout: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(
@@ -29,8 +45,6 @@ export const AuthContext = createContext<AuthContextType | undefined>(
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-
-  // This is a great pattern from your original file to prevent a 401 flash on load.
   const [isInitialCheckComplete, setInitialCheckComplete] = useState(false);
 
   const {
@@ -42,41 +56,130 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryFn: getMe,
     retry: false,
     refetchOnWindowFocus: false,
-    // This `enabled` flag is crucial.
     enabled: isInitialCheckComplete,
   });
 
-  // Once the component mounts, we allow the 'me' query to run.
+  const {
+    data: connectedServices = [],
+    refetch: refetchServices,
+  } = useQuery({
+    queryKey: ['connectedServices'],
+    queryFn: getConnectedServices,
+    retry: false,
+    refetchOnWindowFocus: false,
+    enabled: !!user,
+  });
+
+  const signUpMutation = useMutation({
+    mutationFn: apiSignUp,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['me'], data.user);
+      refetchServices();
+    },
+  });
+
+  const signInMutation = useMutation({
+    mutationFn: apiSignIn,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['me'], data.user);
+      refetchServices();
+    },
+  });
+
+  const signOutMutation = useMutation({
+    mutationFn: apiSignOut,
+    onSuccess: () => {
+      queryClient.setQueryData(['me'], null);
+      queryClient.setQueryData(['connectedServices'], []);
+      window.location.href = '/auth';
+    },
+  });
+
+  const disconnectServiceMutation = useMutation({
+    mutationFn: apiDisconnectService,
+    onSuccess: () => {
+      refetchServices();
+    },
+  });
+
   useEffect(() => {
     setInitialCheckComplete(true);
   }, []);
 
-  const login = () => {
-    // Redirects to the backend to start the OAuth flow.
-    window.location.href = `${API_BASE_URL}/auth/login`;
-  };
+  const signUp = useCallback(async (data: SignUpRequest) => {
+    try {
+      await signUpMutation.mutateAsync(data);
+    } catch (error) {
+      throw error;
+    }
+  }, [signUpMutation]);
+
+  const signIn = useCallback(async (data: SignInRequest) => {
+    try {
+      await signInMutation.mutateAsync(data);
+    } catch (error) {
+      throw error;
+    }
+  }, [signInMutation]);
+
+  const signOut = useCallback(async () => {
+    try {
+      await signOutMutation.mutateAsync();
+    } catch (error) {
+      // Even if the API call fails, clear local state
+      queryClient.setQueryData(['me'], null);
+      queryClient.setQueryData(['connectedServices'], []);
+      window.location.href = '/auth';
+    }
+  }, [signOutMutation, queryClient]);
+
+  const disconnectService = useCallback(async (service: string) => {
+    try {
+      await disconnectServiceMutation.mutateAsync(service);
+    } catch (error) {
+      throw error;
+    }
+  }, [disconnectServiceMutation]);
+
+  // Legacy methods for backward compatibility
+  const login = useCallback(() => {
+    // For legacy Spotify OAuth flow - redirect to auth page instead
+    window.location.href = '/auth';
+  }, []);
 
   const logout = useCallback(() => {
-    // Call the API to clear the server-side cookie.
-    apiLogout().finally(() => {
-      // Manually clear the user data from the cache.
-      queryClient.setQueryData(['me'], null);
-      // Forcibly redirect to the auth page to ensure a clean state.
-      window.location.href = '/auth';
-    });
-  }, [queryClient]);
+    signOut();
+  }, [signOut]);
 
   const authContextValue = useMemo(
     () => ({
       user: user ?? null,
-      // The user is authenticated only if the query succeeds.
+      connectedServices,
       isAuthenticated: !!user && !isError,
-      // Loading is true until the initial check is complete and the user query is settled.
       isLoading: !isInitialCheckComplete || isUserLoading,
+      signUp,
+      signIn,
+      signOut,
+      connectSpotify,
+      connectAppleMusic,
+      disconnectService,
+      // Legacy methods
       login,
       logout,
     }),
-    [user, isUserLoading, isInitialCheckComplete, isError, logout]
+    [
+      user,
+      connectedServices,
+      isUserLoading,
+      isInitialCheckComplete,
+      isError,
+      signUp,
+      signIn,
+      signOut,
+      disconnectService,
+      login,
+      logout,
+    ]
   );
 
   return (

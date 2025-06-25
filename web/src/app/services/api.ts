@@ -4,10 +4,30 @@ export const API_BASE_URL =
 // --- Interfaces (assuming they are defined as before) ---
 export interface User {
   id: number;
-  spotifyId: string;
+  supabaseUserId: string;
+  spotifyId?: string;
   displayName: string;
   email: string;
   profileImageUrl?: string;
+}
+
+export interface MusicService {
+  id: number;
+  serviceType: 'Spotify' | 'AppleMusic';
+  serviceUserId: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface SignUpRequest {
+  email: string;
+  password: string;
+  displayName: string;
+}
+
+export interface SignInRequest {
+  email: string;
+  password: string;
 }
 export interface Playlist {
   id: string;
@@ -78,8 +98,44 @@ const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
 export const getMe = (): Promise<User> =>
   fetchWithCredentials(`${API_BASE_URL}/auth/me`);
 
+export const signUp = (data: SignUpRequest): Promise<{ user: User; message: string }> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/signup`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const signIn = (data: SignInRequest): Promise<{ user: User; message: string }> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/signin`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const signOut = (): Promise<{ message: string }> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/signout`, { method: 'POST' });
+
+export const refreshToken = (): Promise<{ message: string }> =>
+  fetchWithCredentials(`${API_BASE_URL}/auth/refresh`, { method: 'POST' });
+
+// --- Music Service Functions ---
+export const getConnectedServices = (): Promise<MusicService[]> =>
+  fetchWithCredentials(`${API_BASE_URL}/musicservice/connected`);
+
+export const connectSpotify = (): void => {
+  window.location.href = `${API_BASE_URL}/musicservice/spotify/auth`;
+};
+
+export const connectAppleMusic = (): void => {
+  window.location.href = `${API_BASE_URL}/musicservice/apple/auth`;
+};
+
+export const disconnectService = (service: string): Promise<{ message: string }> =>
+  fetchWithCredentials(`${API_BASE_URL}/musicservice/${service}`, {
+    method: 'DELETE',
+  });
+
+// Legacy function for backward compatibility
 export const logout = (): Promise<void> =>
-  fetchWithCredentials(`${API_BASE_URL}/auth/logout`, { method: 'POST' });
+  signOut().then(() => undefined);
 
 // --- Playlist Functions ---
 export const getUserPlaylists = (userId: number): Promise<Playlist[]> =>
