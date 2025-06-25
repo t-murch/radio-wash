@@ -51,8 +51,8 @@ builder.Services.AddCors(options =>
 });
 
 // Authentication
-var supabaseSignatureKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(supabaseSettings!.SecretKey));
-var validIssuer = $"https://{supabaseSettings.ProjectId}.supabase.co/auth/v1";
+var supabaseSignatureKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(supabaseSettings!.JwtSecret));
+var validIssuer = supabaseSettings.JwtIssuer;
 var validAudiences = new List<string> { "authenticated" };
 
 builder.Services.AddAuthentication(options =>

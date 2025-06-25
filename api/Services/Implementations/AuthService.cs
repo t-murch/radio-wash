@@ -222,7 +222,7 @@ public class AuthService : IAuthService
         
         var url = $"{_supabaseSettings.Url}/auth/v1/{endpoint}";
         client.DefaultRequestHeaders.Add("apikey", _supabaseSettings.AnonKey);
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_supabaseSettings.AnonKey}");
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_supabaseSettings.ServiceRoleKey}");
 
         HttpResponseMessage response;
         if (data != null)

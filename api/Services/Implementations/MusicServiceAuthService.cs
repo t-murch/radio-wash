@@ -42,7 +42,7 @@ public class MusicServiceAuthService : IMusicServiceAuthService
     public string GenerateSpotifyAuthUrl(string state)
     {
         var scopes = "user-read-email user-read-private playlist-read-private playlist-modify-private playlist-modify-public";
-        var redirectUri = $"{_spotifySettings.RedirectUri}";
+        var redirectUri = "http://127.0.0.1:5159/api/musicservice/spotify/callback";
         
         var queryParams = new Dictionary<string, string>
         {
@@ -161,7 +161,7 @@ public class MusicServiceAuthService : IMusicServiceAuthService
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
-            ["redirect_uri"] = _spotifySettings.RedirectUri,
+            ["redirect_uri"] = "http://127.0.0.1:5159/api/musicservice/spotify/callback",
             ["client_id"] = _spotifySettings.ClientId,
             ["client_secret"] = _spotifySettings.ClientSecret
         };

@@ -6,6 +6,7 @@ public class SupabaseSettings
     
     public string Url { get; set; } = null!;
     public string AnonKey { get; set; } = null!;
-    public string SecretKey { get; set; } = null!;
-    public string ProjectId { get; set; } = null!;
+    public string ServiceRoleKey { get; set; } = null!;
+    public string JwtSecret { get; set; } = null!;
+    public string JwtIssuer { get; set; } = null!;
 }
