@@ -68,3 +68,6 @@ obj/
 project.lock.json
 *.nuget.props
 *.nuget.targets
+
+# Supabase CLI
+supabase/.**
