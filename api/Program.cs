@@ -26,6 +26,7 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 // Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IMusicServiceAuthService, MusicServiceAuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();

@@ -11,6 +11,7 @@ public class RadioWashDbContext : DbContext
 
   public DbSet<User> Users { get; set; } = null!;
   public DbSet<UserToken> UserTokens { get; set; } = null!;
+  public DbSet<UserMusicService> UserMusicServices { get; set; } = null!;
   public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
   public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
@@ -22,8 +23,9 @@ public class RadioWashDbContext : DbContext
     modelBuilder.Entity<User>(entity =>
     {
       entity.HasKey(e => e.Id);
+      entity.HasIndex(e => e.SupabaseUserId).IsUnique();
       entity.HasIndex(e => e.SpotifyId).IsUnique();
-      entity.Property(e => e.SpotifyId).IsRequired();
+      entity.Property(e => e.SupabaseUserId).IsRequired();
       entity.Property(e => e.DisplayName).IsRequired();
       entity.Property(e => e.Email).IsRequired();
       entity.Property(e => e.CreatedAt).IsRequired();
@@ -35,6 +37,11 @@ public class RadioWashDbContext : DbContext
               .OnDelete(DeleteBehavior.Cascade);
 
       entity.HasMany(e => e.Jobs)
+              .WithOne(e => e.User)
+              .HasForeignKey(e => e.UserId)
+              .OnDelete(DeleteBehavior.Cascade);
+
+      entity.HasMany(e => e.MusicServices)
               .WithOne(e => e.User)
               .HasForeignKey(e => e.UserId)
               .OnDelete(DeleteBehavior.Cascade);
@@ -50,6 +57,22 @@ public class RadioWashDbContext : DbContext
       entity.Property(e => e.ExpiresAt).IsRequired();
       entity.Property(e => e.CreatedAt).IsRequired();
       entity.Property(e => e.UpdatedAt).IsRequired();
+    });
+
+    // UserMusicService configuration
+    modelBuilder.Entity<UserMusicService>(entity =>
+    {
+      entity.HasKey(e => e.Id);
+      entity.HasIndex(e => new { e.UserId, e.ServiceType }).IsUnique();
+      entity.Property(e => e.ServiceUserId).IsRequired();
+      entity.Property(e => e.AccessToken).IsRequired();
+      entity.Property(e => e.ExpiresAt).IsRequired();
+      entity.Property(e => e.IsActive).IsRequired();
+      entity.Property(e => e.CreatedAt).IsRequired();
+      entity.Property(e => e.UpdatedAt).IsRequired();
+      
+      entity.Property(e => e.ServiceType)
+            .HasConversion<string>();
     });
 
     // CleanPlaylistJob configuration

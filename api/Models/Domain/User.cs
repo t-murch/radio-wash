@@ -3,7 +3,8 @@ namespace RadioWash.Api.Models.Domain;
 public class User
 {
   public int Id { get; set; }
-  public string SpotifyId { get; set; } = null!;
+  public Guid SupabaseUserId { get; set; }
+  public string? SpotifyId { get; set; } // Keep for backward compatibility
   public string DisplayName { get; set; } = null!;
   public string Email { get; set; } = null!;
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -12,5 +13,6 @@ public class User
   // Navigation properties
   public UserToken? Token { get; set; }
   public ICollection<CleanPlaylistJob> Jobs { get; set; } = new List<CleanPlaylistJob>();
+  public ICollection<UserMusicService> MusicServices { get; set; } = new List<UserMusicService>();
 }
 
