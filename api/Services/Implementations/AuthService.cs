@@ -44,16 +44,12 @@ public class AuthService : IAuthService
                 return new AuthResult { Success = false, ErrorMessage = "Failed to create user" };
             }
 
-            // Create local user record
-            var user = new User
-            {
-                SupabaseUserId = Guid.Parse(supabaseResponse.User.Id),
-                Email = email,
-                DisplayName = displayName
-            };
-
-            _dbContext.Users.Add(user);
-            await _dbContext.SaveChangesAsync();
+            // User is automatically created in local database via trigger
+            // Wait a moment for the trigger to complete, then fetch the user
+            await Task.Delay(100);
+            
+            var supabaseUserId = Guid.Parse(supabaseResponse.User.Id);
+            var user = await GetOrCreateLocalUserAsync(supabaseUserId, email, displayName);
 
             var userDto = new UserDto
             {
