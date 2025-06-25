@@ -18,7 +18,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
+builder.Services.Configure<SupabaseSettings>(builder.Configuration.GetSection(SupabaseSettings.SectionName));
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
+var supabaseSettings = builder.Configuration.GetSection(SupabaseSettings.SectionName).Get<SupabaseSettings>();
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // Services
@@ -48,6 +50,10 @@ builder.Services.AddCors(options =>
 });
 
 // Authentication
+var supabaseSignatureKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(supabaseSettings!.SecretKey));
+var validIssuer = $"https://{supabaseSettings.ProjectId}.supabase.co/auth/v1";
+var validAudiences = new List<string> { "authenticated" };
+
 builder.Services.AddAuthentication(options =>
 {
   options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -61,10 +67,9 @@ builder.Services.AddAuthentication(options =>
     ValidateAudience = true,
     ValidateLifetime = true,
     ValidateIssuerSigningKey = true,
-    // Using the null-forgiving operator (!) to suppress the CS8602 warning.
-    ValidIssuer = jwtSettings!.Issuer,
-    ValidAudience = jwtSettings.Audience,
-    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
+    ValidIssuer = validIssuer,
+    ValidAudiences = validAudiences,
+    IssuerSigningKey = supabaseSignatureKey
   };
 
   options.Events = new JwtBearerEvents
