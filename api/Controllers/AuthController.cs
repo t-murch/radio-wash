@@ -1,8 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using RadioWash.Api.Services.Interfaces;
+using RadioWash.Api.Models.Requests;
 
 namespace RadioWash.Api.Controllers;
 
@@ -10,134 +10,190 @@ namespace RadioWash.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-  private readonly IAuthService _authService;
-  private readonly ILogger<AuthController> _logger;
-  private readonly IMemoryCache _memoryCache;
-  private readonly IConfiguration _configuration;
-  private readonly IWebHostEnvironment _environment;
+    private readonly IAuthService _authService;
+    private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _environment;
 
-  public AuthController(
-      IAuthService authService,
-      ILogger<AuthController> logger,
-      IMemoryCache memoryCache,
-      IConfiguration configuration,
-      IWebHostEnvironment environment)
-  {
-    _authService = authService;
-    _logger = logger;
-    _memoryCache = memoryCache;
-    _configuration = configuration;
-    _environment = environment;
-  }
-
-  /// <summary>
-  /// Generates a Spotify authorization URL and redirects the user to it.
-  /// </summary>
-  [HttpGet("login")]
-  public IActionResult Login()
-  {
-    try
+    public AuthController(
+        IAuthService authService,
+        ILogger<AuthController> logger,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
-      var state = Guid.NewGuid().ToString();
-      _memoryCache.Set($"auth_state_{state}", true, TimeSpan.FromMinutes(10));
-      var authUrl = _authService.GenerateAuthUrl(state);
-      return Redirect(authUrl);
+        _authService = authService;
+        _logger = logger;
+        _configuration = configuration;
+        _environment = environment;
     }
-    catch (Exception ex)
+
+    /// <summary>
+    /// Register a new user with Supabase
+    /// </summary>
+    [HttpPost("signup")]
+    public async Task<IActionResult> SignUp([FromBody] SignUpRequest request)
     {
-      _logger.LogError(ex, "Error generating Spotify authorization URL");
-      return Redirect($"{GetFrontendUrl()}/auth?error=server_error");
+        try
+        {
+            var result = await _authService.SignUpAsync(request.Email, request.Password, request.DisplayName);
+            
+            if (!result.Success)
+            {
+                return BadRequest(new { error = result.ErrorMessage });
+            }
+
+            SetAuthCookie(result.Token!);
+            return Ok(new { user = result.User, message = "User registered successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during user registration");
+            return StatusCode(500, new { error = "Registration failed" });
+        }
     }
-  }
 
-  /// <summary>
-  /// Handles the callback from Spotify, sets a cookie, and redirects to the frontend dashboard.
-  /// </summary>
-  [HttpGet("callback")]
-  public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state)
-  {
-    try
+    /// <summary>
+    /// Sign in with email and password
+    /// </summary>
+    [HttpPost("signin")]
+    public async Task<IActionResult> SignIn([FromBody] SignInRequest request)
     {
-      if (!_memoryCache.TryGetValue($"auth_state_{state}", out _))
-      {
-        _logger.LogWarning("State not found in cache: {State}", state);
-        return Redirect($"{GetFrontendUrl()}/auth?error=invalid_state");
-      }
-      _memoryCache.Remove($"auth_state_{state}");
+        try
+        {
+            var result = await _authService.SignInAsync(request.Email, request.Password);
+            
+            if (!result.Success)
+            {
+                return BadRequest(new { error = result.ErrorMessage });
+            }
 
-      var authResponse = await _authService.HandleCallbackAsync(code);
-
-      var cookieOptions = new CookieOptions
-      {
-        HttpOnly = true,
-        // Correctly check the environment
-        Secure = !_environment.IsDevelopment(),
-        SameSite = SameSiteMode.Lax,
-        Path = "/",
-        Expires = DateTime.UtcNow.AddDays(7)
-      };
-
-      Response.Cookies.Append("rw-auth-token", authResponse.Token, cookieOptions);
-
-      return Redirect($"{GetFrontendUrl()}/auth/callback");
+            SetAuthCookie(result.Token!);
+            return Ok(new { user = result.User, message = "Signed in successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during sign in");
+            return StatusCode(500, new { error = "Sign in failed" });
+        }
     }
-    catch (Exception ex)
+
+    /// <summary>
+    /// Sign out the current user
+    /// </summary>
+    [HttpPost("signout")]
+    [Authorize]
+    public async Task<IActionResult> SignOut()
     {
-      _logger.LogError(ex, "Error handling Spotify callback");
-      return Redirect($"{GetFrontendUrl()}/auth?error=authentication_failed");
+        try
+        {
+            await _authService.SignOutAsync();
+            ClearAuthCookie();
+            return Ok(new { message = "Signed out successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during sign out");
+            return StatusCode(500, new { error = "Sign out failed" });
+        }
     }
-  }
 
-  /// <summary>
-  /// Gets the profile of the currently authenticated user.
-  /// </summary>
-  [HttpGet("me")]
-  [Authorize]
-  public async Task<IActionResult> Me()
-  {
-    try
+    /// <summary>
+    /// Get the current authenticated user
+    /// </summary>
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<IActionResult> Me()
     {
-      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-      if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
-      {
-        return Unauthorized(new { error = "User ID not found in token." });
-      }
+        try
+        {
+            var supabaseUserId = GetSupabaseUserId();
+            if (supabaseUserId == null)
+            {
+                return Unauthorized(new { error = "Invalid user token" });
+            }
 
-      var user = await _authService.GetUserByIdAsync(userId);
-      if (user == null)
-      {
-        return NotFound(new { error = "User not found." });
-      }
+            var user = await _authService.GetUserBySupabaseIdAsync(supabaseUserId.Value);
+            if (user == null)
+            {
+                return NotFound(new { error = "User not found" });
+            }
 
-      return Ok(user);
+            return Ok(user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting current user");
+            return StatusCode(500, new { error = "Failed to get user profile" });
+        }
     }
-    catch (Exception ex)
+
+    /// <summary>
+    /// Refresh the current user's authentication token
+    /// </summary>
+    [HttpPost("refresh")]
+    public async Task<IActionResult> RefreshToken()
     {
-      _logger.LogError(ex, "Error getting authenticated user.");
-      return StatusCode(500, new { error = "Failed to get user profile." });
+        try
+        {
+            var refreshToken = Request.Cookies["rw-refresh-token"];
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                return Unauthorized(new { error = "No refresh token provided" });
+            }
+
+            var result = await _authService.RefreshTokenAsync(refreshToken);
+            if (!result.Success)
+            {
+                ClearAuthCookie();
+                return Unauthorized(new { error = result.ErrorMessage });
+            }
+
+            SetAuthCookie(result.Token!);
+            return Ok(new { message = "Token refreshed successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing token");
+            return StatusCode(500, new { error = "Token refresh failed" });
+        }
     }
-  }
 
-  /// <summary>
-  /// Logs the user out by clearing the authentication cookie.
-  /// </summary>
-  [HttpPost("logout")]
-  public IActionResult Logout()
-  {
-    var cookieOptions = new CookieOptions
+    private void SetAuthCookie(string token)
     {
-      HttpOnly = true,
-      Secure = !_environment.IsDevelopment(),
-      SameSite = SameSiteMode.Lax,
-      Path = "/",
-      Expires = DateTime.UtcNow.AddDays(-1)
-    };
-    Response.Cookies.Delete("rw-auth-token", cookieOptions);
-    return Ok(new { success = true });
-  }
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_environment.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = DateTime.UtcNow.AddDays(7)
+        };
 
-  private string GetFrontendUrl()
-  {
-    return _configuration["FrontendUrl"] ?? "https://127.0.0.1:3000";
-  }
+        Response.Cookies.Append("rw-auth-token", token, cookieOptions);
+    }
+
+    private void ClearAuthCookie()
+    {
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_environment.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = DateTime.UtcNow.AddDays(-1)
+        };
+
+        Response.Cookies.Delete("rw-auth-token", cookieOptions);
+        Response.Cookies.Delete("rw-refresh-token", cookieOptions);
+    }
+
+    private Guid? GetSupabaseUserId()
+    {
+        var subClaim = User.FindFirstValue("sub");
+        if (string.IsNullOrEmpty(subClaim) || !Guid.TryParse(subClaim, out var userId))
+        {
+            return null;
+        }
+        return userId;
+    }
 }
