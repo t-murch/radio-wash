@@ -1,245 +1,270 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Net.Http.Headers;
-using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using RadioWash.Api.Configuration;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
-using RadioWash.Api.Models.Spotify;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
 
 public class AuthService : IAuthService
 {
-  private readonly HttpClient _httpClient;
-  private readonly SpotifySettings _spotifySettings;
-  private readonly JwtSettings _jwtSettings;
-  private readonly RadioWashDbContext _dbContext;
-  private readonly ITokenService _tokenService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly SupabaseSettings _supabaseSettings;
+    private readonly RadioWashDbContext _dbContext;
+    private readonly ILogger<AuthService> _logger;
 
-  public AuthService(
-      HttpClient httpClient,
-      IOptions<SpotifySettings> spotifySettings,
-      IOptions<JwtSettings> jwtSettings,
-      RadioWashDbContext dbContext,
-      ITokenService tokenService)
-  {
-    _httpClient = httpClient;
-    _spotifySettings = spotifySettings.Value;
-    _jwtSettings = jwtSettings.Value;
-    _dbContext = dbContext;
-    _tokenService = tokenService;
-  }
-
-  public async Task<UserDto?> GetUserByIdAsync(int userId)
-  {
-    var user = await _dbContext.Users
-        .AsNoTracking()
-        .FirstOrDefaultAsync(u => u.Id == userId);
-
-    if (user == null)
+    public AuthService(
+        IHttpClientFactory httpClientFactory,
+        IOptions<SupabaseSettings> supabaseSettings,
+        RadioWashDbContext dbContext,
+        ILogger<AuthService> logger)
     {
-      return null;
+        _httpClientFactory = httpClientFactory;
+        _supabaseSettings = supabaseSettings.Value;
+        _dbContext = dbContext;
+        _logger = logger;
     }
 
-    return new UserDto
+    public async Task<AuthResult> SignUpAsync(string email, string password, string displayName)
     {
-      Id = user.Id,
-      SpotifyId = user.SpotifyId,
-      DisplayName = user.DisplayName,
-      Email = user.Email,
-      // You might need to fetch the profile image URL from Spotify again or store it.
-      // For simplicity, we'll leave it null here if not stored on the user model.
-      ProfileImageUrl = null
-    };
-  }
-
-  public string GenerateAuthUrl(string state)
-  {
-    var scopes = string.Join(" ", _spotifySettings.Scopes);
-    var queryParams = new Dictionary<string, string>
+        try
         {
-            { "client_id", _spotifySettings.ClientId },
-            { "response_type", "code" },
-            { "redirect_uri", _spotifySettings.RedirectUri },
-            { "state", state },
-            { "scope", scopes },
-            { "show_dialog", "true" }
-        };
+            var supabaseResponse = await CallSupabaseAuthAsync("signup", new
+            {
+                email,
+                password,
+                data = new { display_name = displayName }
+            });
 
-    var queryString = string.Join("&", queryParams.Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
-    return $"{_spotifySettings.AuthUrl}?{queryString}";
-  }
+            if (supabaseResponse == null)
+            {
+                return new AuthResult { Success = false, ErrorMessage = "Failed to create user" };
+            }
 
-  public async Task<AuthResponseDto> HandleCallbackAsync(string code)
-  {
-    var authResponse = await GetTokensFromCodeAsync(code);
-    var userProfile = await GetUserProfileAsync(authResponse.AccessToken);
-    var user = await GetOrCreateUserAsync(userProfile, authResponse);
-    var jwtToken = await GenerateJwtToken(user);
+            // Create local user record
+            var user = new User
+            {
+                SupabaseUserId = Guid.Parse(supabaseResponse.User.Id),
+                Email = email,
+                DisplayName = displayName
+            };
 
-    return new AuthResponseDto
-    {
-      Token = jwtToken,
-      User = new UserDto
-      {
-        Id = user.Id,
-        SpotifyId = user.SpotifyId,
-        DisplayName = user.DisplayName,
-        Email = user.Email,
-        ProfileImageUrl = userProfile.Images?.FirstOrDefault()?.Url
-      }
-    };
-  }
+            _dbContext.Users.Add(user);
+            await _dbContext.SaveChangesAsync();
 
-  public async Task<User> GetOrCreateUserAsync(SpotifyUserProfile profile, SpotifyAuthResponse tokens)
-  {
-    var user = await _dbContext.Users
-        .Include(u => u.Token)
-        .FirstOrDefaultAsync(u => u.SpotifyId == profile.Id);
+            var userDto = new UserDto
+            {
+                Id = user.Id,
+                SupabaseUserId = user.SupabaseUserId,
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                ProfileImageUrl = null
+            };
 
-    if (user == null)
-    {
-      user = new User
-      {
-        SpotifyId = profile.Id,
-        DisplayName = profile.DisplayName,
-        Email = profile.Email
-      };
-
-      _dbContext.Users.Add(user);
-      await _dbContext.SaveChangesAsync();
-
-      var userToken = new UserToken
-      {
-        UserId = user.Id,
-        AccessToken = tokens.AccessToken,
-        RefreshToken = tokens.RefreshToken,
-        ExpiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn)
-      };
-
-      _dbContext.UserTokens.Add(userToken);
-      await _dbContext.SaveChangesAsync();
-    }
-    else
-    {
-      user.DisplayName = profile.DisplayName;
-      user.Email = profile.Email;
-      user.UpdatedAt = DateTime.UtcNow;
-
-      if (user.Token != null)
-      {
-        await _tokenService.UpdateTokenAsync(
-            user.Token,
-            tokens.AccessToken,
-            tokens.RefreshToken,
-            tokens.ExpiresIn
-        );
-      }
-      else
-      {
-        var userToken = new UserToken
+            return new AuthResult
+            {
+                Success = true,
+                Token = supabaseResponse.AccessToken,
+                User = userDto
+            };
+        }
+        catch (Exception ex)
         {
-          UserId = user.Id,
-          AccessToken = tokens.AccessToken,
-          RefreshToken = tokens.RefreshToken,
-          ExpiresAt = DateTime.UtcNow.AddSeconds(tokens.ExpiresIn)
-        };
-
-        _dbContext.UserTokens.Add(userToken);
-      }
-
-      await _dbContext.SaveChangesAsync();
+            _logger.LogError(ex, "Error during user sign up");
+            return new AuthResult { Success = false, ErrorMessage = "Sign up failed" };
+        }
     }
 
-    return user;
-  }
-
-  public Task<string> GenerateJwtToken(User user)
-  {
-    var tokenHandler = new JwtSecurityTokenHandler();
-    var key = Encoding.ASCII.GetBytes(_jwtSettings.Secret);
-
-    var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(JwtRegisteredClaimNames.Sub, user.SpotifyId),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.Name, user.DisplayName)
-        };
-
-    var tokenDescriptor = new SecurityTokenDescriptor
+    public async Task<AuthResult> SignInAsync(string email, string password)
     {
-      Subject = new ClaimsIdentity(claims),
-      Expires = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationInMinutes),
-      Issuer = _jwtSettings.Issuer,
-      Audience = _jwtSettings.Audience,
-      SigningCredentials = new SigningCredentials(
-            new SymmetricSecurityKey(key),
-            SecurityAlgorithms.HmacSha256Signature)
-    };
-
-    var token = tokenHandler.CreateToken(tokenDescriptor);
-    return Task.FromResult(tokenHandler.WriteToken(token));
-  }
-
-  private async Task<SpotifyAuthResponse> GetTokensFromCodeAsync(string code)
-  {
-    var request = new HttpRequestMessage(HttpMethod.Post, _spotifySettings.TokenUrl);
-
-    var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        try
         {
-            { "grant_type", "authorization_code" },
-            { "code", code },
-            { "redirect_uri", _spotifySettings.RedirectUri },
-            { "client_id", _spotifySettings.ClientId },
-            { "client_secret", _spotifySettings.ClientSecret }
+            var supabaseResponse = await CallSupabaseAuthAsync("token?grant_type=password", new
+            {
+                email,
+                password
+            });
+
+            if (supabaseResponse == null)
+            {
+                return new AuthResult { Success = false, ErrorMessage = "Invalid credentials" };
+            }
+
+            var supabaseUserId = Guid.Parse(supabaseResponse.User.Id);
+            var user = await GetOrCreateLocalUserAsync(supabaseUserId, email, supabaseResponse.User.Email);
+
+            var userDto = new UserDto
+            {
+                Id = user.Id,
+                SupabaseUserId = user.SupabaseUserId,
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                ProfileImageUrl = null
+            };
+
+            return new AuthResult
+            {
+                Success = true,
+                Token = supabaseResponse.AccessToken,
+                User = userDto
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during user sign in");
+            return new AuthResult { Success = false, ErrorMessage = "Sign in failed" };
+        }
+    }
+
+    public async Task SignOutAsync()
+    {
+        try
+        {
+            // Call Supabase logout endpoint
+            await CallSupabaseAuthAsync("logout", null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during sign out");
+            // Don't throw - logout should be best effort
+        }
+    }
+
+    public async Task<AuthResult> RefreshTokenAsync(string refreshToken)
+    {
+        try
+        {
+            var supabaseResponse = await CallSupabaseAuthAsync("token?grant_type=refresh_token", new
+            {
+                refresh_token = refreshToken
+            });
+
+            if (supabaseResponse == null)
+            {
+                return new AuthResult { Success = false, ErrorMessage = "Invalid refresh token" };
+            }
+
+            return new AuthResult
+            {
+                Success = true,
+                Token = supabaseResponse.AccessToken
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing token");
+            return new AuthResult { Success = false, ErrorMessage = "Token refresh failed" };
+        }
+    }
+
+    public async Task<UserDto?> GetUserBySupabaseIdAsync(Guid supabaseUserId)
+    {
+        var user = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+        if (user == null)
+        {
+            return null;
+        }
+
+        return new UserDto
+        {
+            Id = user.Id,
+            SupabaseUserId = user.SupabaseUserId,
+            SpotifyId = user.SpotifyId,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            ProfileImageUrl = null
+        };
+    }
+
+    private async Task<User> GetOrCreateLocalUserAsync(Guid supabaseUserId, string email, string? displayName)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+        if (user == null)
+        {
+            user = new User
+            {
+                SupabaseUserId = supabaseUserId,
+                Email = email,
+                DisplayName = displayName ?? email.Split('@')[0]
+            };
+
+            _dbContext.Users.Add(user);
+            await _dbContext.SaveChangesAsync();
+        }
+        else
+        {
+            // Update user information if needed
+            if (user.Email != email || (displayName != null && user.DisplayName != displayName))
+            {
+                user.Email = email;
+                if (displayName != null)
+                {
+                    user.DisplayName = displayName;
+                }
+                user.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+        }
+
+        return user;
+    }
+
+    private async Task<SupabaseAuthResponse?> CallSupabaseAuthAsync(string endpoint, object? data)
+    {
+        using var client = _httpClientFactory.CreateClient();
+        
+        var url = $"{_supabaseSettings.Url}/auth/v1/{endpoint}";
+        client.DefaultRequestHeaders.Add("apikey", _supabaseSettings.AnonKey);
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_supabaseSettings.AnonKey}");
+
+        HttpResponseMessage response;
+        if (data != null)
+        {
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions 
+            { 
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower 
+            });
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            response = await client.PostAsync(url, content);
+        }
+        else
+        {
+            response = await client.PostAsync(url, null);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Supabase auth error: {StatusCode} - {Content}", response.StatusCode, errorContent);
+            return null;
+        }
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<SupabaseAuthResponse>(responseContent, new JsonSerializerOptions 
+        { 
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower 
         });
-
-    request.Content = content;
-
-    var response = await _httpClient.SendAsync(request);
-    response.EnsureSuccessStatusCode();
-
-    var jsonResponse = await response.Content.ReadAsStringAsync();
-    var tokenResponse = JsonSerializer.Deserialize<SpotifyAuthResponse>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    );
-
-    if (tokenResponse == null)
-    {
-      throw new Exception("Failed to deserialize token response");
     }
 
-    return tokenResponse;
-  }
-
-  public async Task<SpotifyUserProfile> GetUserProfileAsync(string accessToken)
-  {
-    var request = new HttpRequestMessage(HttpMethod.Get, $"{_spotifySettings.ApiBaseUrl}/me");
-    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-    var response = await _httpClient.SendAsync(request);
-    response.EnsureSuccessStatusCode();
-
-    var jsonResponse = await response.Content.ReadAsStringAsync();
-    var userProfile = JsonSerializer.Deserialize<SpotifyUserProfile>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    );
-
-    if (userProfile == null)
+    private class SupabaseAuthResponse
     {
-      throw new Exception("Failed to deserialize user profile");
+        public string AccessToken { get; set; } = null!;
+        public string RefreshToken { get; set; } = null!;
+        public int ExpiresIn { get; set; }
+        public SupabaseUser User { get; set; } = null!;
     }
 
-    return userProfile;
-  }
+    private class SupabaseUser
+    {
+        public string Id { get; set; } = null!;
+        public string Email { get; set; } = null!;
+        public Dictionary<string, object>? UserMetadata { get; set; }
+    }
 }
