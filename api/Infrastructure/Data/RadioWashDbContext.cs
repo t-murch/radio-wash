@@ -22,6 +22,7 @@ public class RadioWashDbContext : DbContext
     modelBuilder.Entity<User>(entity =>
     {
       entity.HasKey(e => e.Id);
+      entity.HasIndex(e => e.SupabaseUserId).IsUnique().HasFilter("SupabaseUserId IS NOT NULL");
       entity.HasIndex(e => e.SpotifyId).IsUnique();
       entity.Property(e => e.SpotifyId).IsRequired();
       entity.Property(e => e.DisplayName).IsRequired();
@@ -51,6 +52,7 @@ public class RadioWashDbContext : DbContext
       entity.Property(e => e.CreatedAt).IsRequired();
       entity.Property(e => e.UpdatedAt).IsRequired();
     });
+
 
     // CleanPlaylistJob configuration
     modelBuilder.Entity<CleanPlaylistJob>(entity =>
