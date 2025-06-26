@@ -11,7 +11,7 @@ public enum JobStatus
 public class CleanPlaylistJob
 {
   public int Id { get; set; }
-  public int UserId { get; set; }
+  public Guid UserId { get; set; }
   public string SourcePlaylistId { get; set; } = null!;
   public string SourcePlaylistName { get; set; } = null!;
   public string? TargetPlaylistId { get; set; }

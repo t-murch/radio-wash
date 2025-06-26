@@ -27,5 +27,5 @@ public interface IAuthService
   /// </summary>
   /// <param name="userId">The user's unique identifier.</param>
   /// <returns>A <see cref="UserDto"/> for the specified user, or null if not found.</returns>
-  Task<UserDto?> GetUserByIdAsync(int userId);
+  Task<UserDto?> GetUserByIdAsync(Guid userId);
 }
