@@ -53,4 +53,10 @@ public class AuthResult
     public string? ErrorMessage { get; set; }
     public string? Token { get; set; }
     public UserDto? User { get; set; }
+    
+    /// <summary>
+    /// Indicates whether the user needs to set up at least one music service
+    /// before they can access the main application features.
+    /// </summary>
+    public bool RequiresMusicServiceSetup { get; set; }
 }
