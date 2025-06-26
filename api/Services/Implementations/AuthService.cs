@@ -15,17 +15,20 @@ public class AuthService : IAuthService
     private readonly SupabaseSettings _supabaseSettings;
     private readonly RadioWashDbContext _dbContext;
     private readonly ILogger<AuthService> _logger;
+    private readonly IMusicServiceAuthService _musicServiceAuthService;
 
     public AuthService(
         IHttpClientFactory httpClientFactory,
         IOptions<SupabaseSettings> supabaseSettings,
         RadioWashDbContext dbContext,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IMusicServiceAuthService musicServiceAuthService)
     {
         _httpClientFactory = httpClientFactory;
         _supabaseSettings = supabaseSettings.Value;
         _dbContext = dbContext;
         _logger = logger;
+        _musicServiceAuthService = musicServiceAuthService;
     }
 
     public async Task<AuthResult> SignUpAsync(string email, string password, string displayName)
@@ -60,11 +63,15 @@ public class AuthService : IAuthService
                 ProfileImageUrl = null
             };
 
+            // Check if user needs to set up music services
+            var requiresMusicServiceSetup = await CheckRequiresMusicServiceSetupAsync(user.SupabaseUserId);
+
             return new AuthResult
             {
                 Success = true,
                 Token = supabaseResponse.AccessToken,
-                User = userDto
+                User = userDto,
+                RequiresMusicServiceSetup = requiresMusicServiceSetup
             };
         }
         catch (Exception ex)
@@ -101,11 +108,15 @@ public class AuthService : IAuthService
                 ProfileImageUrl = null
             };
 
+            // Check if user needs to set up music services
+            var requiresMusicServiceSetup = await CheckRequiresMusicServiceSetupAsync(user.SupabaseUserId);
+
             return new AuthResult
             {
                 Success = true,
                 Token = supabaseResponse.AccessToken,
-                User = userDto
+                User = userDto,
+                RequiresMusicServiceSetup = requiresMusicServiceSetup
             };
         }
         catch (Exception ex)
@@ -210,6 +221,30 @@ public class AuthService : IAuthService
         }
 
         return user;
+    }
+
+    /// <summary>
+    /// Checks if a user needs to set up music services by verifying they have at least one active, non-expired service
+    /// </summary>
+    private async Task<bool> CheckRequiresMusicServiceSetupAsync(Guid supabaseUserId)
+    {
+        try
+        {
+            var connectedServices = await _musicServiceAuthService.GetConnectedServicesAsync(supabaseUserId);
+            
+            // Check if user has any valid (active and non-expired) music services
+            var hasValidService = connectedServices.Any(service => 
+                service.IsActive && service.ExpiresAt > DateTime.UtcNow);
+            
+            // Return true if setup is required (no valid services)
+            return !hasValidService;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking music service setup requirement for user {UserId}", supabaseUserId);
+            // Default to requiring setup if we can't determine status
+            return true;
+        }
     }
 
     private async Task<SupabaseAuthResponse?> CallSupabaseAuthAsync(string endpoint, object? data)
