@@ -52,8 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = () => {
-    // Redirects to the backend to start the OAuth flow.
-    window.location.href = `${API_BASE_URL}/auth/login`;
+    // Redirects to the backend to start the Spotify OAuth flow.
+    window.location.href = `${API_BASE_URL}/auth/spotify/login`;
   };
 
   const logout = useCallback(() => {
