@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RadioWash.Api.Attributes;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Controllers;
@@ -7,6 +8,7 @@ namespace RadioWash.Api.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
+[RequiresMusicService]
 public class PlaylistController : ControllerBase
 {
   private readonly ISpotifyService _spotifyService;

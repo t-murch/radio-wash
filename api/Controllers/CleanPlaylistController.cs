@@ -1,5 +1,7 @@
 using Hangfire;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RadioWash.Api.Attributes;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
 
@@ -7,6 +9,8 @@ namespace RadioWash.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
+[RequiresMusicService]
 public class CleanPlaylistController : ControllerBase
 {
   private readonly ICleanPlaylistService _cleanPlaylistService;
