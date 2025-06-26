@@ -28,6 +28,7 @@ interface AuthContextType {
   connectedServices: MusicService[];
   isAuthenticated: boolean;
   isLoading: boolean;
+  requiresMusicServiceSetup: boolean;
   signUp: (data: SignUpRequest) => Promise<void>;
   signIn: (data: SignInRequest) => Promise<void>;
   signOut: () => Promise<void>;
@@ -46,6 +47,7 @@ export const AuthContext = createContext<AuthContextType | undefined>(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [isInitialCheckComplete, setInitialCheckComplete] = useState(false);
+  const [requiresMusicServiceSetup, setRequiresMusicServiceSetup] = useState(false);
 
   const {
     data: user,
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     mutationFn: apiSignUp,
     onSuccess: (data) => {
       queryClient.setQueryData(['me'], data.user);
+      setRequiresMusicServiceSetup(data.requiresMusicServiceSetup || false);
       refetchServices();
     },
   });
@@ -82,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     mutationFn: apiSignIn,
     onSuccess: (data) => {
       queryClient.setQueryData(['me'], data.user);
+      setRequiresMusicServiceSetup(data.requiresMusicServiceSetup || false);
       refetchServices();
     },
   });
@@ -157,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       connectedServices,
       isAuthenticated: !!user && !isError,
       isLoading: !isInitialCheckComplete || isUserLoading,
+      requiresMusicServiceSetup,
       signUp,
       signIn,
       signOut,
@@ -173,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isUserLoading,
       isInitialCheckComplete,
       isError,
+      requiresMusicServiceSetup,
       signUp,
       signIn,
       signOut,

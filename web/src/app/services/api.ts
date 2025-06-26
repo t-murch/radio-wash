@@ -29,6 +29,12 @@ export interface SignInRequest {
   email: string;
   password: string;
 }
+
+export interface AuthResponse {
+  user: User;
+  message: string;
+  requiresMusicServiceSetup?: boolean;
+}
 export interface Playlist {
   id: string;
   name: string;
@@ -98,13 +104,13 @@ const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
 export const getMe = (): Promise<User> =>
   fetchWithCredentials(`${API_BASE_URL}/auth/me`);
 
-export const signUp = (data: SignUpRequest): Promise<{ user: User; message: string }> =>
+export const signUp = (data: SignUpRequest): Promise<AuthResponse> =>
   fetchWithCredentials(`${API_BASE_URL}/auth/signup`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 
-export const signIn = (data: SignInRequest): Promise<{ user: User; message: string }> =>
+export const signIn = (data: SignInRequest): Promise<AuthResponse> =>
   fetchWithCredentials(`${API_BASE_URL}/auth/signin`, {
     method: 'POST',
     body: JSON.stringify(data),

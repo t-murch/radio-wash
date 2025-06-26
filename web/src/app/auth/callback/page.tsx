@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../hooks/useAuth';
 
 function AuthCallback() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const { requiresMusicServiceSetup, connectedServices } = useAuth();
 
   useEffect(() => {
     // When this page loads, the browser has received the redirect from the backend,
@@ -15,11 +18,35 @@ function AuthCallback() {
     // We invalidate the 'me' query, which triggers a refetch of the user's data.
     // The `getMe` function in `api.ts` will now be called with the cookie attached.
     queryClient.invalidateQueries({ queryKey: ['me'] }).then(() => {
-      // Once the user data is refetched and cached, we can redirect
-      // to the main part of the application.
-      router.push('/dashboard'); // Or any other protected route
+      // Check if this is a callback from music service connection
+      const spotifyConnected = searchParams.get('spotify_connected');
+      const appleConnected = searchParams.get('apple_connected');
+      const hasError = searchParams.get('error');
+
+      if (hasError) {
+        // Handle connection errors - redirect to onboarding with error message
+        router.push(`/onboarding?error=${hasError}`);
+        return;
+      }
+
+      if (spotifyConnected || appleConnected) {
+        // Refresh connected services after successful connection
+        queryClient.invalidateQueries({ queryKey: ['connectedServices'] }).then(() => {
+          // Check if user still needs to set up more services or can proceed to dashboard
+          const hasAnyServices = connectedServices.length > 0;
+          router.push(hasAnyServices ? '/dashboard' : '/onboarding');
+        });
+        return;
+      }
+
+      // For regular auth (signup/signin), check if user needs music service setup
+      if (requiresMusicServiceSetup || connectedServices.length === 0) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
     });
-  }, [queryClient, router]);
+  }, [queryClient, router, requiresMusicServiceSetup, connectedServices, searchParams]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
