@@ -23,7 +23,7 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 builder.Services.AddHttpClient();
 builder.Services.AddDataProtection(); // For encryption
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
-builder.Services.AddScoped<ISpotifyService, SpotifyService>();
+// builder.Services.AddScoped<ISpotifyService, SpotifyService>(); // TODO: Update for new User model  
 // builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>(); // TODO: Update for new User model
 
 // Database
