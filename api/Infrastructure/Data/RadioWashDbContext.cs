@@ -10,7 +10,6 @@ public class RadioWashDbContext : DbContext
   }
 
   public DbSet<User> Users { get; set; } = null!;
-  public DbSet<UserToken> UserTokens { get; set; } = null!;
   public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
   public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
@@ -22,35 +21,20 @@ public class RadioWashDbContext : DbContext
     modelBuilder.Entity<User>(entity =>
     {
       entity.HasKey(e => e.Id);
-      entity.HasIndex(e => e.SupabaseUserId).IsUnique().HasFilter("SupabaseUserId IS NOT NULL");
+      entity.HasIndex(e => e.SupabaseUserId).IsUnique();
       entity.HasIndex(e => e.SpotifyId).IsUnique();
+      entity.Property(e => e.SupabaseUserId).IsRequired();
       entity.Property(e => e.SpotifyId).IsRequired();
-      entity.Property(e => e.DisplayName).IsRequired();
-      entity.Property(e => e.Email).IsRequired();
+      entity.Property(e => e.EncryptedSpotifyAccessToken).IsRequired();
+      entity.Property(e => e.EncryptedSpotifyRefreshToken).IsRequired();
+      entity.Property(e => e.SpotifyTokenExpiresAt).IsRequired();
       entity.Property(e => e.CreatedAt).IsRequired();
       entity.Property(e => e.UpdatedAt).IsRequired();
-
-      entity.HasOne(e => e.Token)
-              .WithOne(e => e.User)
-              .HasForeignKey<UserToken>(e => e.UserId)
-              .OnDelete(DeleteBehavior.Cascade);
 
       entity.HasMany(e => e.Jobs)
               .WithOne(e => e.User)
               .HasForeignKey(e => e.UserId)
               .OnDelete(DeleteBehavior.Cascade);
-    });
-
-    // UserToken configuration
-    modelBuilder.Entity<UserToken>(entity =>
-    {
-      entity.HasKey(e => e.Id);
-      entity.HasIndex(e => e.UserId).IsUnique();
-      entity.Property(e => e.AccessToken).IsRequired();
-      entity.Property(e => e.RefreshToken).IsRequired();
-      entity.Property(e => e.ExpiresAt).IsRequired();
-      entity.Property(e => e.CreatedAt).IsRequired();
-      entity.Property(e => e.UpdatedAt).IsRequired();
     });
 
 

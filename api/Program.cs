@@ -17,16 +17,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
-var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // Services
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddDataProtection(); // For encryption
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
-builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
+// builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>(); // TODO: Update for new User model
 
 // Database
 builder.Services.AddDbContext<RadioWashDbContext>(options =>
@@ -47,40 +45,36 @@ builder.Services.AddCors(options =>
   });
 });
 
-// Authentication
-builder.Services.AddAuthentication(options =>
-{
-  options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-  options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+// Authentication - Configure for Supabase JWT
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
+  var supabaseUrl = builder.Configuration["Supabase:Url"];
+  var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
+  
+  options.Authority = $"{supabaseUrl}/auth/v1";
+  options.Audience = "authenticated";
+  
   options.TokenValidationParameters = new TokenValidationParameters
   {
     ValidateIssuer = true,
     ValidateAudience = true,
     ValidateLifetime = true,
     ValidateIssuerSigningKey = true,
-    // Using the null-forgiving operator (!) to suppress the CS8602 warning.
-    ValidIssuer = jwtSettings!.Issuer,
-    ValidAudience = jwtSettings.Audience,
-    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
+    ValidIssuer = $"{supabaseUrl}/auth/v1",
+    ValidAudience = "authenticated",
+    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
   };
 
   options.Events = new JwtBearerEvents
   {
-    // This event allows us to read the token from a cookie for both API and SignalR
     OnMessageReceived = context =>
     {
-      // For SignalR hubs, also check cookies during negotiation
-      var path = context.HttpContext.Request.Path;
-      if (path.StartsWithSegments("/hubs"))
+      // Read token from Authorization header or hash fragment for auth callback
+      var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+      if (authHeader?.StartsWith("Bearer ") == true)
       {
-        context.Token = context.Request.Cookies["rw-auth-token"];
-      }
-      else
-      {
-        context.Token = context.Request.Cookies["rw-auth-token"];
+        context.Token = authHeader.Substring("Bearer ".Length).Trim();
       }
       return Task.CompletedTask;
     }
