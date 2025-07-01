@@ -1,69 +1,22 @@
-import { API_BASE_URL } from '@/services/api';
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const state = searchParams.get('state');
-  const error = searchParams.get('error');
+  // if "next" is in param, use it as the redirect URL
+  const next = searchParams.get('next') ?? '/dashboard';
 
-  // Handle Spotify errors
-  if (error) {
-    return NextResponse.redirect(
-      new URL(`/auth?error=${encodeURIComponent(error)}`, request.url)
-    );
-  }
-
-  // Validate parameters
-  if (!code || !state) {
-    return NextResponse.redirect(
-      new URL('/auth?error=missing_parameters', request.url)
-    );
-  }
-
-  try {
-    // Call your backend API
-    const response = await fetch(
-      `${API_BASE_URL}/api/auth/callback?code=${code}&state=${state}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Backend auth failed:', errorText);
-      return NextResponse.redirect(
-        new URL('/auth?error=authentication_failed', request.url)
-      );
+  if (code) {
+    const supabase = createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      return NextResponse.redirect(`${origin}${next}`);
     }
-
-    const data = await response.json();
-    console.log('Auth callback response:', data);
-
-    // Create response with redirect
-    const redirectResponse = NextResponse.redirect(
-      new URL('/dashboard', request.url)
-    );
-
-    // Set the auth cookie (matching your backend's cookie settings)
-    redirectResponse.cookies.set('rw-auth-token', data.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24, // 1 day
-    });
-
-    return redirectResponse;
-  } catch (error) {
-    console.error('Auth callback error:', error);
-    return NextResponse.redirect(
-      new URL('/auth?error=server_error', request.url)
-    );
   }
+
+  // return the user to an error page with instructions
+  return NextResponse.redirect(
+    `${origin}/auth?error=Could not log in with Spotify`
+  );
 }
