@@ -17,55 +17,19 @@ public class RadioWashDbContext : DbContext
   {
     base.OnModelCreating(modelBuilder);
 
-    // User configuration
-    modelBuilder.Entity<User>(entity =>
-    {
-      entity.HasKey(e => e.Id);
-      entity.HasIndex(e => e.SupabaseUserId).IsUnique();
-      entity.HasIndex(e => e.SpotifyId).IsUnique();
-      entity.Property(e => e.SupabaseUserId).IsRequired();
-      entity.Property(e => e.SpotifyId).IsRequired();
-      entity.Property(e => e.EncryptedSpotifyAccessToken).IsRequired();
-      entity.Property(e => e.EncryptedSpotifyRefreshToken).IsRequired();
-      entity.Property(e => e.SpotifyTokenExpiresAt).IsRequired();
-      entity.Property(e => e.CreatedAt).IsRequired();
-      entity.Property(e => e.UpdatedAt).IsRequired();
+    modelBuilder.Entity<User>()
+        .HasIndex(u => u.SupabaseId)
+        .IsUnique();
 
-      entity.HasMany(e => e.Jobs)
-              .WithOne(e => e.User)
-              .HasForeignKey(e => e.UserId)
-              .OnDelete(DeleteBehavior.Cascade);
-    });
+    modelBuilder.Entity<CleanPlaylistJob>()
+        .HasOne(j => j.User)
+        .WithMany(u => u.Jobs)
+        .HasForeignKey(j => j.UserId);
 
+    modelBuilder.Entity<TrackMapping>()
+        .HasOne(t => t.Job)
+        .WithMany(j => j.TrackMappings)
+        .HasForeignKey(t => t.JobId);
 
-    // CleanPlaylistJob configuration
-    modelBuilder.Entity<CleanPlaylistJob>(entity =>
-    {
-      entity.HasKey(e => e.Id);
-      entity.HasIndex(e => e.UserId);
-      entity.Property(e => e.SourcePlaylistId).IsRequired();
-      entity.Property(e => e.SourcePlaylistName).IsRequired();
-      entity.Property(e => e.Status).IsRequired();
-      entity.Property(e => e.CreatedAt).IsRequired();
-      entity.Property(e => e.UpdatedAt).IsRequired();
-
-      entity.HasMany(e => e.TrackMappings)
-              .WithOne(e => e.Job)
-              .HasForeignKey(e => e.JobId)
-              .OnDelete(DeleteBehavior.Cascade);
-    });
-
-    // TrackMapping configuration
-    modelBuilder.Entity<TrackMapping>(entity =>
-    {
-      entity.HasKey(e => e.Id);
-      entity.HasIndex(e => e.JobId);
-      entity.Property(e => e.SourceTrackId).IsRequired();
-      entity.Property(e => e.SourceTrackName).IsRequired();
-      entity.Property(e => e.SourceArtistName).IsRequired();
-      entity.Property(e => e.IsExplicit).IsRequired();
-      entity.Property(e => e.HasCleanMatch).IsRequired();
-      entity.Property(e => e.CreatedAt).IsRequired();
-    });
   }
 }

@@ -1,19 +1,25 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace RadioWash.Api.Models.Domain;
 
 public class User
 {
-  public Guid Id { get; set; }
-  public Guid SupabaseUserId { get; set; }
-  public string SpotifyId { get; set; } = null!;
-  public string? Email { get; set; }
-  public string? DisplayName { get; set; }
-  public string EncryptedSpotifyAccessToken { get; set; } = null!;
-  public string EncryptedSpotifyRefreshToken { get; set; } = null!;
-  public DateTime SpotifyTokenExpiresAt { get; set; }
+  public int Id { get; set; }
+
+  // This now stores the Supabase User ID (UUID), which is the primary identifier.
+  [Required]
+  public string SupabaseId { get; set; } = null!;
+
+  [Required]
+  public string DisplayName { get; set; } = null!;
+
+  [Required]
+  public string Email { get; set; } = null!;
+
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
   // Navigation properties
+  // The UserToken is no longer needed here, as Supabase manages the provider tokens.
   public ICollection<CleanPlaylistJob> Jobs { get; set; } = new List<CleanPlaylistJob>();
 }
-
