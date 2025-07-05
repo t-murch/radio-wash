@@ -50,13 +50,15 @@ namespace RadioWash.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("TargetPlaylistId")
                         .HasColumnType("text");
 
                     b.Property<string>("TargetPlaylistName")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("TotalTracks")
@@ -65,8 +67,8 @@ namespace RadioWash.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -125,46 +127,33 @@ namespace RadioWash.Api.Migrations
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.User", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Email")
-                        .HasColumnType("text");
-
-                    b.Property<string>("EncryptedSpotifyAccessToken")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("EncryptedSpotifyRefreshToken")
+                    b.Property<string>("SupabaseId")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("SpotifyId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("SpotifyTokenExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("SupabaseUserId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SpotifyId")
-                        .IsUnique();
-
-                    b.HasIndex("SupabaseUserId")
+                    b.HasIndex("SupabaseId")
                         .IsUnique();
 
                     b.ToTable("Users");
