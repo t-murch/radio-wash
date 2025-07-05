@@ -5,10 +5,10 @@ namespace RadioWash.Api.Services.Interfaces;
 
 public interface ISpotifyService
 {
-  Task<SpotifyUserProfile> GetUserProfileAsync(string accessToken);
-  Task<List<PlaylistDto>> GetUserPlaylistsAsync(int userId);
-  Task<List<SpotifyPlaylistTrack>> GetPlaylistTracksAsync(int userId, string playlistId);
-  Task<string> CreatePlaylistAsync(int userId, string name, string? description = null);
-  Task AddTracksToPlaylistAsync(int userId, string playlistId, List<string> trackUris);
-  Task<List<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit = 5);
+  Task<SpotifyUserProfile> GetUserProfileAsync(string supabaseUserId);
+  Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(string supabaseUserId);
+  Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(string supabaseUserId, string playlistId);
+  Task<SpotifyPlaylist> CreatePlaylistAsync(string supabaseUserId, string name, string? description = null);
+  Task AddTracksToPlaylistAsync(string supabaseUserId, string playlistId, IEnumerable<string> trackUris);
+  Task<SpotifyTrack?> FindCleanVersionAsync(string supabaseUserId, SpotifyTrack explicitTrack);
 }
