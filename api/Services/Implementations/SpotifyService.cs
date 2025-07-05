@@ -13,72 +13,58 @@ public class SpotifyService : ISpotifyService
 {
   private readonly HttpClient _httpClient;
   private readonly SpotifySettings _spotifySettings;
-  private readonly ITokenService _tokenService;
+  private readonly IUserProviderTokenService _tokenProvider; // CORRECT: Use the new token provider
+  private readonly ILogger<SpotifyService> _logger;
 
   public SpotifyService(
       HttpClient httpClient,
       IOptions<SpotifySettings> spotifySettings,
-      ITokenService tokenService)
+      IUserProviderTokenService tokenProvider, // CORRECT: Inject the new service
+      ILogger<SpotifyService> logger)
   {
     _httpClient = httpClient;
     _spotifySettings = spotifySettings.Value;
-    _tokenService = tokenService;
+    _tokenProvider = tokenProvider;
+    _logger = logger;
   }
 
-  public async Task<SpotifyUserProfile> GetUserProfileAsync(string accessToken)
+  // A private helper to reduce boilerplate
+  private async Task<HttpRequestMessage> CreateSpotifyRequestAsync(HttpMethod method, string url, string supabaseUserId)
   {
-    var request = new HttpRequestMessage(HttpMethod.Get, $"{_spotifySettings.ApiBaseUrl}/me");
+    var accessToken = await _tokenProvider.GetProviderAccessTokenAsync(supabaseUserId);
+    var request = new HttpRequestMessage(method, url);
     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+    return request;
+  }
 
+  public async Task<SpotifyUserProfile> GetUserProfileAsync(string supabaseUserId)
+  {
+    var request = await CreateSpotifyRequestAsync(HttpMethod.Get, $"{_spotifySettings.ApiBaseUrl}/me", supabaseUserId);
     var response = await _httpClient.SendAsync(request);
     response.EnsureSuccessStatusCode();
-
     var jsonResponse = await response.Content.ReadAsStringAsync();
-    var userProfile = JsonSerializer.Deserialize<SpotifyUserProfile>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    );
-
-    if (userProfile == null)
-    {
-      throw new Exception("Failed to deserialize user profile");
-    }
-
-    return userProfile;
+    return JsonSerializer.Deserialize<SpotifyUserProfile>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? throw new Exception("Failed to deserialize user profile.");
   }
 
-  public async Task<List<PlaylistDto>> GetUserPlaylistsAsync(int userId)
+  public async Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(string supabaseUserId)
   {
-    var accessToken = await _tokenService.GetAccessTokenAsync(userId);
     var playlists = new List<SpotifyPlaylist>();
-    var limit = 50;
-    var offset = 0;
-    var hasMore = true;
+    var url = $"{_spotifySettings.ApiBaseUrl}/me/playlists?limit=50";
 
-    while (hasMore)
+    while (!string.IsNullOrEmpty(url))
     {
-      var url = $"{_spotifySettings.ApiBaseUrl}/me/playlists?limit={limit}&offset={offset}";
-      var request = new HttpRequestMessage(HttpMethod.Get, url);
-      request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
+      var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, supabaseUserId);
       var response = await _httpClient.SendAsync(request);
       response.EnsureSuccessStatusCode();
 
       var jsonResponse = await response.Content.ReadAsStringAsync();
-      var playlistsResponse = JsonSerializer.Deserialize<SpotifyPlaylistsResponse>(
-          jsonResponse,
-          new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-      );
+      var playlistsResponse = JsonSerializer.Deserialize<SpotifyPlaylistsResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-      if (playlistsResponse == null)
-      {
-        throw new Exception("Failed to deserialize playlists response");
-      }
+      if (playlistsResponse?.Items == null) throw new Exception("Failed to deserialize playlists response.");
 
       playlists.AddRange(playlistsResponse.Items);
-
-      offset += limit;
-      hasMore = !string.IsNullOrEmpty(playlistsResponse.Next);
+      url = playlistsResponse.Next; // Continue to the next page if it exists
     }
 
     return playlists.Select(p => new PlaylistDto
@@ -90,135 +76,84 @@ public class SpotifyService : ISpotifyService
       TrackCount = p.Tracks.Total,
       OwnerId = p.Owner.Id,
       OwnerName = p.Owner.DisplayName
-    }).ToList();
+    });
   }
 
-  public async Task<List<SpotifyPlaylistTrack>> GetPlaylistTracksAsync(int userId, string playlistId)
+  public async Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(string supabaseUserId, string playlistId)
   {
-    var accessToken = await _tokenService.GetAccessTokenAsync(userId);
-    var tracks = new List<SpotifyPlaylistTrack>();
-    var limit = 100;
-    var offset = 0;
-    var hasMore = true;
+    var tracks = new List<SpotifyTrack>();
+    var url = $"{_spotifySettings.ApiBaseUrl}/playlists/{playlistId}/tracks?limit=100";
 
-    while (hasMore)
+    while (!string.IsNullOrEmpty(url))
     {
-      var url = $"{_spotifySettings.ApiBaseUrl}/playlists/{playlistId}/tracks?limit={limit}&offset={offset}";
-      var request = new HttpRequestMessage(HttpMethod.Get, url);
-      request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
+      var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, supabaseUserId);
       var response = await _httpClient.SendAsync(request);
       response.EnsureSuccessStatusCode();
 
       var jsonResponse = await response.Content.ReadAsStringAsync();
-      var tracksResponse = JsonSerializer.Deserialize<SpotifyPlaylistTracksResponse>(
-          jsonResponse,
-          new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-      );
+      var tracksResponse = JsonSerializer.Deserialize<SpotifyPlaylistTracksResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-      if (tracksResponse == null)
-      {
-        throw new Exception("Failed to deserialize tracks response");
-      }
+      if (tracksResponse?.Items == null) throw new Exception("Failed to deserialize tracks response.");
 
-      tracks.AddRange(tracksResponse.Items);
-
-      offset += limit;
-      hasMore = !string.IsNullOrEmpty(tracksResponse.Next);
+      // Filter out potential null tracks if the API ever returns them
+      tracks.AddRange(tracksResponse.Items.Where(i => i.Track != null).Select(i => i.Track!));
+      url = tracksResponse.Next;
     }
-
     return tracks;
   }
 
-  public async Task<string> CreatePlaylistAsync(int userId, string name, string? description = null)
+  public async Task<SpotifyPlaylist> CreatePlaylistAsync(string supabaseUserId, string name, string? description = null)
   {
-    var accessToken = await _tokenService.GetAccessTokenAsync(userId);
-    var userProfile = await GetUserProfileAsync(accessToken);
-
+    var userProfile = await GetUserProfileAsync(supabaseUserId);
     var url = $"{_spotifySettings.ApiBaseUrl}/users/{userProfile.Id}/playlists";
-    var request = new HttpRequestMessage(HttpMethod.Post, url);
-    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+    var request = await CreateSpotifyRequestAsync(HttpMethod.Post, url, supabaseUserId);
 
-    var payload = new
-    {
-      name,
-      description = description ?? $"Clean version of {name} created by RadioWash",
-      @public = false
-    };
-
-    var jsonPayload = JsonSerializer.Serialize(payload);
-    request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+    var payload = new { name, description = description ?? $"Clean version of {name} created by RadioWash", @public = false };
+    request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
     var response = await _httpClient.SendAsync(request);
     response.EnsureSuccessStatusCode();
 
     var jsonResponse = await response.Content.ReadAsStringAsync();
-    var playlistResponse = JsonSerializer.Deserialize<SpotifyPlaylist>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-    );
-
-    if (playlistResponse == null)
-    {
-      throw new Exception("Failed to deserialize playlist response");
-    }
-
-    return playlistResponse.Id;
+    return JsonSerializer.Deserialize<SpotifyPlaylist>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? throw new Exception("Failed to deserialize created playlist.");
   }
 
-  public async Task AddTracksToPlaylistAsync(int userId, string playlistId, List<string> trackUris)
+  public async Task AddTracksToPlaylistAsync(string supabaseUserId, string playlistId, IEnumerable<string> trackUris)
   {
-    if (!trackUris.Any())
-    {
-      return;
-    }
+    if (!trackUris.Any()) return;
 
-    var accessToken = await _tokenService.GetAccessTokenAsync(userId);
-
-    // Spotify limits to 100 tracks per request, so we need to chunk
     foreach (var uriChunk in trackUris.Chunk(100))
     {
       var url = $"{_spotifySettings.ApiBaseUrl}/playlists/{playlistId}/tracks";
-      var request = new HttpRequestMessage(HttpMethod.Post, url);
-      request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-      var payload = new
-      {
-        uris = uriChunk.ToArray()
-      };
-
-      var jsonPayload = JsonSerializer.Serialize(payload);
-      request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
+      var request = await CreateSpotifyRequestAsync(HttpMethod.Post, url, supabaseUserId);
+      var payload = new { uris = uriChunk };
+      request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
       var response = await _httpClient.SendAsync(request);
       response.EnsureSuccessStatusCode();
     }
   }
 
-  public async Task<List<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit = 5)
+  public async Task<SpotifyTrack?> FindCleanVersionAsync(string supabaseUserId, SpotifyTrack explicitTrack)
   {
-    var accessToken = await _tokenService.GetAccessTokenAsync(userId);
+    if (!explicitTrack.Explicit) return explicitTrack;
 
+    var artists = string.Join(" ", explicitTrack.Artists.Select(a => a.Name));
+    // Construct a search query that excludes "explicit" and looks for the same track name and artist.
+    var query = $"{explicitTrack.Name} {artists} -tag:explicit";
     var encodedQuery = Uri.EscapeDataString(query);
-    var url = $"{_spotifySettings.ApiBaseUrl}/search?q={encodedQuery}&type=track&limit={limit}";
+    var url = $"{_spotifySettings.ApiBaseUrl}/search?q={encodedQuery}&type=track&limit=5";
 
-    var request = new HttpRequestMessage(HttpMethod.Get, url);
-    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
+    var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, supabaseUserId);
     var response = await _httpClient.SendAsync(request);
     response.EnsureSuccessStatusCode();
 
     var jsonResponse = await response.Content.ReadAsStringAsync();
-    var searchResponse = JsonSerializer.Deserialize<SpotifySearchResponse>(
-        jsonResponse,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+    var searchResponse = JsonSerializer.Deserialize<SpotifySearchResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+    // Find the best non-explicit match
+    return searchResponse?.Tracks?.Items?.FirstOrDefault(
+        t => !t.Explicit && t.Name.Equals(explicitTrack.Name, StringComparison.OrdinalIgnoreCase)
     );
-
-    if (searchResponse == null || searchResponse.Tracks?.Items == null)
-    {
-      throw new Exception("Failed to deserialize search response");
-    }
-
-    return searchResponse.Tracks.Items.ToList();
   }
 }
