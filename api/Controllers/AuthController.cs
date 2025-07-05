@@ -81,7 +81,7 @@ public class AuthController : ControllerBase
     {
       // 1. Exchange code for tokens with Spotify
       var tokenResponse = await ExchangeCodeForTokensAsync(code);
-      
+
       // 2. Get user profile from Spotify
       var config = SpotifyClientConfig.CreateDefault().WithToken(tokenResponse.AccessToken);
       var spotify = new SpotifyClient(config);
@@ -89,7 +89,7 @@ public class AuthController : ControllerBase
 
       // 3. Find or create Supabase Auth user
       var supabaseUser = await GetOrCreateSupabaseUserAsync(spotifyProfile.Email);
-      
+
       // 4. Create or update user in our database
       await CreateOrUpdateUserAsync(supabaseUser, spotifyProfile, tokenResponse);
 
@@ -124,7 +124,7 @@ public class AuthController : ControllerBase
 
       // TODO: Implement user service to get user by Supabase ID
       // var user = await _userService.GetUserBySupabaseIdAsync(userId);
-      
+
       return Ok(new { message = "User profile endpoint - TODO: implement user service" });
     }
     catch (Exception ex)
@@ -162,7 +162,7 @@ public class AuthController : ControllerBase
 
     var request = new AuthorizationCodeTokenRequest(clientId!, clientSecret!, code, new Uri(redirectUri));
     var response = await new OAuthClient().RequestToken(request);
-    
+
     return response;
   }
 
@@ -178,7 +178,7 @@ public class AuthController : ControllerBase
   {
     // TODO: Implement user service to create/update user with encrypted tokens
     // This will use the EncryptionService to encrypt the Spotify tokens before storing
-    _logger.LogInformation("TODO: Create/update user {SpotifyId} with Supabase ID {SupabaseId}", 
+    _logger.LogInformation("TODO: Create/update user {SpotifyId} with Supabase ID {SupabaseId}",
       spotifyProfile.Id, supabaseUserId);
   }
 
