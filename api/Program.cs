@@ -2,14 +2,11 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
-using RadioWash.Api.Hubs;
 using RadioWash.Api.Infrastructure.Data;
-using RadioWash.Api.Services;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -23,8 +20,9 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 builder.Services.AddHttpClient();
 builder.Services.AddDataProtection(); // For encryption
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
-// builder.Services.AddScoped<ISpotifyService, SpotifyService>(); // TODO: Update for new User model  
-// builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>(); // TODO: Update for new User model
+builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
+builder.Services.AddScoped<ISpotifyService, SpotifyService>();
+builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 
 // Database
 builder.Services.AddDbContext<RadioWashDbContext>(options =>
@@ -51,10 +49,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 {
   var supabaseUrl = builder.Configuration["Supabase:Url"];
   var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
-  
   options.Authority = $"{supabaseUrl}/auth/v1";
   options.Audience = "authenticated";
-  
   options.TokenValidationParameters = new TokenValidationParameters
   {
     ValidateIssuer = true,
@@ -88,11 +84,6 @@ builder.Services.AddHangfire(config => config
     .UseRecommendedSerializerSettings()
     .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
 builder.Services.AddHangfireServer();
-
-// SignalR
-builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
-builder.Services.AddSignalR();
-
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -154,6 +145,5 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<JobStatusHub>("/hubs/job-status").RequireCors("AllowFrontend");
 app.UseHangfireDashboard();
 app.Run();

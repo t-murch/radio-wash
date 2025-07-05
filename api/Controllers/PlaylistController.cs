@@ -30,7 +30,7 @@ public class PlaylistController : ControllerBase
     {
       // log this userId
       _logger.LogDebug("Getting playlists for user {UserId}", userId);
-      var playlists = await _spotifyService.GetUserPlaylistsAsync(userId);
+      var playlists = await _spotifyService.GetUserPlaylistsAsync(userId.ToString());
       return Ok(playlists);
     }
     catch (Exception ex)
@@ -48,18 +48,18 @@ public class PlaylistController : ControllerBase
   {
     try
     {
-      var tracks = await _spotifyService.GetPlaylistTracksAsync(userId, playlistId);
+      var tracks = await _spotifyService.GetPlaylistTracksAsync(userId.ToString(), playlistId);
 
       // Map to simpler object for frontend
       var trackList = tracks.Select(t => new
       {
-        id = t.Track.Id,
-        name = t.Track.Name,
-        artist = string.Join(", ", t.Track.Artists.Select(a => a.Name)),
-        album = t.Track.Album.Name,
-        albumCover = t.Track.Album.Images?.FirstOrDefault()?.Url,
-        isExplicit = t.Track.Explicit,
-        uri = t.Track.Uri
+        id = t.Id,
+        name = t.Name,
+        artist = string.Join(", ", t.Artists.Select(a => a.Name)),
+        album = t.Album.Name,
+        albumCover = t.Album.Images?.FirstOrDefault()?.Url,
+        isExplicit = t.Explicit,
+        uri = t.Uri
       }).ToList();
 
       return Ok(trackList);
