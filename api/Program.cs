@@ -47,6 +47,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
+  options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+
   var supabaseUrl = builder.Configuration["Supabase:Url"];
   var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
   options.Authority = $"{supabaseUrl}/auth/v1";

@@ -1,10 +1,10 @@
-import { AuthForm } from '@/components/ux/AuthForm';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { AuthForm } from './auth-form';
 
 export default async function LoginPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -16,15 +16,16 @@ export default async function LoginPage() {
 
   const signInWithSpotify = async () => {
     'use server';
-    const supabase = createClient();
-    const origin = (await headers()).get('origin');
+    const supabase = await createClient();
+    const headerList = await headers();
+    const origin = headerList.get('origin');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',
       options: {
         scopes:
           'user-read-email playlist-read-private playlist-modify-private playlist-modify-public',
-        redirectTo: `${origin}/auth/callback`,
+        redirectTo: `${origin}/api/auth/callback`,
       },
     });
 
