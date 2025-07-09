@@ -112,25 +112,25 @@ public class AuthController : ControllerBase
   /// </summary>
   [HttpGet("me")]
   [Authorize]
-  public async Task<IActionResult> Me()
+  public Task<IActionResult> Me()
   {
     try
     {
       var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
       if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
       {
-        return Unauthorized(new { error = "User ID not found in token." });
+        return Task.FromResult<IActionResult>(Unauthorized(new { error = "User ID not found in token." }));
       }
 
       // TODO: Implement user service to get user by Supabase ID
       // var user = await _userService.GetUserBySupabaseIdAsync(userId);
 
-      return Ok(new { message = "User profile endpoint - TODO: implement user service" });
+      return Task.FromResult<IActionResult>(Ok(new { message = "User profile endpoint - TODO: implement user service" }));
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error getting authenticated user.");
-      return StatusCode(500, new { error = "Failed to get user profile." });
+      return Task.FromResult<IActionResult>(StatusCode(500, new { error = "Failed to get user profile." }));
     }
   }
 
@@ -139,18 +139,18 @@ public class AuthController : ControllerBase
   /// </summary>
   [HttpPost("logout")]
   [Authorize]
-  public async Task<IActionResult> Logout()
+  public Task<IActionResult> Logout()
   {
     try
     {
       // TODO: Implement proper Supabase signout
       _logger.LogInformation("User logged out");
-      return Ok(new { success = true });
+      return Task.FromResult<IActionResult>(Ok(new { success = true }));
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error during logout");
-      return StatusCode(500, new { error = "Failed to logout" });
+      return Task.FromResult<IActionResult>(StatusCode(500, new { error = "Failed to logout" }));
     }
   }
 
@@ -166,20 +166,21 @@ public class AuthController : ControllerBase
     return response;
   }
 
-  private async Task<string> GetOrCreateSupabaseUserAsync(string email)
+  private Task<string> GetOrCreateSupabaseUserAsync(string email)
   {
     // For now, just return a placeholder - we'll improve this later
     // In a real implementation, you'd use Supabase admin functions to create users
     _logger.LogInformation("TODO: Implement proper Supabase user creation for {Email}", email);
-    return Guid.NewGuid().ToString();
+    return Task.FromResult(Guid.NewGuid().ToString());
   }
 
-  private async Task CreateOrUpdateUserAsync(string supabaseUserId, PrivateUser spotifyProfile, AuthorizationCodeTokenResponse tokens)
+  private Task CreateOrUpdateUserAsync(string supabaseUserId, PrivateUser spotifyProfile, AuthorizationCodeTokenResponse tokens)
   {
     // TODO: Implement user service to create/update user with encrypted tokens
     // This will use the EncryptionService to encrypt the Spotify tokens before storing
     _logger.LogInformation("TODO: Create/update user {SpotifyId} with Supabase ID {SupabaseId}",
       spotifyProfile.Id, supabaseUserId);
+    return Task.CompletedTask;
   }
 
   private string GetFrontendUrl()
