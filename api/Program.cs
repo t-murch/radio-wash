@@ -79,6 +79,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
   };
 });
 
+// Supabase Gotrue Client
+builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
+{
+  var config = provider.GetRequiredService<IConfiguration>();
+  var supabaseUrl = config["Supabase:Url"];
+  var serviceRoleKey = config["Supabase:ServiceRoleKey"];
+  
+  return new Supabase.Gotrue.Client(new Supabase.Gotrue.ClientOptions
+  {
+    Url = $"{supabaseUrl}/auth/v1",
+    Headers = new Dictionary<string, string>
+    {
+      ["apikey"] = serviceRoleKey!,
+      ["Authorization"] = $"Bearer {serviceRoleKey}"
+    }
+  });
+});
+
 // Hangfire
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
