@@ -10,6 +10,7 @@ public class RadioWashDbContext : DbContext
   }
 
   public DbSet<User> Users { get; set; } = null!;
+  public DbSet<UserProviderData> UserProviderData { get; set; } = null!;
   public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
   public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
@@ -30,6 +31,15 @@ public class RadioWashDbContext : DbContext
         .HasOne(t => t.Job)
         .WithMany(j => j.TrackMappings)
         .HasForeignKey(t => t.JobId);
+
+    modelBuilder.Entity<UserProviderData>()
+        .HasOne(upd => upd.User)
+        .WithMany(u => u.ProviderData)
+        .HasForeignKey(upd => upd.UserId);
+
+    modelBuilder.Entity<UserProviderData>()
+        .HasIndex(upd => new { upd.Provider, upd.ProviderId })
+        .IsUnique();
 
   }
 }

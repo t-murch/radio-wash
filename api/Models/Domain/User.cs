@@ -16,10 +16,14 @@ public class User
   [Required]
   public string Email { get; set; } = null!;
 
+  // Primary authentication provider (null for email/password only)
+  public string? PrimaryProvider { get; set; }
+
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
   // Navigation properties
   // The UserToken is no longer needed here, as Supabase manages the provider tokens.
   public ICollection<CleanPlaylistJob> Jobs { get; set; } = new List<CleanPlaylistJob>();
+  public ICollection<UserProviderData> ProviderData { get; set; } = new List<UserProviderData>();
 }
