@@ -20,6 +20,7 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 builder.Services.AddHttpClient();
 builder.Services.AddDataProtection(); // For encryption
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
@@ -167,3 +168,6 @@ app.UseAuthorization();
 app.MapControllers();
 app.UseHangfireDashboard();
 app.Run();
+
+// Make Program class accessible for integration tests
+public partial class Program { }

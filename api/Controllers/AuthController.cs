@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using RadioWash.Api.Services.Interfaces;
 using SpotifyAPI.Web;
 using Supabase.Gotrue;
 
@@ -16,19 +17,22 @@ public class AuthController : ControllerBase
   private readonly IConfiguration _configuration;
   private readonly IWebHostEnvironment _environment;
   private readonly Supabase.Gotrue.Client _supabaseAuth;
+  private readonly IUserService _userService;
 
   public AuthController(
       ILogger<AuthController> logger,
       IMemoryCache memoryCache,
       IConfiguration configuration,
       IWebHostEnvironment environment,
-      Supabase.Gotrue.Client supabaseAuth)
+      Supabase.Gotrue.Client supabaseAuth,
+      IUserService userService)
   {
     _logger = logger;
     _memoryCache = memoryCache;
     _configuration = configuration;
     _environment = environment;
     _supabaseAuth = supabaseAuth;
+    _userService = userService;
   }
 
   /// <summary>
@@ -101,7 +105,7 @@ public class AuthController : ControllerBase
   /// </summary>
   [HttpGet("me")]
   [Authorize]
-  public Task<IActionResult> Me()
+  public async Task<IActionResult> Me()
   {
     _logger.LogInformation("Getting authenticated user.");
     try
@@ -109,18 +113,21 @@ public class AuthController : ControllerBase
       var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
       if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
       {
-        return Task.FromResult<IActionResult>(Unauthorized(new { error = "User ID not found in token." }));
+        return Unauthorized(new { error = "User ID not found in token." });
       }
 
-      // TODO: Implement user service to get user by Supabase ID
-      // var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      if (user == null)
+      {
+        return NotFound(new { error = "User not found." });
+      }
 
-      return Task.FromResult<IActionResult>(Ok(new { message = "User profile endpoint - TODO: implement user service" }));
+      return Ok(user);
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error getting authenticated user.");
-      return Task.FromResult<IActionResult>(StatusCode(500, new { error = "Failed to get user profile." }));
+      return StatusCode(500, new { error = "Failed to get user profile." });
     }
   }
 
