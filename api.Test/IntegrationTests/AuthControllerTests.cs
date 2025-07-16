@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Moq;
 using Newtonsoft.Json;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
@@ -31,18 +32,33 @@ public class AuthControllerTests : IClassFixture<WebApplicationFactory<Program>>
             builder.UseEnvironment("Testing");
             builder.ConfigureServices(services =>
             {
-                // Remove the existing DbContext registration
-                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<RadioWashDbContext>));
-                if (descriptor != null)
+                // Replace problematic services for testing
+                var servicesToRemove = services.Where(d => 
+                    d.ServiceType == typeof(DbContextOptions<RadioWashDbContext>) ||
+                    d.ServiceType == typeof(DbContextOptions) ||
+                    d.ServiceType.IsGenericType && d.ServiceType.GetGenericTypeDefinition() == typeof(DbContextOptions<>) ||
+                    d.ServiceType == typeof(RadioWashDbContext) ||
+                    d.ServiceType == typeof(Supabase.Gotrue.Client) ||
+                    d.ServiceType.FullName?.Contains("Hangfire") == true ||
+                    d.ServiceType.FullName?.Contains("Npgsql") == true
+                ).ToList();
+
+                foreach (var descriptor in servicesToRemove)
                 {
                     services.Remove(descriptor);
                 }
 
-                // Add in-memory database for testing
+                // Add test database with unique name
                 services.AddDbContext<RadioWashDbContext>(options =>
                 {
                     options.UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString());
                 });
+
+                // Mock Supabase.Gotrue.Client
+                var mockSupabaseClient = new Mock<Supabase.Gotrue.Client>(
+                    new Supabase.Gotrue.ClientOptions { Url = "http://test" }
+                );
+                services.AddSingleton(mockSupabaseClient.Object);
 
                 // Add test authentication
                 services.AddAuthentication("Test")
@@ -53,6 +69,9 @@ public class AuthControllerTests : IClassFixture<WebApplicationFactory<Program>>
         _client = _factory.CreateClient();
         _scope = _factory.Services.CreateScope();
         _dbContext = _scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+        
+        // Ensure database schema is created for in-memory database
+        _dbContext.Database.EnsureCreated();
     }
 
     public void Dispose()

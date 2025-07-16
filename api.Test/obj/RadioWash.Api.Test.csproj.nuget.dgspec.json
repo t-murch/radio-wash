@@ -50,7 +50,15 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "Microsoft.AspNetCore.Mvc.Testing": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
             "Microsoft.EntityFrameworkCore.InMemory": {
+              "target": "Package",
+              "version": "[9.0.4, )"
+            },
+            "Microsoft.Extensions.Options.ConfigurationExtensions": {
               "target": "Package",
               "version": "[9.0.4, )"
             },

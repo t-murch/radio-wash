@@ -98,13 +98,16 @@ builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
   });
 });
 
-// Hangfire
-builder.Services.AddHangfire(config => config
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
-builder.Services.AddHangfireServer();
+// Hangfire (skip in testing environment)
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+  builder.Services.AddHangfire(config => config
+      .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+      .UseSimpleAssemblyNameTypeSerializer()
+      .UseRecommendedSerializerSettings()
+      .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+  builder.Services.AddHangfireServer();
+}
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

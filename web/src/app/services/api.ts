@@ -64,6 +64,8 @@ const fetchWithSupabaseAuth = async (
     throw new Error('User not authenticated');
   }
 
+  // console.log(`API Request: ${url}`);
+
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -77,21 +79,24 @@ const fetchWithSupabaseAuth = async (
     const errorBody = await response.text();
     console.error(
       `API Error: ${response.status} ${response.statusText}`,
-      errorBody
+      `Error Body: "${errorBody}"`
     );
     throw new Error(`Request failed: ${response.statusText}`);
   }
 
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.indexOf('application/json') !== -1) {
-    return response.json();
+    const json = await response.json();
+    return json;
   }
   return;
 };
 
 // --- API Functions ---
-export const getMe = (): Promise<User> =>
-  fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
+export const getMe = async (): Promise<User> => {
+  const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
+  return result;
+};
 
 export const getUserPlaylists = (userId: number): Promise<Playlist[]> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/${userId}`);
