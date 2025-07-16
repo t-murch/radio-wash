@@ -144,21 +144,24 @@ if (app.Environment.IsDevelopment())
   app.UseSwaggerUI();
 }
 
-// Apply migrations in development
-using (var scope = app.Services.CreateScope())
+// Apply migrations in development (skip for testing)
+if (!app.Environment.IsEnvironment("Testing"))
 {
-  var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
-  var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+  using (var scope = app.Services.CreateScope())
+  {
+    var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-  try
-  {
-    dbContext.Database.Migrate();
-    logger.LogInformation("Database migrations applied successfully");
-  }
-  catch (Exception ex)
-  {
-    logger.LogError(ex, "Error applying database migrations");
-    throw;
+    try
+    {
+      dbContext.Database.Migrate();
+      logger.LogInformation("Database migrations applied successfully");
+    }
+    catch (Exception ex)
+    {
+      logger.LogError(ex, "Error applying database migrations");
+      throw;
+    }
   }
 }
 
@@ -166,7 +169,13 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.UseHangfireDashboard();
+
+// Only add Hangfire dashboard in non-testing environments
+if (!app.Environment.IsEnvironment("Testing"))
+{
+  app.UseHangfireDashboard();
+}
+
 app.Run();
 
 // Make Program class accessible for integration tests
