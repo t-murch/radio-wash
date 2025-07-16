@@ -21,25 +21,14 @@ public class AuthController : ControllerBase
       ILogger<AuthController> logger,
       IMemoryCache memoryCache,
       IConfiguration configuration,
-      IWebHostEnvironment environment)
+      IWebHostEnvironment environment,
+      Supabase.Gotrue.Client supabaseAuth)
   {
     _logger = logger;
     _memoryCache = memoryCache;
     _configuration = configuration;
     _environment = environment;
-
-    // Initialize Supabase Auth client
-    var supabaseUrl = _configuration["Supabase:Url"];
-    var supabaseKey = _configuration["Supabase:ServiceRoleKey"];
-    _supabaseAuth = new Supabase.Gotrue.Client(new ClientOptions
-    {
-      Url = $"{supabaseUrl}/auth/v1",
-      Headers = new Dictionary<string, string>
-      {
-        ["apikey"] = supabaseKey!,
-        ["Authorization"] = $"Bearer {supabaseKey}"
-      }
-    });
+    _supabaseAuth = supabaseAuth;
   }
 
   /// <summary>
@@ -114,6 +103,7 @@ public class AuthController : ControllerBase
   [Authorize]
   public Task<IActionResult> Me()
   {
+    _logger.LogInformation("Getting authenticated user.");
     try
     {
       var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
