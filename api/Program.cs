@@ -2,6 +2,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -50,9 +51,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 {
   options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
 
-  var supabaseUrl = builder.Configuration["Supabase:Url"];
+  var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
   var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
-  options.Authority = $"{supabaseUrl}/auth/v1";
+  options.Authority = $"{supabasePublicUrl}/auth/v1";
   options.Audience = "authenticated";
   options.TokenValidationParameters = new TokenValidationParameters
   {
@@ -60,7 +61,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     ValidateAudience = true,
     ValidateLifetime = true,
     ValidateIssuerSigningKey = true,
-    ValidIssuer = $"{supabaseUrl}/auth/v1",
+    ValidIssuer = $"{supabasePublicUrl}/auth/v1",
     ValidAudience = "authenticated",
     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
   };
@@ -86,7 +87,6 @@ builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
   var config = provider.GetRequiredService<IConfiguration>();
   var supabaseUrl = config["Supabase:Url"];
   var serviceRoleKey = config["Supabase:ServiceRoleKey"];
-  
   return new Supabase.Gotrue.Client(new Supabase.Gotrue.ClientOptions
   {
     Url = $"{supabaseUrl}/auth/v1",
@@ -139,6 +139,25 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Configure model state validation logging
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+  options.InvalidModelStateResponseFactory = context =>
+  {
+    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+    var errors = context.ModelState
+          .Where(x => x.Value.Errors.Count > 0)
+          .Select(x => new { Field = x.Key, Errors = x.Value.Errors.Select(e => e.ErrorMessage) });
+
+    logger.LogWarning("Model validation failed for {Method} {Path}: {@Errors}",
+          context.HttpContext.Request.Method,
+          context.HttpContext.Request.Path,
+          errors);
+
+    return new BadRequestObjectResult(context.ModelState);
+  };
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -169,6 +188,7 @@ if (!app.Environment.IsEnvironment("Testing"))
 }
 
 app.UseCors("AllowFrontend");
+app.UseMiddleware<RadioWash.Api.Middleware.GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
