@@ -8,7 +8,10 @@ export default async function LoginPage() {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  console.log(`auth/page error: ${JSON.stringify(error)}`);
 
   if (user) {
     redirect('/dashboard');
@@ -19,6 +22,9 @@ export default async function LoginPage() {
     const supabase = await createClient();
     const headerList = await headers();
     const origin = headerList.get('origin');
+    
+    console.log(`auth/page origin: ${origin}`);
+    console.log(`auth/page redirectTo: ${origin}/api/auth/callback`);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',

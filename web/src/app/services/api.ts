@@ -95,6 +95,7 @@ const fetchWithSupabaseAuth = async (
 // --- API Functions ---
 export const getMe = async (): Promise<User> => {
   const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
+  console.log(`getMe result: ${JSON.stringify(result)}`);
   return result;
 };
 

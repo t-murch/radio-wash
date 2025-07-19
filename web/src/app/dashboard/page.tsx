@@ -8,7 +8,11 @@ export default async function DashboardPage() {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  console.log(`dashboard user: ${JSON.stringify(user)}`);
+  console.log(`dashboard error: ${JSON.stringify(error)}`);
 
   if (!user) {
     redirect('/auth');
