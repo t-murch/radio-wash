@@ -13,9 +13,9 @@ services:
       - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=54322;Database=postgres;Username=postgres;Password=postgres
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    # healthcheck:
-    #   test: ['CMD-SHELL', 'curl -f -k http://localhost:8080/healthz || exit 1']
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 10s
+    networks:
+      - radiowash
+
+networks:
+  radiowash:
+    external: true
