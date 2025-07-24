@@ -99,8 +99,8 @@ export const getMe = async (): Promise<User> => {
   return result;
 };
 
-export const getUserPlaylists = (userId: string): Promise<Playlist[]> =>
-  fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/${userId}`);
+export const getUserPlaylists = (): Promise<Playlist[]> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me`);
 
 export const getJobTrackMappings = (
   userId: number,
