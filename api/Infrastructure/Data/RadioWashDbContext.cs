@@ -11,6 +11,7 @@ public class RadioWashDbContext : DbContext
 
   public DbSet<User> Users { get; set; } = null!;
   public DbSet<UserProviderData> UserProviderData { get; set; } = null!;
+  public DbSet<UserMusicToken> UserMusicTokens { get; set; } = null!;
   public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
   public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
@@ -39,6 +40,15 @@ public class RadioWashDbContext : DbContext
 
     modelBuilder.Entity<UserProviderData>()
         .HasIndex(upd => new { upd.Provider, upd.ProviderId })
+        .IsUnique();
+
+    modelBuilder.Entity<UserMusicToken>()
+        .HasOne(umt => umt.User)
+        .WithMany()
+        .HasForeignKey(umt => umt.UserId);
+
+    modelBuilder.Entity<UserMusicToken>()
+        .HasIndex(umt => new { umt.UserId, umt.Provider })
         .IsUnique();
 
   }
