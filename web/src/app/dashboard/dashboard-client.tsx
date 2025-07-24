@@ -43,8 +43,8 @@ export function DashboardClient({
   });
 
   const { data: playlists = [] } = useQuery<Playlist[]>({
-    queryKey: ['playlists', me?.supabaseId],
-    queryFn: () => getUserPlaylists(me!.supabaseId),
+    queryKey: ['playlists'],
+    queryFn: getUserPlaylists,
     enabled: !!me,
     initialData: initialPlaylists,
   });
