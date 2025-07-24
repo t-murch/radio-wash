@@ -1,7 +1,11 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
 using SpotifyAPI.Web;
 using Supabase.Gotrue;
@@ -18,6 +22,7 @@ public class AuthController : ControllerBase
   private readonly IWebHostEnvironment _environment;
   private readonly Supabase.Gotrue.Client _supabaseAuth;
   private readonly IUserService _userService;
+  private readonly IMusicTokenService _musicTokenService;
 
   public AuthController(
       ILogger<AuthController> logger,
@@ -25,7 +30,8 @@ public class AuthController : ControllerBase
       IConfiguration configuration,
       IWebHostEnvironment environment,
       Supabase.Gotrue.Client supabaseAuth,
-      IUserService userService)
+      IUserService userService,
+      IMusicTokenService musicTokenService)
   {
     _logger = logger;
     _memoryCache = memoryCache;
@@ -33,6 +39,7 @@ public class AuthController : ControllerBase
     _environment = environment;
     _supabaseAuth = supabaseAuth;
     _userService = userService;
+    _musicTokenService = musicTokenService;
   }
 
   /// <summary>
@@ -65,38 +72,62 @@ public class AuthController : ControllerBase
   }
 
   /// <summary>
-  /// Handles the callback from Spotify, creates/updates Supabase user, and redirects to frontend.
+  /// BULLETPROOF Spotify callback - WILL store tokens or show exact error
   /// </summary>
   [HttpGet("spotify/callback")]
   public async Task<IActionResult> SpotifyCallback([FromQuery] string code)
   {
+    string step = "start";
     try
     {
-      // 1. Exchange code for tokens with Spotify
-      var tokenResponse = await ExchangeCodeForTokensAsync(code);
+      _logger.LogInformation("🚀 SPOTIFY CALLBACK START");
 
-      // 2. Get user profile from Spotify
+      step = "token_exchange";
+      var tokenResponse = await ExchangeCodeForTokensAsync(code);
+      _logger.LogInformation("✅ Token exchange successful");
+
+      step = "profile_fetch";
       var config = SpotifyClientConfig.CreateDefault().WithToken(tokenResponse.AccessToken);
       var spotify = new SpotifyClient(config);
       var spotifyProfile = await spotify.UserProfile.Current();
+      _logger.LogInformation("✅ Profile fetch successful: {Email}", spotifyProfile.Email);
 
-      // 3. Find or create Supabase Auth user
-      var supabaseUser = await GetOrCreateSupabaseUserAsync(spotifyProfile.Email);
+      step = "user_creation";
+      var user = await CreateOrUpdateUserAsync(spotifyProfile);
+      _logger.LogInformation("✅ User creation/update successful: UserId={UserId}", user.Id);
 
-      // 4. Create or update user in our database
-      await CreateOrUpdateUserAsync(supabaseUser, spotifyProfile, tokenResponse);
+      step = "token_storage";
+      var scopes = new[] {
+        "user-read-private", "user-read-email", "playlist-read-private",
+        "playlist-read-collaborative", "playlist-modify-public", "playlist-modify-private"
+      };
+      
+      var metadata = new {
+        display_name = spotifyProfile.DisplayName,
+        country = spotifyProfile.Country,
+        followers = spotifyProfile.Followers?.Total,
+        images = spotifyProfile.Images?.Select(i => new { url = i.Url, height = i.Height, width = i.Width })
+      };
 
-      // 5. For now, skip the Supabase session creation
-      _logger.LogInformation("Successfully processed Spotify auth for {Email}", spotifyProfile.Email);
+      await _musicTokenService.StoreTokensAsync(
+        user.Id, 
+        "spotify", 
+        tokenResponse.AccessToken, 
+        tokenResponse.RefreshToken, 
+        tokenResponse.ExpiresIn,
+        scopes,
+        metadata
+      );
+      
+      _logger.LogInformation("🔐 Securely stored encrypted tokens for user {UserId}", user.Id);
 
-      // 6. Redirect to frontend with success
-      var redirectUrl = $"{GetFrontendUrl()}/auth/callback?email={Uri.EscapeDataString(spotifyProfile.Email)}";
-      return Redirect(redirectUrl);
+      _logger.LogInformation("🎉 SPOTIFY CALLBACK COMPLETE - UserId={UserId}", user.Id);
+      return Redirect($"{GetFrontendUrl()}/auth/success?user_id={user.Id}");
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Error handling Spotify callback");
-      return Redirect($"{GetFrontendUrl()}/auth?error=authentication_failed");
+      _logger.LogError(ex, "💥 SPOTIFY CALLBACK FAILED at step: {Step}", step);
+      return Content($"Spotify callback failed at step: {step}. Error: {ex.Message}", "text/plain");
     }
   }
 
@@ -132,22 +163,48 @@ public class AuthController : ControllerBase
   }
 
   /// <summary>
-  /// Logs the user out by calling Supabase signout.
+  /// Logs the user out by ending Supabase session. Optionally revokes music service tokens.
   /// </summary>
+  /// <param name="revokeTokens">If true, also revokes stored music service tokens (for shared devices)</param>
   [HttpPost("logout")]
   [Authorize]
-  public Task<IActionResult> Logout()
+  public async Task<IActionResult> Logout([FromQuery] bool revokeTokens = false)
   {
     try
     {
-      // TODO: Implement proper Supabase signout
-      _logger.LogInformation("User logged out");
-      return Task.FromResult<IActionResult>(Ok(new { success = true }));
+      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+      var tokensRevoked = false;
+      
+      // Optionally revoke music service tokens (for shared devices or security concerns)
+      if (revokeTokens && userIdClaim != null && Guid.TryParse(userIdClaim, out var userId))
+      {
+        var user = await _userService.GetUserBySupabaseIdAsync(userId);
+        if (user != null)
+        {
+          await _musicTokenService.RevokeTokensAsync(user.Id, "spotify");
+          tokensRevoked = true;
+          _logger.LogInformation("Revoked music tokens for user {UserId} (explicit request)", user.Id);
+        }
+      }
+      
+      // Always end Supabase session
+      // TODO: Implement proper Supabase signout when available
+      // await _supabaseAuth.SignOut();
+      
+      _logger.LogInformation("User logged out successfully. Tokens revoked: {TokensRevoked}", tokensRevoked);
+      
+      return Ok(new { 
+        success = true, 
+        tokensRevoked,
+        message = tokensRevoked 
+          ? "Logged out and revoked music service connections" 
+          : "Logged out successfully. Music service connections preserved."
+      });
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error during logout");
-      return Task.FromResult<IActionResult>(StatusCode(500, new { error = "Failed to logout" }));
+      return StatusCode(500, new { error = "Failed to logout" });
     }
   }
 
@@ -163,21 +220,45 @@ public class AuthController : ControllerBase
     return response;
   }
 
-  private Task<string> GetOrCreateSupabaseUserAsync(string email)
+  private async Task<UserDto> CreateOrUpdateUserAsync(PrivateUser spotifyProfile)
   {
-    // For now, just return a placeholder - we'll improve this later
-    // In a real implementation, you'd use Supabase admin functions to create users
-    _logger.LogInformation("TODO: Implement proper Supabase user creation for {Email}", email);
-    return Task.FromResult(Guid.NewGuid().ToString());
-  }
+    try
+    {
+      // 1. Check if user already exists by email
+      var existingUser = await _userService.GetUserByEmailAsync(spotifyProfile.Email);
+      
+      if (existingUser != null)
+      {
+        _logger.LogInformation("Found existing user {UserId} for Spotify email {Email}", existingUser.Id, spotifyProfile.Email);
+        return existingUser;
+      }
 
-  private Task CreateOrUpdateUserAsync(string supabaseUserId, PrivateUser spotifyProfile, AuthorizationCodeTokenResponse tokens)
-  {
-    // TODO: Implement user service to create/update user with encrypted tokens
-    // This will use the EncryptionService to encrypt the Spotify tokens before storing
-    _logger.LogInformation("TODO: Create/update user {SpotifyId} with Supabase ID {SupabaseId}",
-      spotifyProfile.Id, supabaseUserId);
-    return Task.CompletedTask;
+      // 2. Create new user with generated Supabase ID
+      var supabaseId = Guid.NewGuid().ToString();
+      var newUser = await _userService.CreateUserAsync(
+        supabaseId,
+        spotifyProfile.DisplayName ?? spotifyProfile.Id,
+        spotifyProfile.Email,
+        "spotify"
+      );
+
+      // 3. Link Spotify provider data
+      await _userService.LinkProviderAsync(supabaseId, "spotify", spotifyProfile.Id, new
+      {
+        display_name = spotifyProfile.DisplayName,
+        country = spotifyProfile.Country,
+        followers = spotifyProfile.Followers?.Total,
+        images = spotifyProfile.Images?.Select(i => new { url = i.Url, height = i.Height, width = i.Width })
+      });
+
+      _logger.LogInformation("Created new user {UserId} for Spotify profile {SpotifyId}", newUser.Id, spotifyProfile.Id);
+      return newUser;
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error creating/updating user for Spotify profile {SpotifyId}", spotifyProfile.Id);
+      throw;
+    }
   }
 
   private string GetFrontendUrl()
