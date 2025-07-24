@@ -21,6 +21,8 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 builder.Services.AddHttpClient();
 builder.Services.AddDataProtection(); // For encryption
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
+builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
@@ -190,6 +192,7 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.UseCors("AllowFrontend");
 app.UseMiddleware<RadioWash.Api.Middleware.GlobalExceptionMiddleware>();
 app.UseAuthentication();
+app.UseMiddleware<RadioWash.Api.Middleware.TokenRefreshMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
