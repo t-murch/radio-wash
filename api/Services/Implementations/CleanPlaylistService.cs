@@ -45,7 +45,7 @@ public class CleanPlaylistService : ICleanPlaylistService
     }
 
     // Fetch all of the user's playlists from Spotify.
-    var allPlaylists = await _spotifyService.GetUserPlaylistsAsync(user.SupabaseId);
+    var allPlaylists = await _spotifyService.GetUserPlaylistsAsync(user.Id);
     // Find the specific playlist the user wants to clean from the results.
     var sourcePlaylist = allPlaylists.FirstOrDefault(p => p.Id == jobDto.SourcePlaylistId);
 
@@ -111,14 +111,14 @@ public class CleanPlaylistService : ICleanPlaylistService
       var user = await _dbContext.Users.FindAsync(job.UserId);
       if (user == null) throw new InvalidOperationException($"User for job {jobId} not found.");
 
-      var allTracks = await _spotifyService.GetPlaylistTracksAsync(user.SupabaseId, job.SourcePlaylistId);
+      var allTracks = await _spotifyService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId);
       job.TotalTracks = allTracks.Count();
       var cleanTrackUris = new List<string>();
 
       foreach (var track in allTracks)
       {
         job.ProcessedTracks++;
-        var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.SupabaseId, track);
+        var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
 
         var mapping = new TrackMapping
         {
@@ -149,12 +149,12 @@ public class CleanPlaylistService : ICleanPlaylistService
         }
       }
 
-      var newPlaylist = await _spotifyService.CreatePlaylistAsync(user.SupabaseId, job.TargetPlaylistName, "Cleaned by RadioWash.");
+      var newPlaylist = await _spotifyService.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, "Cleaned by RadioWash.");
       job.TargetPlaylistId = newPlaylist.Id;
 
       if (cleanTrackUris.Any())
       {
-        await _spotifyService.AddTracksToPlaylistAsync(user.SupabaseId, newPlaylist.Id, cleanTrackUris);
+        await _spotifyService.AddTracksToPlaylistAsync(user.Id, newPlaylist.Id, cleanTrackUris);
       }
 
       job.Status = JobStatus.Completed;
