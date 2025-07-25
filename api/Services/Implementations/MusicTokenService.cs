@@ -110,7 +110,7 @@ public class MusicTokenService : IMusicTokenService
     public async Task<UserMusicToken?> GetTokenInfoAsync(int userId, string provider)
     {
         return await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
+            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider && !t.IsRevoked);
     }
 
     public async Task<bool> HasValidTokensAsync(int userId, string provider)
