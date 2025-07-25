@@ -99,7 +99,17 @@ export const getMe = async (): Promise<User> => {
   return result;
 };
 
-export const getUserPlaylists = (): Promise<Playlist[]> =>
+export const getSpotifyConnectionStatus = async (): Promise<{
+  connected: boolean;
+  connectedAt?: string;
+  lastRefreshAt?: string;
+  canRefresh: boolean;
+}> => {
+  const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/spotify/status`);
+  return result;
+};
+
+export const getUserPlaylists = (): Promise<Playlist[] | { error: string; message: string; playlists: Playlist[] }> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me`);
 
 export const getJobTrackMappings = (
