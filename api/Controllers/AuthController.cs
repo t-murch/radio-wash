@@ -52,6 +52,7 @@ public class AuthController : ControllerBase
     {
       var clientId = _configuration["Spotify:ClientId"];
       var callbackUrl = $"{GetBackendUrl()}/api/auth/spotify/callback";
+      _logger.LogInformation($"Spotify authorization URL generated: {callbackUrl}");
 
       var loginRequest = new LoginRequest(new Uri(callbackUrl), clientId!, LoginRequest.ResponseType.Code)
       {
@@ -101,8 +102,9 @@ public class AuthController : ControllerBase
         "user-read-private", "user-read-email", "playlist-read-private",
         "playlist-read-collaborative", "playlist-modify-public", "playlist-modify-private"
       };
-      
-      var metadata = new {
+
+      var metadata = new
+      {
         display_name = spotifyProfile.DisplayName,
         country = spotifyProfile.Country,
         followers = spotifyProfile.Followers?.Total,
@@ -110,15 +112,15 @@ public class AuthController : ControllerBase
       };
 
       await _musicTokenService.StoreTokensAsync(
-        user.Id, 
-        "spotify", 
-        tokenResponse.AccessToken, 
-        tokenResponse.RefreshToken, 
+        user.Id,
+        "spotify",
+        tokenResponse.AccessToken,
+        tokenResponse.RefreshToken,
         tokenResponse.ExpiresIn,
         scopes,
         metadata
       );
-      
+
       _logger.LogInformation("🔐 Securely stored encrypted tokens for user {UserId}", user.Id);
 
       _logger.LogInformation("🎉 SPOTIFY CALLBACK COMPLETE - UserId={UserId}", user.Id);
@@ -128,6 +130,45 @@ public class AuthController : ControllerBase
     {
       _logger.LogError(ex, "💥 SPOTIFY CALLBACK FAILED at step: {Step}", step);
       return Content($"Spotify callback failed at step: {step}. Error: {ex.Message}", "text/plain");
+    }
+  }
+
+  /// <summary>
+  /// Gets Spotify connection status for the authenticated user.
+  /// </summary>
+  [HttpGet("spotify/status")]
+  [Authorize]
+  public async Task<IActionResult> SpotifyConnectionStatus()
+  {
+    try
+    {
+      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+      if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+      {
+        return Unauthorized(new { error = "User ID not found in token." });
+      }
+
+      var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      if (user == null)
+      {
+        return NotFound(new { error = "User not found." });
+      }
+
+      var hasValidTokens = await _musicTokenService.HasValidTokensAsync(user.Id, "spotify");
+      var tokenInfo = await _musicTokenService.GetTokenInfoAsync(user.Id, "spotify");
+
+      return Ok(new
+      {
+        connected = hasValidTokens,
+        connectedAt = tokenInfo?.CreatedAt,
+        lastRefreshAt = tokenInfo?.LastRefreshAt,
+        canRefresh = tokenInfo?.CanRefresh ?? false
+      });
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error getting Spotify connection status");
+      return StatusCode(500, new { error = "Failed to get connection status" });
     }
   }
 
@@ -174,7 +215,7 @@ public class AuthController : ControllerBase
     {
       var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
       var tokensRevoked = false;
-      
+
       // Optionally revoke music service tokens (for shared devices or security concerns)
       if (revokeTokens && userIdClaim != null && Guid.TryParse(userIdClaim, out var userId))
       {
@@ -186,18 +227,19 @@ public class AuthController : ControllerBase
           _logger.LogInformation("Revoked music tokens for user {UserId} (explicit request)", user.Id);
         }
       }
-      
+
       // Always end Supabase session
       // TODO: Implement proper Supabase signout when available
       // await _supabaseAuth.SignOut();
-      
+
       _logger.LogInformation("User logged out successfully. Tokens revoked: {TokensRevoked}", tokensRevoked);
-      
-      return Ok(new { 
-        success = true, 
+
+      return Ok(new
+      {
+        success = true,
         tokensRevoked,
-        message = tokensRevoked 
-          ? "Logged out and revoked music service connections" 
+        message = tokensRevoked
+          ? "Logged out and revoked music service connections"
           : "Logged out successfully. Music service connections preserved."
       });
     }
@@ -226,7 +268,7 @@ public class AuthController : ControllerBase
     {
       // 1. Check if user already exists by email
       var existingUser = await _userService.GetUserByEmailAsync(spotifyProfile.Email);
-      
+
       if (existingUser != null)
       {
         _logger.LogInformation("Found existing user {UserId} for Spotify email {Email}", existingUser.Id, spotifyProfile.Email);
@@ -263,11 +305,11 @@ public class AuthController : ControllerBase
 
   private string GetFrontendUrl()
   {
-    return _configuration["FrontendUrl"] ?? "http://localhost:3000";
+    return _configuration["FrontendUrl"] ?? "http://127.0.0.1:3000";
   }
 
   private string GetBackendUrl()
   {
-    return _configuration["BackendUrl"] ?? "https://localhost:7165";
+    return _configuration["BackendUrl"] ?? "http://127.0.0.1:5159";
   }
 }
