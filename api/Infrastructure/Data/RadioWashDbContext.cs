@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using RadioWash.Api.Models.Domain;
 
 namespace RadioWash.Api.Infrastructure.Data;
 
-public class RadioWashDbContext : DbContext
+public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
 {
   public RadioWashDbContext(DbContextOptions<RadioWashDbContext> options) : base(options)
   {
@@ -14,6 +15,9 @@ public class RadioWashDbContext : DbContext
   public DbSet<UserMusicToken> UserMusicTokens { get; set; } = null!;
   public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
   public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
+  
+  // Data Protection Keys
+  public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
