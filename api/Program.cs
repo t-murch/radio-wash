@@ -2,6 +2,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -19,7 +20,11 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 
 // Services
 builder.Services.AddHttpClient();
-builder.Services.AddDataProtection(); // For encryption
+
+// Configure Data Protection with persistent key storage
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<RadioWashDbContext>()
+    .SetApplicationName("RadioWash");
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
