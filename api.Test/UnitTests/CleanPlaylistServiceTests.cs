@@ -55,7 +55,7 @@ public class CleanPlaylistServiceTests
     // 2. Mock the SpotifyService response
     var mockPlaylistDto = new PlaylistDto { Id = playlistId, Name = "My Awesome Mix", TrackCount = 50 };
     _spotifyServiceMock
-        .Setup(s => s.GetUserPlaylistsAsync(supabaseId))
+        .Setup(s => s.GetUserPlaylistsAsync(1))
         .ReturnsAsync(new List<PlaylistDto> { mockPlaylistDto });
 
     var createJobDto = new CreateCleanPlaylistJobDto
