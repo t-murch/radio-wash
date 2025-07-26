@@ -224,7 +224,7 @@ public class TokenEncryptionServiceTests : IDisposable
         // Arrange
         var token1 = "access-token-1";
         var token2 = "refresh-token-2";
-        var token3 = "client-secret-3";
+        var token3 = "fake-client-secret-3";
 
         // Act
         var encrypted1 = _sut.EncryptToken(token1);

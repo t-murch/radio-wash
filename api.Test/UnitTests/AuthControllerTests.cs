@@ -37,8 +37,8 @@ public class AuthControllerTests : IDisposable
         _musicTokenServiceMock = new Mock<IMusicTokenService>();
 
         // Setup default configuration values
-        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns("test-client-id");
-        _configurationMock.Setup(c => c["Spotify:ClientSecret"]).Returns("test-client-secret");
+        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns("fake-test-client-id");
+        _configurationMock.Setup(c => c["Spotify:ClientSecret"]).Returns("fake-test-client-secret");
         _configurationMock.Setup(c => c["BackendUrl"]).Returns("http://127.0.0.1:5159");
         _configurationMock.Setup(c => c["FrontendUrl"]).Returns("http://127.0.0.1:3000");
 
@@ -68,7 +68,7 @@ public class AuthControllerTests : IDisposable
         // Assert
         var redirectResult = Assert.IsType<RedirectResult>(result);
         Assert.Contains("accounts.spotify.com/authorize", redirectResult.Url);
-        Assert.Contains("client_id=test-client-id", redirectResult.Url);
+        Assert.Contains("client_id=fake-test-client-id", redirectResult.Url);
         Assert.Contains("response_type=code", redirectResult.Url);
         Assert.Contains("redirect_uri=http%3a%2f%2f127.0.0.1%3a5159%2fapi%2fauth%2fspotify%2fcallback", redirectResult.Url);
     }
