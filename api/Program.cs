@@ -2,14 +2,13 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
-using RadioWash.Api.Hubs;
 using RadioWash.Api.Infrastructure.Data;
-using RadioWash.Api.Services;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -17,14 +16,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
-var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // Services
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ITokenService, TokenService>();
+
+// Configure Data Protection with persistent key storage
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<RadioWashDbContext>()
+    .SetApplicationName("RadioWash");
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
+builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 
@@ -47,58 +52,69 @@ builder.Services.AddCors(options =>
   });
 });
 
-// Authentication
-builder.Services.AddAuthentication(options =>
-{
-  options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-  options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+// Authentication - Configure for Supabase JWT
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
+  options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+
+  var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
+  var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
+  options.Authority = $"{supabasePublicUrl}/auth/v1";
+  options.Audience = "authenticated";
   options.TokenValidationParameters = new TokenValidationParameters
   {
     ValidateIssuer = true,
     ValidateAudience = true,
     ValidateLifetime = true,
     ValidateIssuerSigningKey = true,
-    // Using the null-forgiving operator (!) to suppress the CS8602 warning.
-    ValidIssuer = jwtSettings!.Issuer,
-    ValidAudience = jwtSettings.Audience,
-    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
+    ValidIssuer = $"{supabasePublicUrl}/auth/v1",
+    ValidAudience = "authenticated",
+    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
   };
 
   options.Events = new JwtBearerEvents
   {
-    // This event allows us to read the token from a cookie for both API and SignalR
     OnMessageReceived = context =>
     {
-      // For SignalR hubs, also check cookies during negotiation
-      var path = context.HttpContext.Request.Path;
-      if (path.StartsWithSegments("/hubs"))
+      // Read token from Authorization header or hash fragment for auth callback
+      var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+      if (authHeader?.StartsWith("Bearer ") == true)
       {
-        context.Token = context.Request.Cookies["rw-auth-token"];
-      }
-      else
-      {
-        context.Token = context.Request.Cookies["rw-auth-token"];
+        context.Token = authHeader.Substring("Bearer ".Length).Trim();
       }
       return Task.CompletedTask;
     }
   };
 });
 
-// Hangfire
-builder.Services.AddHangfire(config => config
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
-builder.Services.AddHangfireServer();
+// Supabase Gotrue Client
+builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
+{
+  var config = provider.GetRequiredService<IConfiguration>();
+  var supabaseUrl = config["Supabase:Url"];
+  var serviceRoleKey = config["Supabase:ServiceRoleKey"];
+  return new Supabase.Gotrue.Client(new Supabase.Gotrue.ClientOptions
+  {
+    Url = $"{supabaseUrl}/auth/v1",
+    Headers = new Dictionary<string, string>
+    {
+      ["apikey"] = serviceRoleKey!,
+      ["Authorization"] = $"Bearer {serviceRoleKey}"
+    }
+  });
+});
 
-// SignalR
-builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
-builder.Services.AddSignalR();
-
+// Hangfire (skip in testing environment)
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+  builder.Services.AddHangfire(config => config
+      .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+      .UseSimpleAssemblyNameTypeSerializer()
+      .UseRecommendedSerializerSettings()
+      .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+  builder.Services.AddHangfireServer();
+}
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -130,6 +146,25 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Configure model state validation logging
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+  options.InvalidModelStateResponseFactory = context =>
+  {
+    var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+    var errors = context.ModelState
+          .Where(x => x.Value.Errors.Count > 0)
+          .Select(x => new { Field = x.Key, Errors = x.Value.Errors.Select(e => e.ErrorMessage) });
+
+    logger.LogWarning("Model validation failed for {Method} {Path}: {@Errors}",
+          context.HttpContext.Request.Method,
+          context.HttpContext.Request.Path,
+          errors);
+
+    return new BadRequestObjectResult(context.ModelState);
+  };
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -138,28 +173,41 @@ if (app.Environment.IsDevelopment())
   app.UseSwaggerUI();
 }
 
-// Apply migrations in development
-using (var scope = app.Services.CreateScope())
+// Apply migrations in development (skip for testing)
+if (!app.Environment.IsEnvironment("Testing"))
 {
-  var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
-  var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+  using (var scope = app.Services.CreateScope())
+  {
+    var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-  try
-  {
-    dbContext.Database.Migrate();
-    logger.LogInformation("Database migrations applied successfully");
-  }
-  catch (Exception ex)
-  {
-    logger.LogError(ex, "Error applying database migrations");
-    throw;
+    try
+    {
+      dbContext.Database.Migrate();
+      logger.LogInformation("Database migrations applied successfully");
+    }
+    catch (Exception ex)
+    {
+      logger.LogError(ex, "Error applying database migrations");
+      throw;
+    }
   }
 }
 
 app.UseCors("AllowFrontend");
+app.UseMiddleware<RadioWash.Api.Middleware.GlobalExceptionMiddleware>();
 app.UseAuthentication();
+app.UseMiddleware<RadioWash.Api.Middleware.TokenRefreshMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<JobStatusHub>("/hubs/job-status").RequireCors("AllowFrontend");
-app.UseHangfireDashboard();
+
+// Only add Hangfire dashboard in non-testing environments
+if (!app.Environment.IsEnvironment("Testing"))
+{
+  app.UseHangfireDashboard();
+}
+
 app.Run();
+
+// Make Program class accessible for integration tests
+public partial class Program { }

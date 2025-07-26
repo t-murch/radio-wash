@@ -1,71 +1,65 @@
-'use client';
+import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { AuthForm } from './auth-form';
 
-import { Suspense, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '../hooks/useAuth';
+export default async function LoginPage() {
+  const supabase = await createClient();
 
-function AuthPageContent() {
-  const { login, isLoading, isAuthenticated } = useAuth();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const error = searchParams.get('error');
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.replace('/dashboard');
+  console.log(`auth/page error: ${JSON.stringify(error)}`);
+
+  if (user) {
+    redirect('/dashboard');
+  }
+
+  const signInWithSpotify = async (connectSpotify?: boolean) => {
+    'use server';
+    const supabase = await createClient();
+    const headerList = await headers();
+    const origin = headerList.get('origin');
+    
+    console.log(`auth/page origin: ${origin}`);
+    
+    // If connectSpotify is true, add spotify=true parameter to callback
+    const callbackUrl = connectSpotify 
+      ? `${origin}/api/auth/callback?spotify=true`
+      : `${origin}/api/auth/callback`;
+    
+    console.log(`auth/page redirectTo: ${callbackUrl}`);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'spotify',
+      options: {
+        scopes:
+          'user-read-email playlist-read-private playlist-modify-private playlist-modify-public',
+        redirectTo: callbackUrl,
+      },
+    });
+
+    if (data.url) {
+      return redirect(data.url);
     }
-  }, [isLoading, isAuthenticated, router]);
-
-  const getErrorMessage = (err: string | null) => {
-    switch (err) {
-      case 'invalid_state':
-        return 'Invalid authentication state. Please try again.';
-      case 'authentication_failed':
-        return 'Authentication with Spotify failed. Please try again.';
-      case 'server_error':
-        return 'An unexpected server error occurred. Please try again later.';
-      default:
-        return null;
+    if (error) {
+      return redirect('/auth?error=Could not authenticate user');
     }
   };
 
-  const errorMessage = getErrorMessage(error);
+  const signInWithSpotifyConnection = async () => {
+    'use server';
+    return signInWithSpotify(true);
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-xl shadow-md">
-        <div className="text-center">
-          <h1 className="text-3xl font-extrabold text-gray-900">RadioWash</h1>
-          <p className="mt-2 text-gray-600">
-            Create clean versions of your Spotify playlists
-          </p>
-        </div>
-
-        {errorMessage && (
-          <div
-            className="p-4 text-sm text-red-700 bg-red-100 rounded-lg"
-            role="alert"
-          >
-            {errorMessage}
-          </div>
-        )}
-
-        <button
-          onClick={login}
-          disabled={isLoading}
-          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-        >
-          {isLoading ? 'Connecting...' : 'Connect with Spotify'}
-        </button>
-      </div>
+      <AuthForm 
+        signInWithSpotify={signInWithSpotify} 
+        signInWithSpotifyConnection={signInWithSpotifyConnection}
+      />
     </div>
-  );
-}
-
-export default function AuthPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <AuthPageContent />
-    </Suspense>
   );
 }

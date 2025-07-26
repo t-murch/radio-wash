@@ -22,6 +22,25 @@ namespace RadioWash.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
                 {
                     b.Property<int>("Id")
@@ -50,13 +69,15 @@ namespace RadioWash.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("TargetPlaylistId")
                         .HasColumnType("text");
 
                     b.Property<string>("TargetPlaylistName")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("TotalTracks")
@@ -142,7 +163,10 @@ namespace RadioWash.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("SpotifyId")
+                    b.Property<string>("PrimaryProvider")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SupabaseId")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -151,13 +175,13 @@ namespace RadioWash.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SpotifyId")
+                    b.HasIndex("SupabaseId")
                         .IsUnique();
 
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserToken", b =>
+            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserMusicToken", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -165,18 +189,75 @@ namespace RadioWash.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AccessToken")
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EncryptedAccessToken")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("RefreshToken")
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastRefreshAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
                         .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ProviderMetadata")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("RefreshFailureCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Scopes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("UserMusicTokens");
+                });
+
+            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserProviderData", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderMetadata")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -187,10 +268,12 @@ namespace RadioWash.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "ProviderId")
                         .IsUnique();
 
-                    b.ToTable("UserTokens");
+                    b.ToTable("UserProviderData");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
@@ -215,11 +298,22 @@ namespace RadioWash.Api.Migrations
                     b.Navigation("Job");
                 });
 
-            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserToken", b =>
+            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserMusicToken", b =>
                 {
                     b.HasOne("RadioWash.Api.Models.Domain.User", "User")
-                        .WithOne("Token")
-                        .HasForeignKey("RadioWash.Api.Models.Domain.UserToken", "UserId")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RadioWash.Api.Models.Domain.UserProviderData", b =>
+                {
+                    b.HasOne("RadioWash.Api.Models.Domain.User", "User")
+                        .WithMany("ProviderData")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -235,7 +329,7 @@ namespace RadioWash.Api.Migrations
                 {
                     b.Navigation("Jobs");
 
-                    b.Navigation("Token");
+                    b.Navigation("ProviderData");
                 });
 #pragma warning restore 612, 618
         }
