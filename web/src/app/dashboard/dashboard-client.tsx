@@ -118,8 +118,6 @@ export function DashboardClient({
     router.refresh(); // Refresh the page to trigger redirect
   };
 
-  console.log(`dashboard-client playlists: ${JSON.stringify(playlists)}`);
-
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-sm sticky top-0 z-10">

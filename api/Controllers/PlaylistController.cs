@@ -27,8 +27,18 @@ public class PlaylistController : AuthenticatedControllerBase
     {
       var userId = GetCurrentUserId();
       Logger.LogInformation("Getting playlists for user {UserId}", userId);
+      
       var playlists = await _spotifyService.GetUserPlaylistsAsync(userId);
       return Ok(playlists);
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+      Logger.LogWarning(ex, "No Spotify connection for user {UserId}", GetCurrentUserId());
+      return Ok(new { 
+        error = "spotify_not_connected",
+        message = "Spotify account not connected. Please connect your Spotify account to view playlists.",
+        playlists = new object[0]
+      });
     }
     catch (Exception ex)
     {
@@ -61,6 +71,14 @@ public class PlaylistController : AuthenticatedControllerBase
       }).ToList();
 
       return Ok(trackList);
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+      Logger.LogWarning(ex, "No Spotify connection for user {UserId}", GetCurrentUserId());
+      return BadRequest(new { 
+        error = "spotify_not_connected",
+        message = "Spotify account not connected. Please connect your Spotify account to view playlist tracks."
+      });
     }
     catch (Exception ex)
     {

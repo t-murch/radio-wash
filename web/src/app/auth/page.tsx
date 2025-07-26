@@ -17,21 +17,27 @@ export default async function LoginPage() {
     redirect('/dashboard');
   }
 
-  const signInWithSpotify = async () => {
+  const signInWithSpotify = async (connectSpotify?: boolean) => {
     'use server';
     const supabase = await createClient();
     const headerList = await headers();
     const origin = headerList.get('origin');
     
     console.log(`auth/page origin: ${origin}`);
-    console.log(`auth/page redirectTo: ${origin}/api/auth/callback`);
+    
+    // If connectSpotify is true, add spotify=true parameter to callback
+    const callbackUrl = connectSpotify 
+      ? `${origin}/api/auth/callback?spotify=true`
+      : `${origin}/api/auth/callback`;
+    
+    console.log(`auth/page redirectTo: ${callbackUrl}`);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',
       options: {
         scopes:
           'user-read-email playlist-read-private playlist-modify-private playlist-modify-public',
-        redirectTo: `${origin}/api/auth/callback`,
+        redirectTo: callbackUrl,
       },
     });
 
@@ -43,9 +49,17 @@ export default async function LoginPage() {
     }
   };
 
+  const signInWithSpotifyConnection = async () => {
+    'use server';
+    return signInWithSpotify(true);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-      <AuthForm signInWithSpotify={signInWithSpotify} />
+      <AuthForm 
+        signInWithSpotify={signInWithSpotify} 
+        signInWithSpotifyConnection={signInWithSpotifyConnection}
+      />
     </div>
   );
 }

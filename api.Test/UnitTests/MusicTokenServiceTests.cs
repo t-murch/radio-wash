@@ -39,8 +39,8 @@ public class MusicTokenServiceTests : IDisposable
         _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
 
         // Setup default configuration
-        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns("test-client-id");
-        _configurationMock.Setup(c => c["Spotify:ClientSecret"]).Returns("test-client-secret");
+        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns("fake-test-client-id");
+        _configurationMock.Setup(c => c["Spotify:ClientSecret"]).Returns("fake-test-client-secret");
 
         _sut = new MusicTokenService(
             _dbContext,
