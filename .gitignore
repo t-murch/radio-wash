@@ -70,3 +70,6 @@ project.lock.json
 *.nuget.targets
 
 **.bak
+
+# Claude working directory
+claude-thoughts/
