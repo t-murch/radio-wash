@@ -1,4 +1,5 @@
 using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
@@ -38,53 +39,65 @@ public class CleanPlaylistService : ICleanPlaylistService
   /// <returns>A DTO representing the newly created job.</returns>
   public async Task<CleanPlaylistJobDto> CreateJobAsync(int userId, CreateCleanPlaylistJobDto jobDto)
   {
-    var user = await _dbContext.Users.FindAsync(userId);
-    if (user == null)
+    using var transaction = await _dbContext.Database.BeginTransactionAsync();
+    try
     {
-      throw new KeyNotFoundException("User not found");
+      var user = await _dbContext.Users.FindAsync(userId);
+      if (user == null)
+      {
+        throw new KeyNotFoundException("User not found");
+      }
+
+      // Fetch all of the user's playlists from Spotify.
+      var allPlaylists = await _spotifyService.GetUserPlaylistsAsync(user.Id);
+      // Find the specific playlist the user wants to clean from the results.
+      var sourcePlaylist = allPlaylists.FirstOrDefault(p => p.Id == jobDto.SourcePlaylistId);
+
+      if (sourcePlaylist == null)
+      {
+        throw new KeyNotFoundException("Source playlist not found on Spotify or user does not have access.");
+      }
+
+      var job = new CleanPlaylistJob
+      {
+        UserId = userId,
+        SourcePlaylistId = sourcePlaylist.Id,
+        SourcePlaylistName = sourcePlaylist.Name,
+        TargetPlaylistName = string.IsNullOrWhiteSpace(jobDto.TargetPlaylistName)
+              ? $"Clean - {sourcePlaylist.Name}"
+              : jobDto.TargetPlaylistName,
+        Status = JobStatus.Pending,
+        TotalTracks = sourcePlaylist.TrackCount
+      };
+
+      await _dbContext.CleanPlaylistJobs.AddAsync(job);
+      await _dbContext.SaveChangesAsync();
+
+      // Enqueue the job for processing in the background with Hangfire.
+      _backgroundJobClient.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(job.Id));
+
+      await transaction.CommitAsync();
+
+      _logger.LogInformation("Created and enqueued job {JobId} for user {UserId}", job.Id, userId);
+
+      // Map the new job entity to a DTO to return to the controller.
+      return new CleanPlaylistJobDto
+      {
+        Id = job.Id,
+        SourcePlaylistId = job.SourcePlaylistId,
+        SourcePlaylistName = job.SourcePlaylistName,
+        TargetPlaylistName = job.TargetPlaylistName,
+        Status = job.Status,
+        TotalTracks = job.TotalTracks,
+        CreatedAt = job.CreatedAt,
+        UpdatedAt = job.UpdatedAt
+      };
     }
-
-    // Fetch all of the user's playlists from Spotify.
-    var allPlaylists = await _spotifyService.GetUserPlaylistsAsync(user.Id);
-    // Find the specific playlist the user wants to clean from the results.
-    var sourcePlaylist = allPlaylists.FirstOrDefault(p => p.Id == jobDto.SourcePlaylistId);
-
-    if (sourcePlaylist == null)
+    catch
     {
-      throw new KeyNotFoundException("Source playlist not found on Spotify or user does not have access.");
+      await transaction.RollbackAsync();
+      throw;
     }
-
-    var job = new CleanPlaylistJob
-    {
-      UserId = userId,
-      SourcePlaylistId = sourcePlaylist.Id,
-      SourcePlaylistName = sourcePlaylist.Name,
-      TargetPlaylistName = string.IsNullOrWhiteSpace(jobDto.TargetPlaylistName)
-            ? $"Clean - {sourcePlaylist.Name}"
-            : jobDto.TargetPlaylistName,
-      Status = JobStatus.Pending,
-      TotalTracks = sourcePlaylist.TrackCount
-    };
-
-    await _dbContext.CleanPlaylistJobs.AddAsync(job);
-    await _dbContext.SaveChangesAsync();
-
-    // Enqueue the job for processing in the background with Hangfire.
-    _backgroundJobClient.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(job.Id));
-
-    _logger.LogInformation("Created and enqueued job {JobId} for user {UserId}", job.Id, userId);
-
-    // Map the new job entity to a DTO to return to the controller.
-    return new CleanPlaylistJobDto
-    {
-      Id = job.Id,
-      SourcePlaylistId = job.SourcePlaylistId,
-      SourcePlaylistName = job.SourcePlaylistName,
-      Status = job.Status,
-      TotalTracks = job.TotalTracks,
-      CreatedAt = job.CreatedAt,
-      UpdatedAt = job.UpdatedAt
-    };
   }
 
   /// <summary>
@@ -102,18 +115,34 @@ public class CleanPlaylistService : ICleanPlaylistService
       return;
     }
 
+    // Start with updating job status to Processing
+    using var initialTransaction = await _dbContext.Database.BeginTransactionAsync();
     try
     {
       job.Status = JobStatus.Processing;
       job.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync(); // This update notifies the client via Supabase Realtime
+      await initialTransaction.CommitAsync();
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Failed to update job {JobId} status to Processing", jobId);
+      await initialTransaction.RollbackAsync();
+      return;
+    }
 
+    try
+    {
       var user = await _dbContext.Users.FindAsync(job.UserId);
       if (user == null) throw new InvalidOperationException($"User for job {jobId} not found.");
 
       var allTracks = await _spotifyService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId);
       job.TotalTracks = allTracks.Count();
       var cleanTrackUris = new List<string>();
+
+      // Process tracks in batches with transaction boundaries for atomic progress saves
+      var trackBatch = new List<TrackMapping>();
+      const int batchSize = 10;
 
       foreach (var track in allTracks)
       {
@@ -133,7 +162,7 @@ public class CleanPlaylistService : ICleanPlaylistService
           TargetArtistName = cleanVersion != null ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null
         };
 
-        await _dbContext.TrackMappings.AddAsync(mapping);
+        trackBatch.Add(mapping);
 
         if (cleanVersion != null)
         {
@@ -141,33 +170,88 @@ public class CleanPlaylistService : ICleanPlaylistService
           cleanTrackUris.Add(cleanVersion.Uri);
         }
 
-        // Periodically save progress to the database, which triggers a real-time update
-        if (job.ProcessedTracks % 10 == 0 || job.ProcessedTracks == job.TotalTracks)
+        // Periodically save progress in atomic transactions
+        if (job.ProcessedTracks % batchSize == 0 || job.ProcessedTracks == job.TotalTracks)
         {
-          job.UpdatedAt = DateTime.UtcNow;
-          await _dbContext.SaveChangesAsync();
+          using var batchTransaction = await _dbContext.Database.BeginTransactionAsync();
+          try
+          {
+            // Add all mappings in the current batch
+            await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
+            
+            // Update job progress
+            job.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+            
+            await batchTransaction.CommitAsync();
+            
+            _logger.LogDebug("Saved batch of {BatchSize} track mappings for job {JobId}. Progress: {ProcessedTracks}/{TotalTracks}", 
+                           trackBatch.Count, jobId, job.ProcessedTracks, job.TotalTracks);
+            
+            trackBatch.Clear(); // Clear the batch after successful commit and logging
+          }
+          catch (Exception ex)
+          {
+            _logger.LogError(ex, "Failed to save batch for job {JobId} at track {ProcessedTracks}", jobId, job.ProcessedTracks);
+            await batchTransaction.RollbackAsync();
+            throw; // Re-throw to trigger the outer catch block
+          }
         }
       }
 
-      var newPlaylist = await _spotifyService.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, "Cleaned by RadioWash.");
-      job.TargetPlaylistId = newPlaylist.Id;
-
-      if (cleanTrackUris.Any())
+      // Final transaction for playlist creation and job completion
+      using var completionTransaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        await _spotifyService.AddTracksToPlaylistAsync(user.Id, newPlaylist.Id, cleanTrackUris);
-      }
+        var newPlaylist = await _spotifyService.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, "Cleaned by RadioWash.");
+        job.TargetPlaylistId = newPlaylist.Id;
 
-      job.Status = JobStatus.Completed;
-      job.UpdatedAt = DateTime.UtcNow;
-      await _dbContext.SaveChangesAsync(); // Final update notifies client of completion
+        if (cleanTrackUris.Any())
+        {
+          await _spotifyService.AddTracksToPlaylistAsync(user.Id, newPlaylist.Id, cleanTrackUris);
+        }
+
+        job.Status = JobStatus.Completed;
+        job.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(); // Final update notifies client of completion
+        
+        await completionTransaction.CommitAsync();
+        
+        _logger.LogInformation("Successfully completed job {JobId}. Processed {ProcessedTracks} tracks, matched {MatchedTracks} clean versions", 
+                             jobId, job.ProcessedTracks, job.MatchedTracks);
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Failed to complete job {JobId} during playlist creation", jobId);
+        await completionTransaction.RollbackAsync();
+        throw; // Re-throw to trigger the outer catch block
+      }
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Error processing job {JobId}", jobId);
-      job.Status = JobStatus.Failed;
-      job.ErrorMessage = ex.Message;
-      job.UpdatedAt = DateTime.UtcNow;
-      await _dbContext.SaveChangesAsync(); // Notifies client of failure
+      // Handle any errors with atomic rollback for job failure status
+      using var errorTransaction = await _dbContext.Database.BeginTransactionAsync();
+      try
+      {
+        _logger.LogError(ex, "Error processing job {JobId}", jobId);
+        
+        // Reload job to get latest state in case it was modified in a failed transaction
+        await _dbContext.Entry(job).ReloadAsync();
+        
+        job.Status = JobStatus.Failed;
+        job.ErrorMessage = ex.Message;
+        job.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(); // Notifies client of failure
+        
+        await errorTransaction.CommitAsync();
+      }
+      catch (Exception errorEx)
+      {
+        _logger.LogError(errorEx, "Failed to update job {JobId} status to Failed", jobId);
+        await errorTransaction.RollbackAsync();
+        // At this point, the job status might be inconsistent, but the original error is more important
+        throw ex; // Re-throw the original exception
+      }
     }
   }
 }
