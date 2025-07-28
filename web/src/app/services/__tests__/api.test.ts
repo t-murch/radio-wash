@@ -1,4 +1,4 @@
-import { fetchWithSupabaseAuth, createCleanPlaylistJob, getMe, getUserPlaylists } from '../api';
+import { fetchWithSupabaseAuth, createCleanPlaylistJob, getMe, getUserPlaylists, getUserJobs } from '../api';
 import { mockAuthenticatedSession } from '@/test-utils/supabase-test-client';
 
 // Mock the Supabase clients
@@ -263,6 +263,65 @@ describe('API Functions', () => {
 
       const result = await getUserPlaylists();
       expect(result).toEqual(mockErrorResponse);
+    });
+  });
+
+  describe('getUserJobs', () => {
+    it('should fetch user jobs correctly', async () => {
+      const mockCreateClient = await import('@/lib/supabase/server');
+      (mockCreateClient.createClient as any).mockResolvedValue({
+        auth: {
+          getSession: vi.fn(() => Promise.resolve({
+            data: { session: mockAuthenticatedSession }
+          }))
+        }
+      });
+
+      const mockJobs = [
+        {
+          id: 1,
+          sourcePlaylistId: 'playlist123',
+          sourcePlaylistName: 'Test Playlist',
+          status: 'completed',
+          totalTracks: 10,
+          processedTracks: 10,
+          matchedTracks: 8,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T01:00:00Z'
+        },
+        {
+          id: 2,
+          sourcePlaylistId: 'playlist456',
+          sourcePlaylistName: 'Another Playlist',
+          status: 'pending',
+          totalTracks: 5,
+          processedTracks: 0,
+          matchedTracks: 0,
+          createdAt: '2024-01-02T00:00:00Z',
+          updatedAt: '2024-01-02T00:00:00Z'
+        }
+      ];
+
+      const mockFetch = global.fetch as any;
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(mockJobs), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+
+      const result = await getUserJobs();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/cleanplaylist/user/me/jobs'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer mock-access-token'
+          })
+        })
+      );
+
+      expect(result).toEqual(mockJobs);
     });
   });
 });

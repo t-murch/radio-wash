@@ -61,8 +61,8 @@ export function DashboardClient({
     : playlistsResponse?.playlists || [];
 
   const { data: jobs = [] } = useQuery<Job[]>({
-    queryKey: ['jobs', me?.id],
-    queryFn: () => getUserJobs(me!.id),
+    queryKey: ['jobs'],
+    queryFn: getUserJobs,
     enabled: !!me,
     initialData: initialJobs,
   });
@@ -96,7 +96,7 @@ export function DashboardClient({
           filter: `user_id=eq.${me.id}`,
         },
         (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['jobs', me.id] });
+          queryClient.invalidateQueries({ queryKey: ['jobs'] });
         }
       )
       .subscribe();

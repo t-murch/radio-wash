@@ -73,3 +73,4 @@ project.lock.json
 
 # Claude working directory
 claude-thoughts/
+CLAUDE.md
