@@ -70,3 +70,7 @@ project.lock.json
 *.nuget.targets
 
 **.bak
+
+Claude Scratchpad
+CLAUDE.md
+claude-thoughts/
