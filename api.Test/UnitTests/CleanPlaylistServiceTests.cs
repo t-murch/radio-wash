@@ -5,12 +5,13 @@ using RadioWash.Api.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
+using RadioWash.Api.Models.Spotify;
 using Hangfire;
 using Microsoft.Extensions.Logging;
 
 namespace RadioWash.Api.Test.UnitTests;
 
-public class CleanPlaylistServiceTests
+public class CleanPlaylistServiceTests : IDisposable
 {
   private readonly Mock<ISpotifyService> _spotifyServiceMock;
   private readonly Mock<IBackgroundJobClient> _backgroundJobClientMock;
@@ -22,6 +23,7 @@ public class CleanPlaylistServiceTests
     // Setup in-memory database
     var options = new DbContextOptionsBuilder<RadioWashDbContext>()
         .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString()) // Unique DB for each test run
+        .ConfigureWarnings(w => w.Ignore(40300))
         .Options;
     _dbContext = new RadioWashDbContext(options);
 
@@ -39,7 +41,7 @@ public class CleanPlaylistServiceTests
     );
   }
 
-  [Fact(Skip = "Stubbing")]
+  [Fact]
   public async Task CreateJobAsync_WhenUserAndPlaylistExist_ShouldCreateAndEnqueueJob()
   {
     // Arrange
@@ -87,7 +89,7 @@ public class CleanPlaylistServiceTests
     );
   }
 
-  [Fact(Skip = "Stubbing")]
+  [Fact]
   public async Task CreateJobAsync_WhenUserDoesNotExist_ShouldThrowKeyNotFoundException()
   {
     // Arrange
@@ -96,5 +98,213 @@ public class CleanPlaylistServiceTests
 
     // Act & Assert
     await Assert.ThrowsAsync<KeyNotFoundException>(() => _sut.CreateJobAsync(nonExistentUserId, createJobDto));
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WhenPlaylistNotFound_ShouldThrowKeyNotFoundException()
+  {
+    // Arrange
+    var userId = 1;
+    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
+    await _dbContext.Users.AddAsync(user);
+    await _dbContext.SaveChangesAsync();
+
+    // Mock empty playlist list (playlist not found)
+    _spotifyServiceMock
+        .Setup(s => s.GetUserPlaylistsAsync(userId))
+        .ReturnsAsync(new List<PlaylistDto>());
+
+    var createJobDto = new CreateCleanPlaylistJobDto { SourcePlaylistId = "non-existent-playlist" };
+
+    // Act & Assert
+    await Assert.ThrowsAsync<KeyNotFoundException>(() => _sut.CreateJobAsync(userId, createJobDto));
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithEmptyTargetName_ShouldUseDefaultNaming()
+  {
+    // Arrange
+    var userId = 1;
+    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
+    await _dbContext.Users.AddAsync(user);
+    await _dbContext.SaveChangesAsync();
+
+    var mockPlaylistDto = new PlaylistDto { Id = "playlist-123", Name = "My Awesome Mix", TrackCount = 25 };
+    _spotifyServiceMock
+        .Setup(s => s.GetUserPlaylistsAsync(userId))
+        .ReturnsAsync(new List<PlaylistDto> { mockPlaylistDto });
+
+    var createJobDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist-123",
+      TargetPlaylistName = "" // Empty string should trigger default naming
+    };
+
+    // Act
+    var result = await _sut.CreateJobAsync(userId, createJobDto);
+
+    // Assert
+    Assert.Equal("Clean - My Awesome Mix", result.TargetPlaylistName);
+
+    var jobInDb = await _dbContext.CleanPlaylistJobs.FirstOrDefaultAsync();
+    Assert.NotNull(jobInDb);
+    Assert.Equal("Clean - My Awesome Mix", jobInDb.TargetPlaylistName);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_WhenJobNotFound_ShouldLogErrorAndReturn()
+  {
+    // Arrange
+    var nonExistentJobId = 999;
+    var loggerMock = new Mock<ILogger<CleanPlaylistService>>();
+    var service = new CleanPlaylistService(_dbContext, _spotifyServiceMock.Object, loggerMock.Object, _backgroundJobClientMock.Object);
+
+    // Act
+    await service.ProcessJobAsync(nonExistentJobId);
+
+    // Assert
+    loggerMock.Verify(
+        x => x.Log(
+            LogLevel.Error,
+            It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Job 999 not found for processing")),
+            It.IsAny<Exception>(),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_WhenUserNotFound_ShouldFailJob()
+  {
+    // Arrange
+    var job = new CleanPlaylistJob
+    {
+      Id = 1,
+      UserId = 999, // Non-existent user
+      SourcePlaylistId = "playlist-123",
+      SourcePlaylistName = "Test Playlist",
+      TargetPlaylistName = "Clean Test",
+      Status = JobStatus.Pending,
+      TotalTracks = 10
+    };
+    await _dbContext.CleanPlaylistJobs.AddAsync(job);
+    await _dbContext.SaveChangesAsync();
+
+    // Act
+    await _sut.ProcessJobAsync(job.Id);
+
+    // Assert
+    var updatedJob = await _dbContext.CleanPlaylistJobs.FindAsync(job.Id);
+    Assert.NotNull(updatedJob);
+    Assert.Equal(JobStatus.Failed, updatedJob.Status);
+    Assert.Contains("User for job 1 not found", updatedJob.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_SuccessfulProcessing_ShouldCompleteJob()
+  {
+    // Arrange
+    var userId = 1;
+    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
+    await _dbContext.Users.AddAsync(user);
+
+    var job = new CleanPlaylistJob
+    {
+      Id = 1,
+      UserId = userId,
+      SourcePlaylistId = "playlist-123",
+      SourcePlaylistName = "Test Playlist",
+      TargetPlaylistName = "Clean Test",
+      Status = JobStatus.Pending,
+      TotalTracks = 2
+    };
+    await _dbContext.CleanPlaylistJobs.AddAsync(job);
+    await _dbContext.SaveChangesAsync();
+
+    // Mock track data
+    var tracks = new List<SpotifyTrack>
+    {
+      new SpotifyTrack { Id = "track1", Name = "Song 1", Explicit = true, Artists = new[] { new SpotifyArtist { Id = "artist1", Name = "Artist 1" } }, Album = new SpotifyAlbum { Id = "album1", Name = "Album 1" }, Uri = "spotify:track:track1" },
+      new SpotifyTrack { Id = "track2", Name = "Song 2", Explicit = false, Artists = new[] { new SpotifyArtist { Id = "artist2", Name = "Artist 2" } }, Album = new SpotifyAlbum { Id = "album2", Name = "Album 2" }, Uri = "spotify:track:track2" }
+    };
+
+    var cleanTrack = new SpotifyTrack { Id = "clean-track1", Name = "Song 1", Explicit = false, Uri = "spotify:track:clean1", Artists = new[] { new SpotifyArtist { Id = "artist1", Name = "Artist 1" } }, Album = new SpotifyAlbum { Id = "album1", Name = "Album 1" } };
+    var newPlaylist = new SpotifyPlaylist { Id = "new-playlist-123", Name = "Clean Test", Tracks = new SpotifyPlaylistTracksRef { Total = 0, Href = "" }, Owner = new SpotifyUser { Id = "user123" } };
+
+    _spotifyServiceMock.Setup(s => s.GetPlaylistTracksAsync(userId, "playlist-123")).ReturnsAsync(tracks);
+    _spotifyServiceMock.Setup(s => s.FindCleanVersionAsync(userId, tracks[0])).ReturnsAsync(cleanTrack);
+    _spotifyServiceMock.Setup(s => s.FindCleanVersionAsync(userId, tracks[1])).ReturnsAsync(tracks[1]); // Already clean
+    _spotifyServiceMock.Setup(s => s.CreatePlaylistAsync(userId, "Clean Test", "Cleaned by RadioWash.")).ReturnsAsync(newPlaylist);
+    _spotifyServiceMock.Setup(s => s.AddTracksToPlaylistAsync(userId, "new-playlist-123", It.IsAny<List<string>>())).Returns(Task.CompletedTask);
+
+    // Act
+    await _sut.ProcessJobAsync(job.Id);
+
+    // Assert
+    var updatedJob = await _dbContext.CleanPlaylistJobs.FindAsync(job.Id);
+    Assert.NotNull(updatedJob);
+    Assert.Equal(JobStatus.Completed, updatedJob.Status);
+    Assert.Equal("new-playlist-123", updatedJob.TargetPlaylistId);
+    Assert.Equal(2, updatedJob.ProcessedTracks);
+    Assert.Equal(2, updatedJob.MatchedTracks);
+
+    // Verify track mappings were created
+    var mappings = await _dbContext.TrackMappings.Where(tm => tm.JobId == job.Id).ToListAsync();
+    Assert.Equal(2, mappings.Count);
+    Assert.True(mappings.All(m => m.HasCleanMatch));
+
+    // Verify Spotify service calls
+    _spotifyServiceMock.Verify(s => s.CreatePlaylistAsync(userId, "Clean Test", "Cleaned by RadioWash."), Times.Once);
+    _spotifyServiceMock.Verify(s => s.AddTracksToPlaylistAsync(userId, "new-playlist-123", It.IsAny<List<string>>()), Times.Once);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_WithNoCleanMatches_ShouldStillCreatePlaylist()
+  {
+    // Arrange
+    var userId = 1;
+    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
+    await _dbContext.Users.AddAsync(user);
+
+    var job = new CleanPlaylistJob
+    {
+      Id = 1,
+      UserId = userId,
+      SourcePlaylistId = "playlist-123",
+      SourcePlaylistName = "Test Playlist",
+      TargetPlaylistName = "Clean Test",
+      Status = JobStatus.Pending,
+      TotalTracks = 1
+    };
+    await _dbContext.CleanPlaylistJobs.AddAsync(job);
+    await _dbContext.SaveChangesAsync();
+
+    var explicitTrack = new SpotifyTrack { Id = "track1", Name = "Explicit Song", Explicit = true, Artists = new[] { new SpotifyArtist { Id = "artist1", Name = "Artist 1" } }, Album = new SpotifyAlbum { Id = "album1", Name = "Album 1" }, Uri = "spotify:track:track1" };
+    var newPlaylist = new SpotifyPlaylist { Id = "new-playlist-123", Name = "Clean Test", Tracks = new SpotifyPlaylistTracksRef { Total = 0, Href = "" }, Owner = new SpotifyUser { Id = "user123" } };
+
+    _spotifyServiceMock.Setup(s => s.GetPlaylistTracksAsync(userId, "playlist-123")).ReturnsAsync(new List<SpotifyTrack> { explicitTrack });
+    _spotifyServiceMock.Setup(s => s.FindCleanVersionAsync(userId, explicitTrack)).ReturnsAsync((SpotifyTrack?)null); // No clean version found
+    _spotifyServiceMock.Setup(s => s.CreatePlaylistAsync(userId, "Clean Test", "Cleaned by RadioWash.")).ReturnsAsync(newPlaylist);
+
+    // Act
+    await _sut.ProcessJobAsync(job.Id);
+
+    // Assert
+    var updatedJob = await _dbContext.CleanPlaylistJobs.FindAsync(job.Id);
+    Assert.NotNull(updatedJob);
+    Assert.Equal(JobStatus.Completed, updatedJob.Status);
+    Assert.Equal("new-playlist-123", updatedJob.TargetPlaylistId);
+    Assert.Equal(1, updatedJob.ProcessedTracks);
+    Assert.Equal(0, updatedJob.MatchedTracks);
+
+    // Verify playlist was created but AddTracks was not called (empty playlist)
+    _spotifyServiceMock.Verify(s => s.CreatePlaylistAsync(userId, "Clean Test", "Cleaned by RadioWash."), Times.Once);
+    _spotifyServiceMock.Verify(s => s.AddTracksToPlaylistAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<List<string>>()), Times.Never);
+  }
+
+
+  public void Dispose()
+  {
+    _dbContext.Dispose();
   }
 }

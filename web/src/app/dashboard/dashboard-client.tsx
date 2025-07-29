@@ -76,6 +76,7 @@ export function DashboardClient({
       createCleanPlaylistJob(me!.id, vars.sourcePlaylistId, vars.targetName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
       setSelectedPlaylistId('');
       setCustomName('');
     },
@@ -85,24 +86,64 @@ export function DashboardClient({
   useEffect(() => {
     if (!me) return;
 
-    const channel = supabase
-      .channel('db-jobs')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'CleanPlaylistJobs',
-          filter: `user_id=eq.${me.id}`,
-        },
-        (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    const setupRealtimeSubscription = async () => {
+      try {
+        // Verify authentication before setting up subscription
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.warn('No authenticated session for realtime subscription');
+          return;
         }
-      )
-      .subscribe();
+
+        const channel = supabase
+          .channel(`user_${me.id}_jobs`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'CleanPlaylistJobs',
+              filter: `UserId=eq.${me.id}`,
+            },
+            (payload) => {
+              console.log('Job realtime update:', payload);
+              
+              // Invalidate jobs query for all events
+              queryClient.invalidateQueries({ queryKey: ['jobs'] });
+              
+              // If a job completed, also refresh playlists since a new playlist may have been created
+              if (payload.new?.Status === 'Completed') {
+                queryClient.invalidateQueries({ queryKey: ['playlists'] });
+              }
+            }
+          )
+          .on('system', {}, (status) => {
+            console.log('Realtime system status:', status);
+          })
+          .subscribe((status, err) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('Successfully subscribed to job updates');
+            } else if (status === 'CHANNEL_ERROR') {
+              console.error('Realtime channel error:', err);
+            } else if (status === 'TIMED_OUT') {
+              console.error('Realtime subscription timed out');
+            }
+          });
+
+        return channel;
+      } catch (error) {
+        console.error('Failed to setup realtime subscription:', error);
+      }
+    };
+
+    const subscriptionPromise = setupRealtimeSubscription();
 
     return () => {
-      supabase.removeChannel(channel);
+      subscriptionPromise.then(channel => {
+        if (channel) {
+          supabase.removeChannel(channel);
+        }
+      });
     };
   }, [supabase, queryClient, me]);
 

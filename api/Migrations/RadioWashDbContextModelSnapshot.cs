@@ -38,7 +38,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DataProtectionKeys");
+                    b.ToTable("DataProtectionKeys", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
@@ -93,7 +93,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CleanPlaylistJobs");
+                    b.ToTable("CleanPlaylistJobs", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.TrackMapping", b =>
@@ -141,7 +141,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("JobId");
 
-                    b.ToTable("TrackMappings");
+                    b.ToTable("TrackMappings", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.User", b =>
@@ -178,7 +178,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("SupabaseId")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.UserMusicToken", b =>
@@ -235,7 +235,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("UserId", "Provider")
                         .IsUnique();
 
-                    b.ToTable("UserMusicTokens");
+                    b.ToTable("UserMusicTokens", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.UserProviderData", b =>
@@ -273,7 +273,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("Provider", "ProviderId")
                         .IsUnique();
 
-                    b.ToTable("UserProviderData");
+                    b.ToTable("UserProviderData", (string)null);
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
