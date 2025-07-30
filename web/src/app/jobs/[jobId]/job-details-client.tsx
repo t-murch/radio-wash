@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createClient } from '@/lib/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import { getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings'; // Assuming this component exists
 
@@ -34,9 +32,7 @@ export function JobDetailsClient({
   initialJob: Job;
   jobId: number;
 }) {
-  const queryClient = useQueryClient();
   const router = useRouter();
-  const supabase = createClient();
 
   // Use React Query to manage the job data, with initial data from the server
   const { data: job, isLoading } = useQuery<Job>({
@@ -46,33 +42,6 @@ export function JobDetailsClient({
     enabled: !!initialMe,
   });
 
-  // Set up Supabase Realtime subscription for this specific job
-  useEffect(() => {
-    if (!initialMe) return;
-
-    const channel = supabase
-      .channel(`job-details-${jobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'CleanPlaylistJobs',
-          filter: `id=eq.${jobId}`,
-        },
-        (payload) => {
-          // When an update comes in, invalidate the query to refetch the latest data
-          queryClient.invalidateQueries({
-            queryKey: ['job', initialMe.id, jobId],
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, jobId, queryClient, initialMe]);
 
   if (isLoading || !job) {
     return <div>Loading job details...</div>;

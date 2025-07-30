@@ -4,6 +4,7 @@ using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
+using RadioWash.Api.Services;
 
 namespace RadioWash.Api.Services.Implementations;
 
@@ -89,6 +90,8 @@ public class CleanPlaylistService : ICleanPlaylistService
         TargetPlaylistName = job.TargetPlaylistName,
         Status = job.Status,
         TotalTracks = job.TotalTracks,
+        CurrentBatch = job.CurrentBatch,
+        BatchSize = job.BatchSize,
         CreatedAt = job.CreatedAt,
         UpdatedAt = job.UpdatedAt
       };
@@ -102,6 +105,7 @@ public class CleanPlaylistService : ICleanPlaylistService
 
   /// <summary>
   /// The background process that finds clean versions of tracks and creates a new playlist.
+  /// Uses smart progress reporting with percentage-based batching for optimal progress tracking.
   /// This method is intended to be called by Hangfire and should not be called directly from controllers.
   /// </summary>
   /// <param name="jobId">The ID of the job to process.</param>
@@ -115,40 +119,48 @@ public class CleanPlaylistService : ICleanPlaylistService
       return;
     }
 
-    // Start with updating job status to Processing
-    using var initialTransaction = await _dbContext.Database.BeginTransactionAsync();
-    try
-    {
-      job.Status = JobStatus.Processing;
-      job.UpdatedAt = DateTime.UtcNow;
-      await _dbContext.SaveChangesAsync(); // This update notifies the client via Supabase Realtime
-      await initialTransaction.CommitAsync();
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(ex, "Failed to update job {JobId} status to Processing", jobId);
-      await initialTransaction.RollbackAsync();
-      return;
-    }
-
     try
     {
       var user = await _dbContext.Users.FindAsync(job.UserId);
       if (user == null) throw new InvalidOperationException($"User for job {jobId} not found.");
 
+      // Fetch all tracks and initialize smart progress reporter
       var allTracks = await _spotifyService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId);
-      job.TotalTracks = allTracks.Count();
-      var cleanTrackUris = new List<string>();
+      var totalTracks = allTracks.Count();
+      var progressReporter = new SmartProgressReporter(totalTracks);
 
-      // Process tracks in batches with transaction boundaries for atomic progress saves
+      // Update job with total tracks and batch information
+      using var initTransaction = await _dbContext.Database.BeginTransactionAsync();
+      try
+      {
+        job.Status = JobStatus.Processing;
+        job.TotalTracks = totalTracks;
+        job.BatchSize = progressReporter.BatchSize;
+        job.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+        await initTransaction.CommitAsync();
+
+        // Initialize progress tracking
+        var initialUpdate = progressReporter.CreateUpdate(0);
+        job.CurrentBatch = initialUpdate.CurrentBatch;
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Failed to initialize job {JobId} for processing", jobId);
+        await initTransaction.RollbackAsync();
+        return;
+      }
+
+      var cleanTrackUris = new List<string>();
       var trackBatch = new List<TrackMapping>();
-      const int batchSize = 10;
+      var tracksProcessed = 0;
 
       foreach (var track in allTracks)
       {
-        job.ProcessedTracks++;
-        var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
+        tracksProcessed++;
 
+        // Process individual track
+        var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
         var mapping = new TrackMapping
         {
           JobId = jobId,
@@ -170,31 +182,40 @@ public class CleanPlaylistService : ICleanPlaylistService
           cleanTrackUris.Add(cleanVersion.Uri);
         }
 
-        // Periodically save progress in atomic transactions
-        if (job.ProcessedTracks % batchSize == 0 || job.ProcessedTracks == job.TotalTracks)
+        // Check if we should report progress
+        if (progressReporter.ShouldReportProgress(tracksProcessed))
         {
-          using var batchTransaction = await _dbContext.Database.BeginTransactionAsync();
-          try
+          var update = progressReporter.CreateUpdate(tracksProcessed, track.Name);
+
+          // Persist to database every 10% (or at completion)
+          if (update.Progress % 10 == 0 || tracksProcessed == totalTracks)
           {
-            // Add all mappings in the current batch
-            await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
-            
-            // Update job progress
-            job.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
-            
-            await batchTransaction.CommitAsync();
-            
-            _logger.LogDebug("Saved batch of {BatchSize} track mappings for job {JobId}. Progress: {ProcessedTracks}/{TotalTracks}", 
-                           trackBatch.Count, jobId, job.ProcessedTracks, job.TotalTracks);
-            
-            trackBatch.Clear(); // Clear the batch after successful commit and logging
-          }
-          catch (Exception ex)
-          {
-            _logger.LogError(ex, "Failed to save batch for job {JobId} at track {ProcessedTracks}", jobId, job.ProcessedTracks);
-            await batchTransaction.RollbackAsync();
-            throw; // Re-throw to trigger the outer catch block
+            using var batchTransaction = await _dbContext.Database.BeginTransactionAsync();
+            try
+            {
+              // Save track mappings batch
+              if (trackBatch.Any())
+              {
+                await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
+                trackBatch.Clear();
+              }
+
+              // Update job progress
+              job.ProcessedTracks = tracksProcessed;
+              job.CurrentBatch = update.CurrentBatch;
+              job.UpdatedAt = DateTime.UtcNow;
+              await _dbContext.SaveChangesAsync();
+              await batchTransaction.CommitAsync();
+
+              _logger.LogDebug("Progress saved for job {JobId}: {ProcessedTracks}/{TotalTracks} ({Progress}%)",
+                             jobId, tracksProcessed, totalTracks, update.Progress);
+            }
+            catch (Exception ex)
+            {
+              _logger.LogError(ex, "Failed to save progress for job {JobId} at track {ProcessedTracks}", jobId, tracksProcessed);
+              await batchTransaction.RollbackAsync();
+              throw;
+            }
           }
         }
       }
@@ -203,28 +224,38 @@ public class CleanPlaylistService : ICleanPlaylistService
       using var completionTransaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
+        // Save any remaining track mappings
+        if (trackBatch.Any())
+        {
+          await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
+        }
+
+        // Create new playlist
         var newPlaylist = await _spotifyService.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, "Cleaned by RadioWash.");
         job.TargetPlaylistId = newPlaylist.Id;
 
+        // Add clean tracks to playlist
         if (cleanTrackUris.Any())
         {
           await _spotifyService.AddTracksToPlaylistAsync(user.Id, newPlaylist.Id, cleanTrackUris);
         }
 
+        // Complete the job
         job.Status = JobStatus.Completed;
+        job.ProcessedTracks = totalTracks;
+        job.CurrentBatch = "Completed";
         job.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync(); // Final update notifies client of completion
-        
+        await _dbContext.SaveChangesAsync();
         await completionTransaction.CommitAsync();
-        
-        _logger.LogInformation("Successfully completed job {JobId}. Processed {ProcessedTracks} tracks, matched {MatchedTracks} clean versions", 
+
+        _logger.LogInformation("Successfully completed job {JobId}. Processed {ProcessedTracks} tracks, matched {MatchedTracks} clean versions",
                              jobId, job.ProcessedTracks, job.MatchedTracks);
       }
       catch (Exception ex)
       {
         _logger.LogError(ex, "Failed to complete job {JobId} during playlist creation", jobId);
         await completionTransaction.RollbackAsync();
-        throw; // Re-throw to trigger the outer catch block
+        throw;
       }
     }
     catch (Exception ex)
@@ -234,22 +265,20 @@ public class CleanPlaylistService : ICleanPlaylistService
       try
       {
         _logger.LogError(ex, "Error processing job {JobId}", jobId);
-        
+
         // Reload job to get latest state in case it was modified in a failed transaction
         await _dbContext.Entry(job).ReloadAsync();
-        
+
         job.Status = JobStatus.Failed;
         job.ErrorMessage = ex.Message;
         job.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync(); // Notifies client of failure
-        
+        await _dbContext.SaveChangesAsync();
         await errorTransaction.CommitAsync();
       }
       catch (Exception errorEx)
       {
         _logger.LogError(errorEx, "Failed to update job {JobId} status to Failed", jobId);
         await errorTransaction.RollbackAsync();
-        // At this point, the job status might be inconsistent, but the original error is more important
         throw ex; // Re-throw the original exception
       }
     }

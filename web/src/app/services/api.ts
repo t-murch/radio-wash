@@ -31,6 +31,8 @@ export interface Job {
   totalTracks: number;
   processedTracks: number;
   matchedTracks: number;
+  currentBatch?: string;
+  batchSize?: number;
   createdAt: string;
   updatedAt: string;
 }

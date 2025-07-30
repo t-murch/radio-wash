@@ -15,12 +15,6 @@ vi.mock('@/services/api', () => ({
 // Mock the Supabase client
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(() => ({
-    channel: vi.fn(() => ({
-      on: vi.fn(() => ({
-        subscribe: vi.fn()
-      }))
-    })),
-    removeChannel: vi.fn(),
     auth: {
       signOut: vi.fn(() => Promise.resolve())
     }

@@ -105,6 +105,23 @@ builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
   });
 });
 
+// Supabase Main Client
+builder.Services.AddSingleton<Supabase.Client>(provider =>
+{
+  var config = provider.GetRequiredService<IConfiguration>();
+  var supabaseUrl = config["Supabase:Url"];
+  var supabaseKey = config["Supabase:ServiceRoleKey"];
+  
+  var options = new Supabase.SupabaseOptions
+  {
+    AutoRefreshToken = true
+  };
+  
+  return new Supabase.Client(supabaseUrl ?? throw new InvalidOperationException("Supabase URL not configured"), 
+                            supabaseKey ?? throw new InvalidOperationException("Supabase key not configured"), 
+                            options);
+});
+
 // Hangfire (skip in testing environment)
 if (!builder.Environment.IsEnvironment("Testing"))
 {

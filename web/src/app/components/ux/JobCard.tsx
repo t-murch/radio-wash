@@ -2,6 +2,7 @@ import { Job } from '@/services/api';
 import Link from 'next/link';
 
 export function JobCard({ job }: { job: Job }) {
+
   const getStatusStyles = () => {
     switch (job.status) {
       case 'Completed':
@@ -14,8 +15,16 @@ export function JobCard({ job }: { job: Job }) {
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
-  const progress =
-    job.totalTracks > 0 ? (job.processedTracks / job.totalTracks) * 100 : 0;
+
+  // Calculate progress from job data
+  const displayProgress = job.status === 'Completed' 
+    ? 100 
+    : job.totalTracks > 0 
+      ? Math.round((job.processedTracks / job.totalTracks) * 100)
+      : 0;
+  
+  const displayProcessedTracks = job.processedTracks;
+  const displayTotalTracks = job.totalTracks;
   return (
     <Link
       href={`/jobs/${job.id}`}
@@ -42,19 +51,27 @@ export function JobCard({ job }: { job: Job }) {
           {job.status}
         </span>
       </div>
-      {/* {job.status === 'Processing' && ( */}
-      {/*   <div className="mt-2"> */}
-      {/*     <div className="w-full bg-gray-200 rounded-full h-2"> */}
-      {/*       <div */}
-      {/*         className="bg-blue-500 h-2 rounded-full" */}
-      {/*         style={{ width: `${progress}%` }} */}
-      {/*       ></div> */}
-      {/*     </div> */}
-      {/*     <p className="text-xs text-right text-gray-500 mt-1"> */}
-      {/*       {job.processedTracks} of {job.totalTracks} */}
-      {/*     </p> */}
-      {/*   </div> */}
-      {/* )} */}
+      {job.status === 'Processing' && (
+        <div className="mt-3 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600 truncate">
+              {job.currentBatch || 'Processing...'}
+            </span>
+            <span className="text-gray-800 font-medium">{displayProgress}%</span>
+          </div>
+          
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${displayProgress}%` }}
+            ></div>
+          </div>
+          
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>{displayProcessedTracks} of {displayTotalTracks} tracks</span>
+          </div>
+        </div>
+      )}
       <p className="text-xs text-gray-400 mt-2 text-right">
         Updated: {new Date(job.updatedAt).toLocaleString()}
       </p>
