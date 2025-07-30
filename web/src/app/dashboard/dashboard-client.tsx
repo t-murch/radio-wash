@@ -52,7 +52,7 @@ export function DashboardClient({
     queryKey: ['playlists'],
     queryFn: getUserPlaylists,
     enabled: !!me,
-    initialData: initialPlaylists,
+    placeholderData: initialPlaylists,
   });
 
   // Handle the response structure that includes error and playlists fields
