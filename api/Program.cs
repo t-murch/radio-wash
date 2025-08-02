@@ -11,6 +11,7 @@ using RadioWash.Api.Configuration;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
+using RadioWash.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +33,10 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
+builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
+
+// SignalR
+builder.Services.AddSignalR();
 
 // Database
 builder.Services.AddDbContext<RadioWashDbContext>(options =>
@@ -77,12 +82,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
   {
     OnMessageReceived = context =>
     {
-      // Read token from Authorization header or hash fragment for auth callback
+      // For SignalR connections, read token from query string (WebSocket/SSE cannot use headers)
+      var accessToken = context.Request.Query["access_token"];
+      var path = context.HttpContext.Request.Path;
+      
+      if (!string.IsNullOrEmpty(accessToken) && 
+          path.StartsWithSegments("/hubs"))
+      {
+        context.Token = accessToken;
+        return Task.CompletedTask;
+      }
+      
+      // For regular HTTP requests, read token from Authorization header
       var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
       if (authHeader?.StartsWith("Bearer ") == true)
       {
         context.Token = authHeader.Substring("Bearer ".Length).Trim();
       }
+      
       return Task.CompletedTask;
     }
   };
@@ -125,12 +142,21 @@ builder.Services.AddSingleton<Supabase.Client>(provider =>
 // Hangfire (skip in testing environment)
 if (!builder.Environment.IsEnvironment("Testing"))
 {
+  var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+  Console.WriteLine($"Configuring Hangfire with connection string: {connectionString?.Substring(0, Math.Min(50, connectionString?.Length ?? 50))}...");
+  
   builder.Services.AddHangfire(config => config
       .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
       .UseSimpleAssemblyNameTypeSerializer()
       .UseRecommendedSerializerSettings()
-      .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+      .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(connectionString)));
   builder.Services.AddHangfireServer();
+  
+  Console.WriteLine("Hangfire server configured and added to services");
+}
+else
+{
+  Console.WriteLine("Skipping Hangfire configuration - Testing environment detected");
 }
 
 builder.Services.AddControllers();
@@ -217,6 +243,12 @@ app.UseAuthentication();
 app.UseMiddleware<RadioWash.Api.Middleware.TokenRefreshMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PlaylistProgressHub>("/hubs/playlist-progress", options =>
+{
+  options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.ServerSentEvents | 
+                      Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets | 
+                      Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
+});
 
 // Only add Hangfire dashboard in non-testing environments
 if (!app.Environment.IsEnvironment("Testing"))

@@ -8,6 +8,8 @@ using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Models.Spotify;
 using Hangfire;
 using Microsoft.Extensions.Logging;
+using Microsoft.Data.Sqlite;
+using RadioWash.Api.Test.Helpers;
 
 namespace RadioWash.Api.Test.UnitTests;
 
@@ -15,21 +17,20 @@ public class CleanPlaylistServiceTests : IDisposable
 {
   private readonly Mock<ISpotifyService> _spotifyServiceMock;
   private readonly Mock<IBackgroundJobClient> _backgroundJobClientMock;
+  private readonly Mock<IProgressBroadcastService> _progressBroadcastServiceMock;
   private readonly RadioWashDbContext _dbContext;
+  private readonly SqliteConnection _connection;
   private readonly CleanPlaylistService _sut; // System Under Test
 
   public CleanPlaylistServiceTests()
   {
-    // Setup in-memory database
-    var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-        .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString()) // Unique DB for each test run
-        .ConfigureWarnings(w => w.Ignore(40300))
-        .Options;
-    _dbContext = new RadioWashDbContext(options);
+    // Setup SQLite in-memory database (supports transactions)
+    (_dbContext, _connection) = TestDbContextFactory.CreateInMemoryContext();
 
     // Setup mocks
     _spotifyServiceMock = new Mock<ISpotifyService>();
     _backgroundJobClientMock = new Mock<IBackgroundJobClient>();
+    _progressBroadcastServiceMock = new Mock<IProgressBroadcastService>();
     var loggerMock = new Mock<ILogger<CleanPlaylistService>>();
 
     // Instantiate the service with mocks
@@ -37,7 +38,8 @@ public class CleanPlaylistServiceTests : IDisposable
         _dbContext,
         _spotifyServiceMock.Object,
         loggerMock.Object,
-        _backgroundJobClientMock.Object
+        _backgroundJobClientMock.Object,
+        _progressBroadcastServiceMock.Object
     );
   }
 
@@ -82,9 +84,9 @@ public class CleanPlaylistServiceTests : IDisposable
     Assert.Equal(userId, jobInDb.UserId);
     Assert.Equal(playlistId, jobInDb.SourcePlaylistId);
 
-    // 3. Verify the background job was enqueued
+    // 3. Verify the background job was enqueued (using the base Create method since Enqueue is an extension)
     _backgroundJobClientMock.Verify(
-        client => client.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(jobInDb.Id)),
+        client => client.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()),
         Times.Once
     );
   }
@@ -157,7 +159,7 @@ public class CleanPlaylistServiceTests : IDisposable
     // Arrange
     var nonExistentJobId = 999;
     var loggerMock = new Mock<ILogger<CleanPlaylistService>>();
-    var service = new CleanPlaylistService(_dbContext, _spotifyServiceMock.Object, loggerMock.Object, _backgroundJobClientMock.Object);
+    var service = new CleanPlaylistService(_dbContext, _spotifyServiceMock.Object, loggerMock.Object, _backgroundJobClientMock.Object, _progressBroadcastServiceMock.Object);
 
     // Act
     await service.ProcessJobAsync(nonExistentJobId);
@@ -176,19 +178,29 @@ public class CleanPlaylistServiceTests : IDisposable
   [Fact]
   public async Task ProcessJobAsync_WhenUserNotFound_ShouldFailJob()
   {
-    // Arrange
+    // Arrange - Disable FK constraints temporarily
+    await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+    
     var job = new CleanPlaylistJob
     {
       Id = 1,
       UserId = 999, // Non-existent user
       SourcePlaylistId = "playlist-123",
-      SourcePlaylistName = "Test Playlist",
+      SourcePlaylistName = "Test Playlist", 
       TargetPlaylistName = "Clean Test",
       Status = JobStatus.Pending,
-      TotalTracks = 10
+      TotalTracks = 10,
+      ProcessedTracks = 0,
+      MatchedTracks = 0,
+      CreatedAt = DateTime.UtcNow,
+      UpdatedAt = DateTime.UtcNow
     };
+    
     await _dbContext.CleanPlaylistJobs.AddAsync(job);
     await _dbContext.SaveChangesAsync();
+    
+    // Re-enable FK constraints
+    await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON");
 
     // Act
     await _sut.ProcessJobAsync(job.Id);
@@ -306,5 +318,6 @@ public class CleanPlaylistServiceTests : IDisposable
   public void Dispose()
   {
     _dbContext.Dispose();
+    _connection.Dispose();
   }
 }

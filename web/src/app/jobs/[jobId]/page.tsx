@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { getJobDetails, getMe } from '@/services/api';
+import { getJobDetailsServer, getMeServer } from '@/services/api';
 import { redirect } from 'next/navigation';
 import { JobDetailsClient } from './job-details-client';
 
@@ -29,8 +29,8 @@ export default async function JobDetailsPage({ params }: JobPageProps) {
   // Fetch initial data on the server in parallel.
   // The user ID is derived from the JWT on the backend, so we pass a placeholder.
   const [me, jobDetails] = await Promise.all([
-    getMe(),
-    getJobDetails(0, jobId),
+    getMeServer(),
+    getJobDetailsServer(0, jobId),
   ]);
 
   // If the job doesn't exist or doesn't belong to the user, the API will handle it.

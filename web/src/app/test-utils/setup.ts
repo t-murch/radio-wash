@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { vi, beforeEach } from 'vitest';
 
 // Global mocks
 global.fetch = vi.fn();

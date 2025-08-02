@@ -41,7 +41,7 @@ public class SmartProgressReporter
             throw new ArgumentOutOfRangeException(nameof(currentTrack), 
                 $"Current track must be between 0 and {_totalTracks}");
 
-        var currentBatch = currentTrack == 0 ? 0 : (currentTrack - 1) / _batchSize;
+        var currentBatch = currentTrack / _batchSize;
         var timeSinceUpdate = DateTime.UtcNow - _lastUpdate;
 
         // Report if: new batch reached OR max time exceeded OR at start/end
@@ -64,7 +64,7 @@ public class SmartProgressReporter
             throw new ArgumentOutOfRangeException(nameof(currentTrack), 
                 $"Current track must be between 0 and {_totalTracks}");
 
-        var currentBatch = currentTrack == 0 ? 0 : (currentTrack - 1) / _batchSize;
+        var currentBatch = currentTrack / _batchSize;
         var progressPercent = currentTrack == 0 ? 0 : (int)((currentTrack / (double)_totalTracks) * 100);
         var totalBatches = (_totalTracks - 1) / _batchSize + 1;
 

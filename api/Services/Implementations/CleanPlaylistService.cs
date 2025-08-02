@@ -19,17 +19,20 @@ public class CleanPlaylistService : ICleanPlaylistService
   private readonly ISpotifyService _spotifyService;
   private readonly ILogger<CleanPlaylistService> _logger;
   private readonly IBackgroundJobClient _backgroundJobClient;
+  private readonly IProgressBroadcastService _progressBroadcastService;
 
   public CleanPlaylistService(
       RadioWashDbContext dbContext,
       ISpotifyService spotifyService,
       ILogger<CleanPlaylistService> logger,
-      IBackgroundJobClient backgroundJobClient)
+      IBackgroundJobClient backgroundJobClient,
+      IProgressBroadcastService progressBroadcastService)
   {
     _dbContext = dbContext;
     _spotifyService = spotifyService;
     _logger = logger;
     _backgroundJobClient = backgroundJobClient;
+    _progressBroadcastService = progressBroadcastService;
   }
 
   /// <summary>
@@ -75,7 +78,8 @@ public class CleanPlaylistService : ICleanPlaylistService
       await _dbContext.SaveChangesAsync();
 
       // Enqueue the job for processing in the background with Hangfire.
-      _backgroundJobClient.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(job.Id));
+      var hangfireJobId = _backgroundJobClient.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(job.Id));
+      _logger.LogInformation("Enqueued Hangfire job {HangfireJobId} for processing CleanPlaylistJob {JobId}", hangfireJobId, job.Id);
 
       await transaction.CommitAsync();
 
@@ -112,6 +116,8 @@ public class CleanPlaylistService : ICleanPlaylistService
   [AutomaticRetry(Attempts = 2)]
   public async Task ProcessJobAsync(int jobId)
   {
+    _logger.LogInformation("Starting ProcessJobAsync for job {JobId}", jobId);
+    
     var job = await _dbContext.CleanPlaylistJobs.FindAsync(jobId);
     if (job == null)
     {
@@ -143,6 +149,19 @@ public class CleanPlaylistService : ICleanPlaylistService
         // Initialize progress tracking
         var initialUpdate = progressReporter.CreateUpdate(0);
         job.CurrentBatch = initialUpdate.CurrentBatch;
+        
+        // Broadcast initial progress update to connected clients
+        try
+        {
+          _logger.LogInformation("About to broadcast initial progress for job {JobId}", jobId);
+          await _progressBroadcastService.BroadcastProgressUpdate(jobId, initialUpdate);
+          _logger.LogInformation("Successfully broadcasted initial progress for job {JobId}", jobId);
+        }
+        catch (Exception broadcastEx)
+        {
+          _logger.LogWarning(broadcastEx, "Failed to broadcast initial progress for job {JobId}", jobId);
+          // Continue processing even if broadcast fails
+        }
       }
       catch (Exception ex)
       {
@@ -159,14 +178,23 @@ public class CleanPlaylistService : ICleanPlaylistService
       {
         tracksProcessed++;
 
+        // Skip tracks with null IDs (local files, unavailable tracks, etc.)
+        if (string.IsNullOrEmpty(track.Id))
+        {
+          _logger.LogWarning("Skipping track with null/empty ID: {TrackName} by {ArtistNames}", 
+                           track.Name ?? "Unknown", 
+                           track.Artists?.Length > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown");
+          continue;
+        }
+
         // Process individual track
         var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
         var mapping = new TrackMapping
         {
           JobId = jobId,
           SourceTrackId = track.Id,
-          SourceTrackName = track.Name,
-          SourceArtistName = string.Join(", ", track.Artists.Select(a => a.Name)),
+          SourceTrackName = track.Name ?? "Unknown",
+          SourceArtistName = track.Artists?.Length > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
           IsExplicit = track.Explicit,
           HasCleanMatch = cleanVersion != null,
           TargetTrackId = cleanVersion?.Id,
@@ -186,6 +214,20 @@ public class CleanPlaylistService : ICleanPlaylistService
         if (progressReporter.ShouldReportProgress(tracksProcessed))
         {
           var update = progressReporter.CreateUpdate(tracksProcessed, track.Name);
+
+          // Broadcast real-time progress update to connected clients
+          try
+          {
+            _logger.LogInformation("About to broadcast progress update for job {JobId} at track {ProcessedTracks}/{TotalTracks} ({Progress}%)", 
+                                 jobId, tracksProcessed, totalTracks, update.Progress);
+            await _progressBroadcastService.BroadcastProgressUpdate(jobId, update);
+            _logger.LogInformation("Successfully broadcasted progress update for job {JobId} at track {ProcessedTracks}", jobId, tracksProcessed);
+          }
+          catch (Exception broadcastEx)
+          {
+            _logger.LogWarning(broadcastEx, "Failed to broadcast progress update for job {JobId} at track {ProcessedTracks}", jobId, tracksProcessed);
+            // Continue processing even if broadcast fails
+          }
 
           // Persist to database every 10% (or at completion)
           if (update.Progress % 10 == 0 || tracksProcessed == totalTracks)
@@ -250,6 +292,17 @@ public class CleanPlaylistService : ICleanPlaylistService
 
         _logger.LogInformation("Successfully completed job {JobId}. Processed {ProcessedTracks} tracks, matched {MatchedTracks} clean versions",
                              jobId, job.ProcessedTracks, job.MatchedTracks);
+
+        // Broadcast job completion to connected clients
+        try
+        {
+          await _progressBroadcastService.BroadcastJobCompleted(jobId, 
+            $"Playlist created successfully! Processed {job.ProcessedTracks} tracks, matched {job.MatchedTracks} clean versions.");
+        }
+        catch (Exception broadcastEx)
+        {
+          _logger.LogWarning(broadcastEx, "Failed to broadcast job completion for job {JobId}", jobId);
+        }
       }
       catch (Exception ex)
       {
@@ -274,6 +327,16 @@ public class CleanPlaylistService : ICleanPlaylistService
         job.UpdatedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync();
         await errorTransaction.CommitAsync();
+
+        // Broadcast job failure to connected clients
+        try
+        {
+          await _progressBroadcastService.BroadcastJobFailed(jobId, ex.Message);
+        }
+        catch (Exception broadcastEx)
+        {
+          _logger.LogWarning(broadcastEx, "Failed to broadcast job failure for job {JobId}", jobId);
+        }
       }
       catch (Exception errorEx)
       {

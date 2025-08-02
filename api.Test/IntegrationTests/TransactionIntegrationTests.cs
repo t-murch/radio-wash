@@ -9,61 +9,68 @@ using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using Moq;
 using Hangfire;
+using Testcontainers.PostgreSql;
 
 namespace RadioWash.Api.Test.IntegrationTests;
 
 /// <summary>
 /// Integration tests specifically for transaction behavior.
-/// These tests use a real PostgreSQL database to verify transaction rollback behavior.
-/// NOTE: Requires PostgreSQL test database - can be skipped if not available.
+/// These tests use TestContainers with PostgreSQL to verify transaction rollback behavior.
 /// </summary>
-public class TransactionIntegrationTests : IDisposable
+public class TransactionIntegrationTests : IAsyncLifetime
 {
-    private readonly RadioWashDbContext _dbContext;
+    private readonly PostgreSqlContainer _postgreSqlContainer;
+    private RadioWashDbContext _dbContext = null!;
     private readonly Mock<ISpotifyService> _spotifyServiceMock;
     private readonly Mock<IBackgroundJobClient> _backgroundJobClientMock;
+    private readonly Mock<IProgressBroadcastService> _progressBroadcastServiceMock;
     private readonly Mock<ILogger<CleanPlaylistService>> _loggerMock;
-    private readonly CleanPlaylistService _sut;
+    private CleanPlaylistService _sut = null!;
 
     public TransactionIntegrationTests()
     {
-        // Use PostgreSQL for real transaction testing
-        // Skip these tests if PostgreSQL is not available
-        var connectionString = Environment.GetEnvironmentVariable("TEST_DATABASE_CONNECTION_STRING") 
-            ?? "Host=localhost;Database=radiowash_test;Username=postgres;Password=postgres";
-
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseNpgsql(connectionString)
-            .Options;
-
-        _dbContext = new RadioWashDbContext(options);
-        
-        // Ensure database is created and clean
-        try
-        {
-            _dbContext.Database.EnsureDeleted();
-            _dbContext.Database.EnsureCreated();
-        }
-        catch (Exception ex)
-        {
-            // Skip tests if database is not available
-            throw new SkipException($"PostgreSQL test database not available: {ex.Message}");
-        }
+        _postgreSqlContainer = new PostgreSqlBuilder()
+            .WithImage("postgres:15-alpine")
+            .WithDatabase("radiowash_test")
+            .WithUsername("postgres")
+            .WithPassword("postgres")
+            .WithCleanUp(true)
+            .Build();
 
         // Setup mocks
         _spotifyServiceMock = new Mock<ISpotifyService>();
         _backgroundJobClientMock = new Mock<IBackgroundJobClient>();
+        _progressBroadcastServiceMock = new Mock<IProgressBroadcastService>();
         _loggerMock = new Mock<ILogger<CleanPlaylistService>>();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _postgreSqlContainer.StartAsync();
+
+        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
+            .UseNpgsql(_postgreSqlContainer.GetConnectionString())
+            .Options;
+
+        _dbContext = new RadioWashDbContext(options);
+        await _dbContext.Database.EnsureCreatedAsync();
 
         _sut = new CleanPlaylistService(
             _dbContext,
             _spotifyServiceMock.Object,
             _loggerMock.Object,
-            _backgroundJobClientMock.Object
+            _backgroundJobClientMock.Object,
+            _progressBroadcastServiceMock.Object
         );
 
         // Seed test data
-        SeedTestData().Wait();
+        await SeedTestData();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _dbContext.DisposeAsync();
+        await _postgreSqlContainer.DisposeAsync();
     }
 
     private async Task SeedTestData()
@@ -101,7 +108,7 @@ public class TransactionIntegrationTests : IDisposable
 
         // Assert - Background job should not be enqueued
         _backgroundJobClientMock.Verify(
-            client => client.Enqueue<ICleanPlaylistService>(It.IsAny<System.Linq.Expressions.Expression<System.Action<ICleanPlaylistService>>>()), 
+            client => client.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), 
             Times.Never);
     }
 
@@ -219,10 +226,10 @@ public class TransactionIntegrationTests : IDisposable
         Assert.Equal(JobStatus.Failed, updatedJob.Status);
         Assert.Contains("Simulated API failure", updatedJob.ErrorMessage!);
 
-        // Assert - Only the first batch should be saved (10 mappings)
-        // The second batch should be rolled back due to transaction failure
+        // Assert - Tracks before the failure should be saved
+        // The batch containing the failure should be rolled back due to transaction failure
         var mappings = await _dbContext.TrackMappings.Where(tm => tm.JobId == job.Id).ToListAsync();
-        Assert.Equal(10, mappings.Count); // Only first batch should be committed
+        Assert.Equal(9, mappings.Count); // Only tracks before the failure should be committed
     }
 
     [Fact]
@@ -299,23 +306,4 @@ public class TransactionIntegrationTests : IDisposable
         Assert.Equal(25, mappings.Count);
         Assert.True(mappings.All(m => m.HasCleanMatch));
     }
-
-    public void Dispose()
-    {
-        try
-        {
-            _dbContext.Database.EnsureDeleted();
-        }
-        catch
-        {
-            // Ignore cleanup errors
-        }
-        _dbContext.Dispose();
-    }
-}
-
-// Custom exception for skipping tests when database is not available
-public class SkipException : Exception
-{
-    public SkipException(string message) : base(message) { }
 }

@@ -150,6 +150,14 @@ export const getUserPlaylistsServer = (): Promise<
 export const getUserJobsServer = (): Promise<Job[]> =>
   fetchWithSupabaseAuthServer(`${API_BASE_URL}/cleanplaylist/user/me/jobs`);
 
+export const getJobDetailsServer = (
+  userId: number,
+  jobId: number
+): Promise<Job> => {
+  return fetchWithSupabaseAuthServer(
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`
+  );
+};
 // --- Client-side API Functions ---
 export const getMe = async (): Promise<User> => {
   const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
