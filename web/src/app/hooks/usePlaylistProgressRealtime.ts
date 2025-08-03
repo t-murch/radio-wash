@@ -1,0 +1,318 @@
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import * as signalR from '@microsoft/signalr';
+import { HubConnectionState } from '@microsoft/signalr';
+import { Job } from '../services/api';
+
+interface ProgressUpdate {
+  progress: number;
+  processedTracks: number;
+  totalTracks: number;
+  currentBatch: string;
+  message: string;
+}
+
+interface ProgressState extends ProgressUpdate {
+  status:
+    | 'idle'
+    | 'connecting'
+    | 'connected'
+    | 'processing'
+    | 'completed'
+    | 'failed';
+  estimatedTimeRemaining?: string;
+  error?: string;
+}
+
+interface UsePlaylistProgressRealtimeReturn {
+  progressState: ProgressState;
+  isConnected: boolean;
+  connectionError?: string;
+  reconnect: () => void;
+}
+
+/**
+ * React hook for managing real-time playlist creation progress updates via SignalR
+ *
+ * @param jobId - The job ID to subscribe to progress updates for (null to disable)
+ * @param authToken - JWT token for authentication
+ * @returns Progress state and connection utilities
+ */
+export function usePlaylistProgressRealtime(
+  jobId: string | null,
+  authToken?: string
+): UsePlaylistProgressRealtimeReturn {
+  const queryClient = useQueryClient();
+  const [progressState, setProgressState] = useState<ProgressState>({
+    status: 'idle',
+    progress: 0,
+    processedTracks: 0,
+    totalTracks: 0,
+    currentBatch: '',
+    message: 'Waiting to start...',
+  });
+
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string>();
+  const connectionRef = useRef<signalR.HubConnection | null>(null);
+  const startTimeRef = useRef<number>(Date.now());
+
+  const formatDuration = useCallback((milliseconds: number): string => {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+    return `${remainingSeconds}s`;
+  }, []);
+
+  const calculateEstimatedTime = useCallback(
+    (progress: number): string | undefined => {
+      if (progress <= 0 || progress >= 100) return undefined;
+
+      const elapsed = Date.now() - startTimeRef.current;
+      const estimated = (elapsed / progress) * (100 - progress);
+      return formatDuration(estimated);
+    },
+    [formatDuration]
+  );
+
+  const reconnect = useCallback(async () => {
+    if (connectionRef.current) {
+      try {
+        await connectionRef.current.start();
+      } catch (error) {
+        console.error('Failed to reconnect:', error);
+        setConnectionError(
+          error instanceof Error ? error.message : 'Connection failed'
+        );
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!jobId || !authToken) {
+      // Clean up existing connection if jobId becomes null
+      if (connectionRef.current) {
+        connectionRef.current.stop();
+        connectionRef.current = null;
+      }
+      setIsConnected(false);
+      setProgressState((prev) => ({ ...prev, status: 'idle' }));
+      return;
+    }
+
+    console.log('[SignalR] Connecting to job:', jobId);
+    startTimeRef.current = Date.now();
+    setConnectionError(undefined);
+
+    // Build SignalR connection
+    const hubUrl = `${process.env.NEXT_PUBLIC_API_URL}/hubs/playlist-progress`;
+    console.log('[SignalR Debug] Connecting to hub URL:', hubUrl);
+    console.log(
+      '[SignalR Debug] Using auth token:',
+      authToken?.substring(0, 20) + '...'
+    );
+    console.log('[SignalR Debug] Environment variables:', {
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    });
+
+    // Test if the hub endpoint is reachable
+    fetch(hubUrl.replace('/hubs/playlist-progress', '/api/healthcheck'))
+      .then((response) =>
+        console.log('[SignalR Debug] API reachability test:', response.status)
+      )
+      .catch((error) =>
+        console.log('[SignalR Debug] API reachability test failed:', error)
+      );
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl, {
+        accessTokenFactory: () => {
+          console.log('[SignalR] AccessTokenFactory called');
+          return authToken;
+        },
+        // Force SignalR to use only Server-Sent Events (SSE) transport
+        transport: signalR.HttpTransportType.ServerSentEvents
+      })
+      .withAutomaticReconnect([0, 2000, 10000, 30000])
+      .configureLogging(signalR.LogLevel.Information)
+      .build();
+
+    connectionRef.current = connection;
+
+    // Set up event handlers
+    connection.on('ProgressUpdate', (update: ProgressUpdate) => {
+      console.log('[SignalR Debug] ProgressUpdate received:', update);
+      const estimatedTimeRemaining = calculateEstimatedTime(update.progress);
+
+      setProgressState((prev) => ({
+        ...prev,
+        ...update,
+        status: update.progress >= 100 ? 'completed' : 'processing',
+        estimatedTimeRemaining,
+      }));
+    });
+
+    connection.on(
+      'JobCompleted',
+      (completedJobId: number, success: boolean, message?: string) => {
+        console.log('[SignalR Debug] JobCompleted received:', {
+          completedJobId,
+          success,
+          message,
+          currentJobId: jobId,
+        });
+        if (completedJobId.toString() === jobId) {
+          setProgressState((prev) => ({
+            ...prev,
+            status: 'completed',
+            progress: 100,
+            message: message || 'Job completed successfully',
+            estimatedTimeRemaining: undefined,
+          }));
+
+          // Update the job in React Query cache to reflect completion
+          queryClient.setQueryData(['jobs'], (oldJobs: Job[] | undefined) => {
+            if (!oldJobs) return oldJobs;
+            return oldJobs.map(job => 
+              job.id === completedJobId 
+                ? { 
+                    ...job, 
+                    status: 'Completed', 
+                    processedTracks: job.totalTracks,
+                    updatedAt: new Date().toISOString()
+                  }
+                : job
+            );
+          });
+
+          // Invalidate queries to ensure fresh data and show new playlist
+          queryClient.invalidateQueries({ queryKey: ['jobs'] });
+          queryClient.invalidateQueries({ queryKey: ['playlists'] });
+
+          // Close the connection
+          if (connectionRef.current) {
+            connectionRef.current.stop();
+            connectionRef.current = null;
+          }
+        }
+      }
+    );
+
+    connection.on('JobFailed', (failedJobId: number, error: string) => {
+      console.log('[SignalR Debug] JobFailed received:', {
+        failedJobId,
+        error,
+        currentJobId: jobId,
+      });
+      if (failedJobId.toString() === jobId) {
+        setProgressState((prev) => ({
+          ...prev,
+          status: 'failed',
+          error,
+          message: `Job failed: ${error}`,
+          estimatedTimeRemaining: undefined,
+        }));
+
+        // Update the job in React Query cache to reflect failure
+        queryClient.setQueryData(['jobs'], (oldJobs: Job[] | undefined) => {
+          if (!oldJobs) return oldJobs;
+          return oldJobs.map(job => 
+            job.id === failedJobId 
+              ? { 
+                  ...job, 
+                  status: 'Failed', 
+                  errorMessage: error,
+                  updatedAt: new Date().toISOString()
+                }
+              : job
+          );
+        });
+
+        // Invalidate jobs query to ensure fresh data
+        queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      }
+    });
+
+    // Connection state handlers
+    connection.onreconnecting((error) => {
+      console.log('[SignalR Debug] Connection reconnecting:', error);
+      setIsConnected(false);
+      setProgressState((prev) => ({ ...prev, status: 'connecting' }));
+    });
+
+    connection.onreconnected((connectionId) => {
+      console.log('[SignalR Debug] Connection reconnected:', connectionId);
+      setIsConnected(true);
+      setConnectionError(undefined);
+      setProgressState((prev) => ({ ...prev, status: 'connected' }));
+
+      // Rejoin the job group after reconnection
+      console.log(
+        '[SignalR Debug] Rejoining job group after reconnection:',
+        jobId
+      );
+      connection.invoke('JoinJobGroup', jobId).catch(console.error);
+    });
+
+    connection.onclose((error) => {
+      console.log('[SignalR Debug] Connection closed:', error);
+      setIsConnected(false);
+      if (error) {
+        setConnectionError(error.message);
+      }
+    });
+
+    // Start connection and join job group
+    const startConnection = async () => {
+      try {
+        console.log('[SignalR Debug] Starting connection...');
+        setProgressState((prev) => ({ ...prev, status: 'connecting' }));
+        await connection.start();
+        console.log('[SignalR Debug] Connection started successfully');
+        setIsConnected(true);
+        setProgressState((prev) => ({ ...prev, status: 'connected' }));
+
+        // Join the specific job group to receive updates
+        console.log('[SignalR Debug] Joining job group:', jobId);
+        await connection.invoke('JoinJobGroup', jobId);
+        console.log(
+          '[SignalR Debug] Successfully joined job group for job:',
+          jobId
+        );
+      } catch (error) {
+        console.error(
+          '[SignalR Debug] Failed to start SignalR connection:',
+          error
+        );
+        setConnectionError(
+          error instanceof Error ? error.message : 'Connection failed'
+        );
+        setIsConnected(false);
+      }
+    };
+
+    startConnection();
+
+    // Cleanup function
+    return () => {
+      console.log('[SignalR Debug] Cleaning up connection for job:', jobId);
+      if (connection && connection.state === HubConnectionState.Connected) {
+        connection.invoke('LeaveJobGroup', jobId).catch(console.error);
+      }
+      if (connection) {
+        connection.stop().catch(console.error);
+      }
+    };
+  }, [jobId, authToken, calculateEstimatedTime]);
+
+  return {
+    progressState,
+    isConnected,
+    connectionError,
+    reconnect,
+  };
+}
