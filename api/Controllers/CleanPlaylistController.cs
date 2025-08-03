@@ -8,20 +8,17 @@ using System.Security.Claims;
 
 namespace RadioWash.Api.Controllers;
 
-[ApiController]
 [Route("api/[controller]")]
-[Authorize]
-public class CleanPlaylistController : ControllerBase
+public class CleanPlaylistController : AuthenticatedControllerBase
 {
   private readonly ICleanPlaylistService _cleanPlaylistService;
   private readonly RadioWashDbContext _dbContext;
-  private readonly ILogger<CleanPlaylistController> _logger;
 
   public CleanPlaylistController(ICleanPlaylistService cleanPlaylistService, RadioWashDbContext dbContext, ILogger<CleanPlaylistController> logger)
+    : base(dbContext, logger)
   {
     _cleanPlaylistService = cleanPlaylistService;
     _dbContext = dbContext;
-    _logger = logger;
   }
 
   [HttpPost("user/{userId:int}/job")]
@@ -45,19 +42,15 @@ public class CleanPlaylistController : ControllerBase
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
+      Logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
       return StatusCode(500, "An internal error occurred.");
     }
   }
 
-  [HttpGet("user/{userId:int}/jobs")]
-  public async Task<IActionResult> GetUserJobs(int userId)
+  [HttpGet("user/me/jobs")]
+  public async Task<IActionResult> GetUserJobs()
   {
-    var authenticatedUserId = GetCurrentUserId();
-    if (authenticatedUserId != userId)
-    {
-      return Forbid();
-    }
+    var userId = GetCurrentUserId();
 
     var jobs = await _dbContext.CleanPlaylistJobs
         .Where(j => j.UserId == userId)
@@ -151,14 +144,4 @@ public class CleanPlaylistController : ControllerBase
     return Ok(mappings);
   }
 
-  private int GetCurrentUserId()
-  {
-    // This helper assumes your /api/auth/me endpoint returns a UserDto with the integer ID
-    // and the client stores it. A more robust way is to read it from the JWT claims if you add it there.
-    // For now, this relies on the client sending the correct ID.
-    // A more secure way is to query the DB for the user based on the SupabaseId claim.
-    var supabaseId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-    var user = _dbContext.Users.FirstOrDefault(u => u.SupabaseId == supabaseId);
-    return user?.Id ?? 0;
-  }
 }
