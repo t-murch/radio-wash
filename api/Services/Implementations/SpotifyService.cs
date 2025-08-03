@@ -54,8 +54,20 @@ public class SpotifyService : ISpotifyService
           var refreshed = await _musicTokenService.RefreshTokensAsync(userId, "spotify");
           if (refreshed)
           {
-            // Recreate request with new token
+            // Recreate request with new token (HttpRequestMessage can only be sent once)
             var newToken = await _musicTokenService.GetValidAccessTokenAsync(userId, "spotify");
+            var originalContent = request.Content;
+            var originalHeaders = request.Headers.Where(h => h.Key != "Authorization").ToList();
+            
+            request = new HttpRequestMessage(request.Method, request.RequestUri);
+            request.Content = originalContent;
+            
+            // Copy original headers except Authorization (will be set with new token)
+            foreach (var header in originalHeaders)
+            {
+              request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+            
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
             continue; // Retry with new token
           }
@@ -143,8 +155,10 @@ public class SpotifyService : ISpotifyService
 
       if (tracksResponse?.Items == null) throw new Exception("Failed to deserialize tracks response.");
 
-      // Filter out potential null tracks if the API ever returns them
-      tracks.AddRange(tracksResponse.Items.Where(i => i.Track != null).Select(i => i.Track!));
+      // Filter out potential null tracks and tracks with null/empty IDs (local files, unavailable tracks, etc.)
+      tracks.AddRange(tracksResponse.Items
+        .Where(i => i.Track != null && !string.IsNullOrEmpty(i.Track.Id))
+        .Select(i => i.Track!));
       url = tracksResponse.Next;
     }
     return tracks;
