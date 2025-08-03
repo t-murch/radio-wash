@@ -25,6 +25,8 @@ public class CleanPlaylistJob
   public int TotalTracks { get; set; }
   public int ProcessedTracks { get; set; }
   public int MatchedTracks { get; set; }
+  public string? CurrentBatch { get; set; }
+  public int? BatchSize { get; set; }
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
