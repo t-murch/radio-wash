@@ -52,7 +52,7 @@ export function DashboardClient({
     queryKey: ['playlists'],
     queryFn: getUserPlaylists,
     enabled: !!me,
-    initialData: initialPlaylists,
+    placeholderData: initialPlaylists,
   });
 
   // Handle the response structure that includes error and playlists fields
@@ -60,12 +60,18 @@ export function DashboardClient({
     ? playlistsResponse
     : playlistsResponse?.playlists || [];
 
-  const { data: jobs = [] } = useQuery<Job[]>({
-    queryKey: ['jobs', me?.id],
-    queryFn: () => getUserJobs(me!.id),
+  const { data: jobs = [], refetch: refetchJobs } = useQuery<Job[]>({
+    queryKey: ['jobs'],
+    queryFn: getUserJobs,
     enabled: !!me,
     initialData: initialJobs,
   });
+  
+  // Debug job list (only when there are processing jobs)
+  const processingJobs = jobs.filter(j => j.status === 'Processing');
+  if (processingJobs.length > 0) {
+    console.log('[Dashboard Debug] Processing jobs:', processingJobs.map(j => ({ id: j.id, status: j.status })));
+  }
 
   const openSpotifyPlaylist = (playlistId: string) => {
     window.open(`https://open.spotify.com/playlist/${playlistId}`, '_blank');
@@ -74,37 +80,20 @@ export function DashboardClient({
   const createJobMutation = useMutation({
     mutationFn: (vars: { sourcePlaylistId: string; targetName: string }) =>
       createCleanPlaylistJob(me!.id, vars.sourcePlaylistId, vars.targetName),
-    onSuccess: () => {
+    onSuccess: (newJob) => {
+      console.log('[Dashboard Debug] Job created:', { id: newJob.id, status: newJob.status });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
+      // Force immediate refetch
+      setTimeout(() => refetchJobs(), 500);
       setSelectedPlaylistId('');
       setCustomName('');
     },
+    onError: (error) => {
+      console.error('[Dashboard Debug] Job creation failed:', error);
+    }
   });
 
-  // Set up Supabase Realtime subscription for job updates
-  useEffect(() => {
-    if (!me) return;
-
-    const channel = supabase
-      .channel('db-jobs')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'CleanPlaylistJobs',
-          filter: `user_id=eq.${me.id}`,
-        },
-        (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['jobs', me.id] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, queryClient, me]);
 
   const handleCreatePlaylist = () => {
     const selected = playlists.find((p) => p.id === selectedPlaylistId);
