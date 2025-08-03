@@ -1,5 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
-import { getMe, getUserPlaylists } from '@/services/api';
+import {
+  getMeServer,
+  getUserPlaylistsServer,
+  getUserJobsServer,
+} from '@/services/api';
 import { redirect } from 'next/navigation';
 import { DashboardClient } from './dashboard-client';
 
@@ -16,10 +20,10 @@ export default async function DashboardPage() {
   }
 
   // Fetch initial data on the server
-  const [me, playlists] = await Promise.all([
-    getMe(),
-    getUserPlaylists(), // User ID is now derived from the JWT on the backend
-    // getUserJobs(0), // Still needs user ID parameter - will be updated later
+  const [me, playlists, jobs] = await Promise.all([
+    getMeServer(),
+    getUserPlaylistsServer(), // User ID is now derived from the JWT on the backend
+    getUserJobsServer(), // User ID is now derived from the JWT on the backend
   ]);
 
   return (
@@ -27,7 +31,7 @@ export default async function DashboardPage() {
       serverUser={user}
       initialMe={me}
       initialPlaylists={playlists}
-      initialJobs={[]}
+      initialJobs={jobs}
     />
   );
 }
