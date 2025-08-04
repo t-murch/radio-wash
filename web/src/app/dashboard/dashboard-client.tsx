@@ -66,12 +66,6 @@ export function DashboardClient({
     enabled: !!me,
     initialData: initialJobs,
   });
-  
-  // Debug job list (only when there are processing jobs)
-  const processingJobs = jobs.filter(j => j.status === 'Processing');
-  if (processingJobs.length > 0) {
-    console.log('[Dashboard Debug] Processing jobs:', processingJobs.map(j => ({ id: j.id, status: j.status })));
-  }
 
   const openSpotifyPlaylist = (playlistId: string) => {
     window.open(`https://open.spotify.com/playlist/${playlistId}`, '_blank');
@@ -81,7 +75,6 @@ export function DashboardClient({
     mutationFn: (vars: { sourcePlaylistId: string; targetName: string }) =>
       createCleanPlaylistJob(me!.id, vars.sourcePlaylistId, vars.targetName),
     onSuccess: (newJob) => {
-      console.log('[Dashboard Debug] Job created:', { id: newJob.id, status: newJob.status });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['playlists'] });
       // Force immediate refetch
@@ -91,9 +84,8 @@ export function DashboardClient({
     },
     onError: (error) => {
       console.error('[Dashboard Debug] Job creation failed:', error);
-    }
+    },
   });
-
 
   const handleCreatePlaylist = () => {
     const selected = playlists.find((p) => p.id === selectedPlaylistId);
