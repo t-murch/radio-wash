@@ -66,6 +66,8 @@ public class CleanPlaylistController : AuthenticatedControllerBase
           TotalTracks = job.TotalTracks,
           ProcessedTracks = job.ProcessedTracks,
           MatchedTracks = job.MatchedTracks,
+          CurrentBatch = job.CurrentBatch,
+          BatchSize = job.BatchSize,
           CreatedAt = job.CreatedAt,
           UpdatedAt = job.UpdatedAt
         })
@@ -96,6 +98,8 @@ public class CleanPlaylistController : AuthenticatedControllerBase
           TotalTracks = j.TotalTracks,
           ProcessedTracks = j.ProcessedTracks,
           MatchedTracks = j.MatchedTracks,
+          CurrentBatch = j.CurrentBatch,
+          BatchSize = j.BatchSize,
           ErrorMessage = j.ErrorMessage,
           CreatedAt = j.CreatedAt,
           UpdatedAt = j.UpdatedAt

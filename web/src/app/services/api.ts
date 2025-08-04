@@ -1,6 +1,6 @@
-// It's good practice to define your types in a separate file,
-
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createServerClient } from '@/lib/supabase/server';
+import { createClient as createClientClient } from '@/lib/supabase/client';
+import { logger } from './apiLogger';
 
 // e.g., 'types/api.ts', and import them here.
 export interface User {
@@ -30,6 +30,8 @@ export interface Job {
   totalTracks: number;
   processedTracks: number;
   matchedTracks: number;
+  currentBatch?: string;
+  batchSize?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,11 +50,12 @@ export interface TrackMapping {
 export const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
-const fetchWithSupabaseAuth = async (
+// Server-side API function
+export const fetchWithSupabaseAuthServer = async (
   url: string,
   options: RequestInit = {}
 ) => {
-  const supabase = await createClient();
+  const supabase = await createServerClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -60,11 +63,8 @@ const fetchWithSupabaseAuth = async (
   const token = session?.access_token;
 
   if (!token) {
-    // This will be caught by React Query's error handling
     throw new Error('User not authenticated');
   }
-
-  // console.log(`API Request: ${url}`);
 
   const response = await fetch(url, {
     ...options,
@@ -79,7 +79,8 @@ const fetchWithSupabaseAuth = async (
     const errorBody = await response.text();
     console.error(
       `API Error: ${response.status} ${response.statusText}`,
-      `Error Body: "${errorBody}"`
+      `Error Body: "${errorBody}"`,
+      `URL: "${url}"`
     );
     throw new Error(`Request failed: ${response.statusText}`);
   }
@@ -92,10 +93,73 @@ const fetchWithSupabaseAuth = async (
   return;
 };
 
-// --- API Functions ---
+// Client-side API function
+export const fetchWithSupabaseAuth = async (
+  url: string,
+  options: RequestInit = {}
+) => {
+  const supabase = createClientClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const token = session?.access_token;
+
+  if (!token) {
+    throw new Error('User not authenticated');
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(
+      `API Error: ${response.status} ${response.statusText}`,
+      `Error Body: "${errorBody}"`,
+      `URL: "${url}"`
+    );
+    throw new Error(`Request failed: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.indexOf('application/json') !== -1) {
+    const json = await response.json();
+    return json;
+  }
+  return;
+};
+
+// --- Server-side API Functions ---
+export const getMeServer = async (): Promise<User> => {
+  const result = await fetchWithSupabaseAuthServer(`${API_BASE_URL}/auth/me`);
+  return result;
+};
+
+export const getUserPlaylistsServer = (): Promise<
+  Playlist[] | { error: string; message: string; playlists: Playlist[] }
+> => fetchWithSupabaseAuthServer(`${API_BASE_URL}/playlist/user/me`);
+
+export const getUserJobsServer = (): Promise<Job[]> =>
+  fetchWithSupabaseAuthServer(`${API_BASE_URL}/cleanplaylist/user/me/jobs`);
+
+export const getJobDetailsServer = (
+  userId: number,
+  jobId: number
+): Promise<Job> => {
+  return fetchWithSupabaseAuthServer(
+    `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`
+  );
+};
+// --- Client-side API Functions ---
 export const getMe = async (): Promise<User> => {
   const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
-  console.log(`getMe result: ${JSON.stringify(result)}`);
   return result;
 };
 
@@ -105,12 +169,15 @@ export const getSpotifyConnectionStatus = async (): Promise<{
   lastRefreshAt?: string;
   canRefresh: boolean;
 }> => {
-  const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/spotify/status`);
+  const result = await fetchWithSupabaseAuth(
+    `${API_BASE_URL}/auth/spotify/status`
+  );
   return result;
 };
 
-export const getUserPlaylists = (): Promise<Playlist[] | { error: string; message: string; playlists: Playlist[] }> =>
-  fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me`);
+export const getUserPlaylists = (): Promise<
+  Playlist[] | { error: string; message: string; playlists: Playlist[] }
+> => fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me`);
 
 export const getJobTrackMappings = (
   userId: number,
@@ -120,8 +187,8 @@ export const getJobTrackMappings = (
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}/tracks`
   );
 
-export const getUserJobs = (userId: number): Promise<Job[]> =>
-  fetchWithSupabaseAuth(`${API_BASE_URL}/cleanplaylist/user/${userId}/jobs`);
+export const getUserJobs = (): Promise<Job[]> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/cleanplaylist/user/me/jobs`);
 
 export const createCleanPlaylistJob = (
   userId: number,
