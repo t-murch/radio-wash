@@ -76,6 +76,33 @@ public class CleanPlaylistController : AuthenticatedControllerBase
     return Ok(jobs);
   }
 
+  [HttpGet("user/me/job/{jobId:int}")]
+  public async Task<IActionResult> GetUserJob(int jobId)
+  {
+    var userId = GetCurrentUserId();
+    var job = await _dbContext.CleanPlaylistJobs
+        .Where(j => j.UserId == userId && j.Id == jobId)
+        .Select(job => new CleanPlaylistJobDto
+        {
+          Id = job.Id,
+          SourcePlaylistId = job.SourcePlaylistId,
+          SourcePlaylistName = job.SourcePlaylistName,
+          TargetPlaylistId = job.TargetPlaylistId,
+          TargetPlaylistName = job.TargetPlaylistName,
+          Status = job.Status,
+          TotalTracks = job.TotalTracks,
+          ProcessedTracks = job.ProcessedTracks,
+          MatchedTracks = job.MatchedTracks,
+          CurrentBatch = job.CurrentBatch,
+          BatchSize = job.BatchSize,
+          CreatedAt = job.CreatedAt,
+          UpdatedAt = job.UpdatedAt
+        })
+        .FirstOrDefaultAsync();
+
+    return job == null ? NotFound() : Ok(job);
+  }
+
   [HttpGet("user/{userId:int}/job/{jobId:int}")]
   public async Task<IActionResult> GetJob(int userId, int jobId)
   {
