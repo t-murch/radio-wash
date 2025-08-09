@@ -139,7 +139,7 @@ export function SharePlaylistButton({
   /* ? 'bg-green-50 border-green-200 scale-105' */
 }
 {
-  /* : 'hover:bg-gray-50' */
+  /* : 'hover:bg-background' */
 }
 {
   /* }`} */
@@ -232,7 +232,7 @@ export function SharePlaylistButton({
   /*       <p className="text-sm font-medium">Share "{playlistName}"</p> */
 }
 {
-  /*       <p className="text-xs text-gray-500">{trackCount} clean tracks</p> */
+  /*       <p className="text-xs text-muted-foreground">{trackCount} clean tracks</p> */
 }
 {
   /*     </div> */
@@ -364,7 +364,7 @@ export function SharePlaylistButton({
   /*     > */
 }
 {
-  /*       <Mail className="h-4 w-4 mr-2 text-gray-600" /> */
+  /*       <Mail className="h-4 w-4 mr-2 text-muted-foreground" /> */
 }
 {
   /*       <span>Share via Email</span> */

@@ -13,25 +13,25 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen">
       {/* Navigation */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-card shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="text-2xl font-bold text-green-600">RadioWash</div>
           <div className="space-x-6">
             {/* <a */}
             {/*   href="#how-it-works" */}
-            {/*   className="text-gray-600 hover:text-gray-900" */}
+            {/*   className="text-muted-foreground hover:text-foreground" */}
             {/* > */}
             {/*   How It Works */}
             {/* </a> */}
-            {/* <a href="#features" className="text-gray-600 hover:text-gray-900"> */}
+            {/* <a href="#features" className="text-muted-foreground hover:text-foreground"> */}
             {/*   Features */}
             {/* </a> */}
-            {/* <a href="#faq" className="text-gray-600 hover:text-gray-900"> */}
+            {/* <a href="#faq" className="text-muted-foreground hover:text-foreground"> */}
             {/*   FAQ */}
             {/* </a> */}
             <button
               onClick={handleGetStarted}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+              className="bg-green-600 text-primary-foreground px-4 py-2 rounded-lg hover:bg-green-700"
             >
               Get Started
             </button>
@@ -42,29 +42,29 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-green-50 to-blue-50 py-20">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <h1 className="text-5xl font-bold text-gray-900 mb-6">
+          <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Explicit Playlists into
             <span className="text-green-600"> Clean Versions</span>
           </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+          <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Automatically find clean alternatives for explicit tracks in your
             Spotify playlists. Perfect for family listening, work environments,
             or personal preference.
           </p>
           <button
             onClick={handleGetStarted}
-            className="bg-green-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-green-700 transition-colors"
+            className="bg-green-600 text-primary-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-green-700 transition-colors"
           >
             Connect with Spotify - It&apos;s Free
           </button>
-          <p className="text-sm text-gray-500 mt-4">
+          <p className="text-sm text-muted-foreground mt-4">
             No credit card required • 30 seconds to start
           </p>
         </div>
       </section>
 
       {/* Problem Section */}
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-card">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-8">
             The Problem with Explicit Content
@@ -73,21 +73,21 @@ export default function LandingPage() {
             <div className="p-6">
               <div className="text-4xl mb-4">👨‍👩‍👧‍👦</div>
               <h3 className="font-semibold mb-2">Family Listening</h3>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Your favorite songs aren&apos;t always appropriate for kids
               </p>
             </div>
             <div className="p-6">
               <div className="text-4xl mb-4">🏢</div>
               <h3 className="font-semibold mb-2">Work Environment</h3>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Professional settings require clean content
               </p>
             </div>
             <div className="p-6">
               <div className="text-4xl mb-4">🎧</div>
               <h3 className="font-semibold mb-2">Personal Preference</h3>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Sometimes you just want the music without the language
               </p>
             </div>
@@ -96,7 +96,7 @@ export default function LandingPage() {
       </section>
 
       {/* Before/After Screenshots */}
-      <section className="py-16 bg-gray-50">
+      <section className="py-16 bg-background">
         <div className="max-w-6xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">
             See the Magic in Action
@@ -107,13 +107,13 @@ export default function LandingPage() {
               <h3 className="text-xl font-semibold mb-4 text-red-600">
                 Before: Original Playlist
               </h3>
-              <div className="border rounded-lg overflow-hidden shadow-lg bg-white p-4">
+              <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2 bg-red-50 rounded">
                     <span>Track with explicit lyrics</span>
                     <span className="text-red-600 text-sm">🚫 Explicit</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-background rounded">
                     <span>Clean track</span>
                     <span className="text-green-600 text-sm">✓ Clean</span>
                   </div>
@@ -123,7 +123,7 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 ❌ 15 explicit tracks found
               </p>
             </div>
@@ -132,7 +132,7 @@ export default function LandingPage() {
               <h3 className="text-xl font-semibold mb-4 text-green-600">
                 After: Clean Version
               </h3>
-              <div className="border rounded-lg overflow-hidden shadow-lg bg-white p-4">
+              <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2 bg-green-50 rounded">
                     <span>Clean alternative found</span>
@@ -148,7 +148,7 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 ✅ 13 clean alternatives found (87% success rate)
               </p>
             </div>
@@ -157,7 +157,7 @@ export default function LandingPage() {
       </section>
 
       {/* How It Works */}
-      {/* <section id="how-it-works" className="py-16 bg-white"> */}
+      {/* <section id="how-it-works" className="py-16 bg-card"> */}
       {/*   <div className="max-w-6xl mx-auto px-4"> */}
       {/*     <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2> */}
       {/**/}
@@ -190,10 +190,10 @@ export default function LandingPage() {
       {/*             {item.step} */}
       {/*           </div> */}
       {/*           <h3 className="text-xl font-semibold mb-3">{item.title}</h3> */}
-      {/*           <div className="border rounded-lg overflow-hidden shadow-md mb-4 bg-gray-100 h-40 flex items-center justify-center"> */}
+      {/*           <div className="border rounded-lg overflow-hidden shadow-md mb-4 bg-muted h-40 flex items-center justify-center"> */}
       {/*             <Image src={item.url} alt={''} width={352} height={160} /> */}
       {/*           </div> */}
-      {/*           <p className="text-gray-600">{item.description}</p> */}
+      {/*           <p className="text-muted-foreground">{item.description}</p> */}
       {/*         </div> */}
       {/*       ))} */}
       {/*     </div> */}
@@ -201,7 +201,7 @@ export default function LandingPage() {
       {/* </section> */}
 
       {/* Features */}
-      <section id="features" className="py-16 bg-gray-50">
+      <section id="features" className="py-16 bg-background">
         <div className="max-w-6xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">
             Why Choose RadioWash?
@@ -244,11 +244,11 @@ export default function LandingPage() {
             ].map((feature, index) => (
               <div
                 key={index}
-                className="bg-white p-6 rounded-lg shadow text-center"
+                className="bg-card p-6 rounded-lg shadow text-center"
               >
                 <div className="text-3xl mb-4">{feature.icon}</div>
                 <h3 className="font-semibold mb-2">{feature.title}</h3>
-                <p className="text-gray-600 text-sm">{feature.description}</p>
+                <p className="text-muted-foreground text-sm">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -262,7 +262,7 @@ export default function LandingPage() {
             What Users Are Saying
           </h2>
           <div className="grid md:grid-cols-2 gap-8">
-            <div className="bg-white p-6 rounded-lg shadow">
+            <div className="bg-card p-6 rounded-lg shadow">
               <p className="mb-4">
                 &quot;Finally! I can play my hip-hop playlist during family
                 dinner without worrying about explicit lyrics.&quot;
@@ -273,15 +273,15 @@ export default function LandingPage() {
                   alt="user"
                   height={20}
                   width={20}
-                  className="w-10 h-10 bg-gray-300 rounded-full mr-3"
+                  className="w-10 h-10 bg-muted rounded-full mr-3"
                 />
                 <div>
                   <p className="font-semibold">Sarah M.</p>
-                  <p className="text-sm text-gray-600">Parent of 2</p>
+                  <p className="text-sm text-muted-foreground">Parent of 2</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow">
+            <div className="bg-card p-6 rounded-lg shadow">
               <p className="mb-4">
                 &quot;Perfect for our office playlist. Now everyone can enjoy
                 the music without any awkward moments.&quot;
@@ -292,11 +292,11 @@ export default function LandingPage() {
                   alt="user"
                   height={20}
                   width={20}
-                  className="w-10 h-10 bg-gray-300 rounded-full mr-3"
+                  className="w-10 h-10 bg-muted rounded-full mr-3"
                 />
                 <div>
                   <p className="font-semibold">Mike T.</p>
-                  <p className="text-sm text-gray-600">Office Manager</p>
+                  <p className="text-sm text-muted-foreground">Office Manager</p>
                 </div>
               </div>
             </div>
@@ -305,7 +305,7 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="py-16 bg-white">
+      <section id="faq" className="py-16 bg-card">
         <div className="max-w-4xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">
             Frequently Asked Questions
@@ -335,7 +335,7 @@ export default function LandingPage() {
             ].map((faq, index) => (
               <div key={index} className="border-b pb-4">
                 <h3 className="font-semibold mb-2">{faq.question}</h3>
-                <p className="text-gray-600">{faq.answer}</p>
+                <p className="text-muted-foreground">{faq.answer}</p>
               </div>
             ))}
           </div>
@@ -343,7 +343,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 bg-gradient-to-r from-green-600 to-blue-600 text-white">
+      <section className="py-16 bg-gradient-to-r from-green-600 to-blue-600 text-primary-foreground">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">
             Ready to Clean Your Playlists?
@@ -353,7 +353,7 @@ export default function LandingPage() {
           </p>
           <button
             onClick={handleGetStarted}
-            className="bg-white text-green-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-colors"
+            className="bg-card text-green-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
           >
             Get Started for Free
           </button>
@@ -361,12 +361,12 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
+      <footer className="bg-primary text-primary-foreground py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <div className="mb-4">
             <span className="text-xl font-bold">RadioWash</span>
           </div>
-          <p className="text-gray-400 mb-4">
+          <p className="text-muted-foreground mb-4">
             Making music safe for everyone, everywhere.
           </p>
           {/* <div className="space-x-6 text-sm"> */}
