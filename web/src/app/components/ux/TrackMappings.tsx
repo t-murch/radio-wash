@@ -82,10 +82,10 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg">
+    <div className="bg-card shadow rounded-lg">
       {/* Fixed Header */}
-      <div className="p-6 border-b border-gray-200 bg-white rounded-t-lg">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+      <div className="p-6 border-b border bg-card rounded-t-lg">
+        <h2 className="text-xl font-semibold text-foreground mb-4">
           Track Mappings
         </h2>
 
@@ -97,8 +97,8 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
               onClick={() => setFilter(f)}
               className={`px-3 py-1 text-sm rounded-full ${
                 filter === f
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-blue-600 text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -125,7 +125,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
       <div className="max-h-[500px] overflow-y-auto">
         {filteredMappings.length === 0 ? (
           <div className="p-6">
-            <p className="text-gray-500">
+            <p className="text-muted-foreground">
               No tracks match the selected filter.
             </p>
           </div>
@@ -133,36 +133,36 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
           <>
             {/* Desktop Table View */}
             <div className="hidden lg:block">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0 z-10">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-1/3">
                       Original Track
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
                       Status
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-1/3">
                       Clean Version
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {filteredMappings.map((mapping) => (
-                    <tr key={mapping.id} className="hover:bg-gray-50">
+                    <tr key={mapping.id} className="hover:bg-muted/50">
                       <td className="px-4 py-4">
                         <div className="space-y-1">
                           <a
                             href={`https://open.spotify.com/track/${mapping.sourceTrackId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block text-sm font-medium text-gray-900 hover:underline"
+                            className="block text-sm font-medium text-foreground hover:underline"
                             title={mapping.sourceTrackName}
                           >
                             {truncateText(mapping.sourceTrackName, 40)}
                           </a>
                           <p
-                            className="text-sm text-gray-500"
+                            className="text-sm text-muted-foreground"
                             title={mapping.sourceArtistName}
                           >
                             {truncateText(mapping.sourceArtistName, 40)}
@@ -183,7 +183,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                                 href={`https://open.spotify.com/track/${mapping.targetTrackId}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block text-sm font-medium text-gray-900 hover:underline"
+                                className="block text-sm font-medium text-foreground hover:underline"
                                 title={mapping.targetTrackName || ''}
                               >
                                 {truncateText(
@@ -192,7 +192,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                                 )}
                               </a>
                               <p
-                                className="text-sm text-gray-500"
+                                className="text-sm text-muted-foreground"
                                 title={mapping.targetArtistName || ''}
                               >
                                 {truncateText(
@@ -202,12 +202,12 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                               </p>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-400">
+                            <span className="text-sm text-muted-foreground">
                               No clean version found
                             </span>
                           )
                         ) : (
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             Already clean
                           </span>
                         )}
@@ -223,7 +223,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
               {filteredMappings.map((mapping) => (
                 <div
                   key={mapping.id}
-                  className="border rounded-lg p-4 bg-gray-50"
+                  className="border rounded-lg p-4 bg-muted/50"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
@@ -231,13 +231,13 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                         href={`https://open.spotify.com/track/${mapping.sourceTrackId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-sm font-medium text-gray-900 hover:underline truncate"
+                        className="block text-sm font-medium text-foreground hover:underline truncate"
                         title={mapping.sourceTrackName}
                       >
                         {mapping.sourceTrackName}
                       </a>
                       <p
-                        className="text-sm text-gray-500 truncate"
+                        className="text-sm text-muted-foreground truncate"
                         title={mapping.sourceArtistName}
                       >
                         {mapping.sourceArtistName}
@@ -252,8 +252,8 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                   </div>
 
                   {mapping.isExplicit && (
-                    <div className="pt-3 border-t border-gray-200">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                    <div className="pt-3 border-t border">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         Clean Version
                       </p>
                       {mapping.hasCleanMatch ? (
@@ -262,20 +262,20 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                             href={`https://open.spotify.com/track/${mapping.targetTrackId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block text-sm font-medium text-gray-900 hover:underline truncate"
+                            className="block text-sm font-medium text-foreground hover:underline truncate"
                             title={mapping.targetTrackName || ''}
                           >
                             {mapping.targetTrackName}
                           </a>
                           <p
-                            className="text-sm text-gray-500 truncate"
+                            className="text-sm text-muted-foreground truncate"
                             title={mapping.targetArtistName || ''}
                           >
                             {mapping.targetArtistName}
                           </p>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-400">
+                        <span className="text-sm text-muted-foreground">
                           No clean version found
                         </span>
                       )}
