@@ -1,5 +1,6 @@
-import './globals.css';
+import './styles/globals.css';
 import { QueryProvider } from './providers/QueryProvider';
+import { ThemeProvider } from './providers/ThemeProvider';
 
 export const metadata = {
   title: 'RadioWash - The Playlist Washer',
@@ -12,9 +13,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        <QueryProvider>{children}</QueryProvider>
+        <ThemeProvider
+          attribute="class"
+          // defaultTheme="system"
+          // enableSystem
+          disableTransitionOnChange
+        >
+          <QueryProvider>{children}</QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
