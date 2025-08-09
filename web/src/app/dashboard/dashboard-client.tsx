@@ -1,22 +1,23 @@
 'use client';
 
+import { GlobalHeader } from '@/components/GlobalHeader';
+import { JobCard } from '@/components/ux/JobCard';
+import { createClient } from '@/lib/supabase/client';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState } from 'react';
+import { SpotifyConnectionStatus } from '../components/SpotifyConnectionStatus';
 import {
   createCleanPlaylistJob,
+  getMe,
   getUserJobs,
   getUserPlaylists,
-  getMe,
   Job,
   Playlist,
   User,
 } from '../services/api';
-import { JobCard } from '@/components/ux/JobCard';
-import { SpotifyConnectionStatus } from '../components/SpotifyConnectionStatus';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 export function DashboardClient({
   serverUser,
@@ -94,65 +95,32 @@ export function DashboardClient({
     createJobMutation.mutate({ sourcePlaylistId: selected.id, targetName });
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.refresh(); // Refresh the page to trigger redirect
-  };
-
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-2xl font-bold text-gray-800">RadioWash</h1>
-            <div className="flex items-center space-x-1"></div>
-          </div>
-          {me && (
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-600 hidden sm:inline">
-                Welcome, {me.displayName}
-              </span>
-              <Image
-                src={me.profileImageUrl || `/user.svg`}
-                alt="User Profile"
-                className="rounded-full"
-                width={40}
-                height={40}
-                priority
-              />
-              <button
-                onClick={handleLogout}
-                className="text-sm font-medium text-gray-500 hover:text-gray-700"
-              >
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
+    <div className="min-h-screen bg-background">
+      <GlobalHeader user={me} />
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-3 space-y-8">
             <SpotifyConnectionStatus onConnectionChange={setSpotifyConnected} />
-            <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <div className="bg-card border rounded-lg p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground mb-4">
                 Create a Clean Playlist
               </h2>
               {!spotifyConnected ? (
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
                     <svg
-                      className="w-8 h-8 text-gray-400"
+                      className="w-8 h-8 text-muted-foreground"
                       viewBox="0 0 24 24"
                       fill="currentColor"
                     >
                       <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.84-.179-.84-.66 0-.36.24-.66.54-.78 4.56-1.021 8.52-.6 11.64 1.32.36.18.48.66.24 1.021zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.481.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  <h3 className="text-lg font-medium text-foreground mb-2">
                     Connect Spotify to Get Started
                   </h3>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-muted-foreground mb-4">
                     Connect your Spotify account to access your playlists and
                     create clean versions.
                   </p>
@@ -162,7 +130,7 @@ export function DashboardClient({
                   <select
                     value={selectedPlaylistId}
                     onChange={(e) => setSelectedPlaylistId(e.target.value)}
-                    className="block w-full p-3 border border-gray-300 rounded-md"
+                    className="block w-full p-3 border rounded-md"
                   >
                     <option value="">-- Choose a playlist --</option>
                     {playlists.map((p) => (
@@ -176,14 +144,14 @@ export function DashboardClient({
                     placeholder="New Playlist Name (Optional)"
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
-                    className="block w-full p-3 border border-gray-300 rounded-md"
+                    className="block w-full p-3 border rounded-md"
                   />
                   <button
                     onClick={handleCreatePlaylist}
                     disabled={
                       !selectedPlaylistId || createJobMutation.isPending
                     }
-                    className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 disabled:opacity-50"
+                    className="w-full bg-green-600 text-primary-foreground py-3 rounded-md hover:bg-green-700 disabled:opacity-50"
                   >
                     {createJobMutation.isPending
                       ? 'Working on it...'
@@ -196,18 +164,18 @@ export function DashboardClient({
             {spotifyConnected && (
               <div className="space-y-4">
                 {playlists.length === 0 ? (
-                  <p className="text-gray-500">
+                  <p className="text-muted-foreground">
                     No playlists found. Make sure you have playlists on Spotify.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[300px] max-h-[65vh] h-[60vh] overflow-y-scroll">
                     {playlists.map((playlist, idx) => (
                       <div
                         key={idx}
-                        className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        className="border rounded-lg p-4 bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                         onClick={() => setSelectedPlaylistId(playlist.id)}
                       >
-                        <div className="aspect-square w-full bg-gray-200 rounded-md mb-2 overflow-hidden">
+                        <div className="aspect-square w-full bg-muted rounded-md mb-2 overflow-hidden">
                           {playlist.imageUrl ? (
                             <Image
                               src={playlist.imageUrl}
@@ -219,14 +187,16 @@ export function DashboardClient({
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <span className="text-gray-400">No Image</span>
+                              <span className="text-muted-foreground">
+                                No Image
+                              </span>
                             </div>
                           )}
                         </div>
-                        <h3 className="font-semibold text-gray-900 truncate">
+                        <h3 className="font-semibold text-foreground truncate">
                           {playlist.name}
                         </h3>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-muted-foreground">
                           {playlist.trackCount} tracks
                         </p>
                         <div className="flex justify-between mt-2">
@@ -244,7 +214,7 @@ export function DashboardClient({
                               e.stopPropagation();
                               openSpotifyPlaylist(playlist.id);
                             }}
-                            className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-md hover:bg-gray-200"
+                            className="text-xs bg-muted text-foreground px-2 py-1 rounded-md hover:bg-muted"
                           >
                             Open in Spotify
                           </button>
@@ -257,15 +227,17 @@ export function DashboardClient({
             )}
           </div>
           <div className="lg:col-span-2">
-            <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <div className="bg-card border rounded-lg p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground mb-4">
                 Job Status
               </h2>
               <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                 {jobs.length > 0 ? (
                   jobs.map((job) => <JobCard key={job.id} job={job} />)
                 ) : (
-                  <p className="text-gray-500 text-center py-4">No jobs yet.</p>
+                  <p className="text-muted-foreground text-center py-4">
+                    No jobs yet.
+                  </p>
                 )}
               </div>
             </div>

@@ -55,7 +55,7 @@ export default async function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
       <AuthForm 
         signInWithSpotify={signInWithSpotify} 
         signInWithSpotifyConnection={signInWithSpotifyConnection}
