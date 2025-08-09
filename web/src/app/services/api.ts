@@ -1,6 +1,5 @@
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createClientClient } from '@/lib/supabase/client';
-import { logger } from './apiLogger';
 
 // e.g., 'types/api.ts', and import them here.
 export interface User {

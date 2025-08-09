@@ -33,7 +33,7 @@ export function JobCard({ job }: { job: Job }) {
       case 'Failed':
         return 'bg-red-100 text-red-800 border-red-300';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-muted text-muted-foreground border';
     }
   };
 
@@ -62,18 +62,18 @@ export function JobCard({ job }: { job: Job }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="block bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
+      className="block bg-card border border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
     >
       <div className="flex justify-between items-start mb-2">
         <div className="w-4/5">
           <h3
-            className="font-bold text-gray-800 truncate"
+            className="font-bold text-foreground truncate"
             title={job.targetPlaylistName}
           >
             {job.targetPlaylistName}
           </h3>
           <p
-            className="text-sm text-gray-500 truncate"
+            className="text-sm text-muted-foreground truncate"
             title={job.sourcePlaylistName}
           >
             From: {job.sourcePlaylistName}
@@ -88,7 +88,7 @@ export function JobCard({ job }: { job: Job }) {
       {job.status === 'Processing' && (
         <div className="mt-3 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600 truncate">
+            <span className="text-muted-foreground truncate">
               {displayBatch || 'Processing...'}
             </span>
             <div className="flex items-center space-x-2">
@@ -100,7 +100,7 @@ export function JobCard({ job }: { job: Job }) {
                   ⚠️
                 </span>
               )}
-              <span className="text-gray-800 font-medium">
+              <span className="text-foreground font-medium">
                 {displayProgress}%
               </span>
             </div>
@@ -108,14 +108,14 @@ export function JobCard({ job }: { job: Job }) {
 
           {displayMessage && useRealtimeProgress && (
             <div
-              className="text-xs text-gray-500 truncate"
+              className="text-xs text-muted-foreground truncate"
               title={displayMessage}
             >
               {displayMessage}
             </div>
           )}
 
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-muted rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-500 ease-out ${
                 useRealtimeProgress ? 'bg-green-500' : 'bg-blue-500'
@@ -124,7 +124,7 @@ export function JobCard({ job }: { job: Job }) {
             ></div>
           </div>
 
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>
               {displayProcessedTracks} of {displayTotalTracks} tracks
             </span>
@@ -145,7 +145,7 @@ export function JobCard({ job }: { job: Job }) {
           )}
         </div>
       )}
-      <p className="text-xs text-gray-400 mt-2 text-right">
+      <p className="text-xs text-muted-foreground mt-2 text-right">
         Updated: {new Date(job.updatedAt).toLocaleString()}
       </p>
     </Link>

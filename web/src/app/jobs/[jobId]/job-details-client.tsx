@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { getJobDetails, Job, User } from '../../services/api';
-import TrackMappings from '@/components/ux/TrackMappings'; // Assuming this component exists
+import TrackMappings from '@/components/ux/TrackMappings';
+import { GlobalHeader } from '@/components/GlobalHeader';
 
 // Helper functions for UI, can be moved to a utils file
 const getStatusBadgeClass = (status: string) => {
@@ -15,7 +16,7 @@ const getStatusBadgeClass = (status: string) => {
     case 'Processing':
       return 'bg-blue-100 text-blue-800';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-muted text-muted-foreground';
   }
 };
 
@@ -48,26 +49,21 @@ export function JobDetailsClient({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Job Details</h1>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-sm font-medium text-gray-500 hover:text-gray-700"
-          >
-            Back to Dashboard
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background">
+      <GlobalHeader 
+        user={initialMe} 
+        showBackButton={true}
+        backButtonHref="/dashboard"
+        backButtonLabel="Back to Dashboard"
+      />
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-6">
-        <div className="bg-white shadow rounded-lg p-6">
+        <div className="bg-card shadow rounded-lg p-6">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">
+              <h2 className="text-2xl font-semibold text-foreground">
                 {job.targetPlaylistName}
               </h2>
-              <p className="text-gray-600">From: {job.sourcePlaylistName}</p>
+              <p className="text-muted-foreground">From: {job.sourcePlaylistName}</p>
             </div>
             <span
               className={`inline-block px-2 py-1 text-sm rounded-full ${getStatusBadgeClass(
@@ -84,10 +80,10 @@ export function JobDetailsClient({
 
           {job.status === 'Processing' && (
             <div className="mt-6">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">
                 Progress
               </h3>
-              <div className="bg-gray-200 rounded-full h-4">
+              <div className="bg-muted rounded-full h-4">
                 <div
                   className="bg-blue-600 h-4 rounded-full transition-all duration-500"
                   style={{
@@ -99,7 +95,7 @@ export function JobDetailsClient({
                   }}
                 ></div>
               </div>
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 {job.processedTracks} of {job.totalTracks} tracks processed
               </p>
             </div>
@@ -111,7 +107,7 @@ export function JobDetailsClient({
                 href={`https://open.spotify.com/track/$${job.targetPlaylistId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-green-600 hover:bg-green-700"
               >
                 Open Playlist in Spotify
               </a>

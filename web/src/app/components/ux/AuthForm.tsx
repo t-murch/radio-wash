@@ -11,10 +11,10 @@ export function AuthForm({
   const error = searchParams.get('error');
 
   return (
-    <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-xl shadow-md">
+    <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-xl shadow-md">
       <div className="text-center">
-        <h1 className="text-3xl font-extrabold text-gray-900">RadioWash</h1>
-        <p className="mt-2 text-gray-600">
+        <h1 className="text-3xl font-extrabold text-foreground">RadioWash</h1>
+        <p className="mt-2 text-muted-foreground">
           Create clean versions of your Spotify playlists
         </p>
       </div>
@@ -31,7 +31,7 @@ export function AuthForm({
       <form action={signInWithSpotify}>
         <button
           type="submit"
-          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-primary-foreground bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
         >
           Connect with Spotify
         </button>
