@@ -43,15 +43,14 @@ export function JobDetailsClient({
     enabled: !!initialMe,
   });
 
-
   if (isLoading || !job) {
     return <div>Loading job details...</div>;
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <GlobalHeader 
-        user={initialMe} 
+      <GlobalHeader
+        user={initialMe}
         showBackButton={true}
         backButtonHref="/dashboard"
         backButtonLabel="Back to Dashboard"
@@ -63,7 +62,9 @@ export function JobDetailsClient({
               <h2 className="text-2xl font-semibold text-foreground">
                 {job.targetPlaylistName}
               </h2>
-              <p className="text-muted-foreground">From: {job.sourcePlaylistName}</p>
+              <p className="text-muted-foreground">
+                From: {job.sourcePlaylistName}
+              </p>
             </div>
             <span
               className={`inline-block px-2 py-1 text-sm rounded-full ${getStatusBadgeClass(
@@ -104,7 +105,7 @@ export function JobDetailsClient({
           {job.status === 'Completed' && job.targetPlaylistId && (
             <div className="mt-6">
               <a
-                href={`https://open.spotify.com/track/$${job.targetPlaylistId}`}
+                href={`https://open.spotify.com/playlist/${job.targetPlaylistId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-green-600 hover:bg-green-700"
