@@ -51,4 +51,10 @@ jobs:
             az webapp config appsettings set --resource-group radio-wash_group --name radiowash-api --settings \
             "Spotify__ClientId=${{ secrets.SPOTIFY_CLIENT_ID }}" \
             "Spotify__ClientSecret=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
-            "Jwt__Secret=${{ secrets.JWT_SECRET }}"
+            "Jwt__Secret=${{ secrets.JWT_SECRET }}" \
+            "Supabase__Url=${{ secrets.SUPABASE_URL }}" \
+            "Supabase__PublicUrl=${{ secrets.SUPABASE_PUBLIC_URL }}" \
+            "Supabase__AnonKey=${{ secrets.SUPABASE_ANON_KEY }}" \
+            "Supabase__ServiceRoleKey=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            "Supabase__JwtSecret=${{ secrets.SUPABASE_JWT_SECRET }}" \
+            "Supabase__JwtIssuer=${{ secrets.SUPABASE_JWT_ISSUER }}"

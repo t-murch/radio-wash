@@ -40,7 +40,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-green-50 to-blue-50 py-20">
+      <section className="bg-gradient-to-br from-green-50/20 to-blue-50/20 dark:from-green-950/20 dark:to-blue-950/20 py-20">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Explicit Playlists into
@@ -104,22 +104,22 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-red-600">
+              <h3 className="text-xl font-semibold mb-4 text-red-600 dark:text-red-400">
                 Before: Original Playlist
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-red-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/50 rounded">
                     <span>Track with explicit lyrics</span>
-                    <span className="text-red-600 text-sm">🚫 Explicit</span>
+                    <span className="text-red-600 dark:text-red-400 text-sm">🚫 Explicit</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-background rounded">
+                  <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <span>Clean track</span>
-                    <span className="text-green-600 text-sm">✓ Clean</span>
+                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-red-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/50 rounded">
                     <span>Another explicit track</span>
-                    <span className="text-red-600 text-sm">🚫 Explicit</span>
+                    <span className="text-red-600 dark:text-red-400 text-sm">🚫 Explicit</span>
                   </div>
                 </div>
               </div>
@@ -129,22 +129,22 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-green-600">
+              <h3 className="text-xl font-semibold mb-4 text-green-600 dark:text-green-400">
                 After: Clean Version
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-green-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
                     <span>Clean alternative found</span>
-                    <span className="text-green-600 text-sm">✓ Clean</span>
+                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-green-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
                     <span>Same clean track</span>
-                    <span className="text-green-600 text-sm">✓ Clean</span>
+                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-green-50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
                     <span>Clean version found</span>
-                    <span className="text-green-600 text-sm">✓ Clean</span>
+                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
                   </div>
                 </div>
               </div>
@@ -256,7 +256,7 @@ export default function LandingPage() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-green-50">
+      <section className="py-16 bg-green-50/30 dark:bg-green-950/20">
         <div className="max-w-4xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">
             What Users Are Saying
@@ -361,10 +361,10 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-primary text-primary-foreground py-8">
+      <footer className="bg-card border-t py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <div className="mb-4">
-            <span className="text-xl font-bold">RadioWash</span>
+            <span className="text-xl font-bold text-green-600">RadioWash</span>
           </div>
           <p className="text-muted-foreground mb-4">
             Making music safe for everyone, everywhere.

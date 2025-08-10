@@ -11,8 +11,6 @@ export default async function LoginPage() {
     error,
   } = await supabase.auth.getUser();
 
-  console.log(`auth/page error: ${JSON.stringify(error)}`);
-
   if (user) {
     redirect('/dashboard');
   }

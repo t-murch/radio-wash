@@ -65,7 +65,7 @@ export function GlobalHeader({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="relative h-10 w-10 rounded-full"
+                  className="relative h-10 w-10 rounded-md"
                 >
                   {user.profileImageUrl ? (
                     <Image
