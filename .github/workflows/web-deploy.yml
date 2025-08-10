@@ -46,6 +46,9 @@ jobs:
           tags: ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:latest
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
