@@ -57,4 +57,5 @@ jobs:
             "Supabase__AnonKey=${{ secrets.SUPABASE_ANON_KEY }}" \
             "Supabase__ServiceRoleKey=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             "Supabase__JwtSecret=${{ secrets.SUPABASE_JWT_SECRET }}" \
-            "Supabase__JwtIssuer=${{ secrets.SUPABASE_JWT_ISSUER }}"
+            "Supabase__JwtIssuer=${{ secrets.SUPABASE_JWT_ISSUER }}" \
+            "FrontendUrl=${{ secrets.WEB_URL }}"
