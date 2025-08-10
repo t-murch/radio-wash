@@ -8,7 +8,6 @@ WORKDIR /app
 
 # Copy package management files
 COPY package.json pnpm-lock.yaml* ./
-COPY .npmrc ./
 
 # Install pnpm and dependencies
 RUN corepack enable pnpm && pnpm i --frozen-lockfile --ignore-scripts
