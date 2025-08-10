@@ -2,11 +2,9 @@
 
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { JobCard } from '@/components/ux/JobCard';
-import { createClient } from '@/lib/supabase/client';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { SpotifyConnectionStatus } from '../components/SpotifyConnectionStatus';
 import {
@@ -20,7 +18,6 @@ import {
 } from '../services/api';
 
 export function DashboardClient({
-  serverUser,
   initialMe,
   initialPlaylists,
   initialJobs,
@@ -33,8 +30,6 @@ export function DashboardClient({
   initialJobs: Job[];
 }) {
   const queryClient = useQueryClient();
-  const router = useRouter();
-  const supabase = createClient();
 
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [customName, setCustomName] = useState('');
@@ -133,8 +128,8 @@ export function DashboardClient({
                     className="block w-full p-3 border rounded-md"
                   >
                     <option value="">-- Choose a playlist --</option>
-                    {playlists.map((p) => (
-                      <option key={p.id} value={p.id}>
+                    {playlists.map((p, idx) => (
+                      <option key={idx} value={p.id}>
                         {p.name} ({p.trackCount} tracks)
                       </option>
                     ))}
@@ -168,59 +163,128 @@ export function DashboardClient({
                     No playlists found. Make sure you have playlists on Spotify.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[300px] max-h-[65vh] h-[60vh] overflow-y-scroll">
-                    {playlists.map((playlist, idx) => (
-                      <div
-                        key={idx}
-                        className="border rounded-lg p-4 bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => setSelectedPlaylistId(playlist.id)}
-                      >
-                        <div className="aspect-square w-full bg-muted rounded-md mb-2 overflow-hidden">
-                          {playlist.imageUrl ? (
-                            <Image
-                              src={playlist.imageUrl}
-                              alt={playlist.name}
-                              className="object-cover"
-                              width={200}
-                              height={200}
-                              priority={idx < 7}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <span className="text-muted-foreground">
-                                No Image
-                              </span>
+                  <div className="space-y-4 max-h-[65vh] overflow-y-scroll">
+                    {/* Desktop view - grid layout */}
+                    <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {playlists.map((playlist, idx) => (
+                        <div
+                          key={idx}
+                          className="border rounded-lg p-4 bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                          onClick={() => setSelectedPlaylistId(playlist.id)}
+                        >
+                          <div className="aspect-square w-full bg-muted rounded-md mb-2 overflow-hidden">
+                            {playlist.imageUrl ? (
+                              <Image
+                                src={playlist.imageUrl}
+                                alt={playlist.name}
+                                className="object-cover w-full h-full"
+                                width={200}
+                                height={200}
+                                priority={idx < 7}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-muted-foreground">
+                                  No Image
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <h3 className="font-semibold text-foreground truncate">
+                            {playlist.name}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {playlist.trackCount} tracks
+                          </p>
+                          <div className="flex justify-between mt-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPlaylistId(playlist.id);
+                              }}
+                              className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
+                            >
+                              Make Clean
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSpotifyPlaylist(playlist.id);
+                              }}
+                              className="text-xs bg-muted text-foreground px-2 py-1 rounded-md hover:bg-muted"
+                            >
+                              Open in Spotify
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Mobile view - list layout */}
+                    <div className="md:hidden space-y-3">
+                      {playlists.map((playlist, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-card border rounded-lg p-4 shadow-sm"
+                          onClick={() => setSelectedPlaylistId(playlist.id)}
+                        >
+                          <div className="flex items-center gap-4">
+                            {/* Playlist Image */}
+                            <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
+                              {playlist.imageUrl ? (
+                                <Image
+                                  src={playlist.imageUrl}
+                                  alt={playlist.name}
+                                  className="object-cover w-full h-full"
+                                  width={64}
+                                  height={64}
+                                  priority={idx < 7}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <span className="text-xs text-muted-foreground">
+                                    No Image
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                          )}
+
+                            {/* Playlist Info and Buttons */}
+                            <div className="flex-1 min-w-0">
+                              <div className="mb-2">
+                                <h3 className="font-semibold text-foreground text-base truncate">
+                                  {playlist.name}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                  🎵 {playlist.trackCount} tracks
+                                </p>
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPlaylistId(playlist.id);
+                                  }}
+                                  className="px-4 py-2 bg-green-600 text-primary-foreground text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                                >
+                                  Make Clean
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openSpotifyPlaylist(playlist.id);
+                                  }}
+                                  className="px-4 py-2 bg-muted text-foreground text-sm font-medium rounded-lg hover:bg-muted/80 transition-colors"
+                                >
+                                  Open in Spotify
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <h3 className="font-semibold text-foreground truncate">
-                          {playlist.name}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          {playlist.trackCount} tracks
-                        </p>
-                        <div className="flex justify-between mt-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPlaylistId(playlist.id);
-                            }}
-                            className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200"
-                          >
-                            Make Clean
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openSpotifyPlaylist(playlist.id);
-                            }}
-                            className="text-xs bg-muted text-foreground px-2 py-1 rounded-md hover:bg-muted"
-                          >
-                            Open in Spotify
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
