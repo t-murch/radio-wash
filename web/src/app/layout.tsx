@@ -1,6 +1,7 @@
 import './styles/globals.css';
 import { QueryProvider } from './providers/QueryProvider';
 import { ThemeProvider } from './providers/ThemeProvider';
+import { Toaster } from 'sonner';
 
 export const metadata = {
   title: 'RadioWash - The Playlist Washer',
@@ -22,6 +23,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>{children}</QueryProvider>
+          <Toaster position="bottom-right" />
         </ThemeProvider>
       </body>
     </html>

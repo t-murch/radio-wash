@@ -16,7 +16,7 @@ export function JobCard({ job }: { job: Job }) {
     );
 
   shouldConnect &&
-    console.log('[JobCard Debug] SignalR state:', {
+    console.debug('[JobCard Debug] SignalR state:', {
       progressState: progressState.status,
       isConnected,
       connectionError,

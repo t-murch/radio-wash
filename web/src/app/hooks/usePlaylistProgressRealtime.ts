@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as signalR from '@microsoft/signalr';
 import { HubConnectionState } from '@microsoft/signalr';
 import { Job } from '../services/api';
+import { toast } from 'sonner';
 
 interface ProgressUpdate {
   progress: number;
@@ -158,6 +159,8 @@ export function usePlaylistProgressRealtime(
           currentJobId: jobId,
         });
         if (completedJobId.toString() === jobId) {
+          toast(`New Playlist Created!`);
+
           setProgressState((prev) => ({
             ...prev,
             status: 'completed',
