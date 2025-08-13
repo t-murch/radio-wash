@@ -128,9 +128,9 @@ export function usePlaylistProgressRealtime(
           return authToken;
         },
         // Force SignalR to use only Server-Sent Events (SSE) transport
-        transport: signalR.HttpTransportType.ServerSentEvents,
+        // transport: signalR.HttpTransportType.ServerSentEvents,
       })
-      .withAutomaticReconnect([0, 2000, 10000, 30000])
+      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
       .configureLogging(signalR.LogLevel.Information)
       .build();
 
