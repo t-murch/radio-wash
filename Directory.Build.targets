@@ -8,6 +8,6 @@
     <NodeModulesRelativePath>$([MSBuild]::MakeRelative($(MSBuildProjectDirectory), $(RepoRoot)))</NodeModulesRelativePath>
   </PropertyGroup>
   <Target Name="CheckNxModuleBoundaries" BeforeTargets="Build">
-    <Exec Command="node $(NodeModulesRelativePath)/node_modules/.pnpm/@nx-dotnet+core@2.5.0_@nx+js@20.8.0_@babel+traverse@7.28.0_@swc-node+register@1.9.2_@sw_bf1620e22a7d2639757efdde98404152/node_modules/@nx-dotnet/core/src/tasks/check-module-boundaries.js --project-root &quot;$(MSBuildProjectDirRelativePath)&quot;"/>
+    <Exec Command="npx @nx-dotnet/core:check-module-boundaries --project-root &quot;$(MSBuildProjectDirRelativePath)&quot;" WorkingDirectory="$(RepoRoot)"/>
   </Target>
 </Project>
