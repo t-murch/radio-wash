@@ -85,21 +85,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
       // For SignalR connections, read token from query string (WebSocket/SSE cannot use headers)
       var accessToken = context.Request.Query["access_token"];
       var path = context.HttpContext.Request.Path;
-      
-      if (!string.IsNullOrEmpty(accessToken) && 
+      if (!string.IsNullOrEmpty(accessToken) &&
           path.StartsWithSegments("/hubs"))
       {
         context.Token = accessToken;
         return Task.CompletedTask;
       }
-      
+
       // For regular HTTP requests, read token from Authorization header
       var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
       if (authHeader?.StartsWith("Bearer ") == true)
       {
         context.Token = authHeader.Substring("Bearer ".Length).Trim();
       }
-      
       return Task.CompletedTask;
     }
   };
@@ -196,16 +194,16 @@ if (!app.Environment.IsEnvironment("Testing"))
   using (var scope = app.Services.CreateScope())
   {
     var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
     {
       dbContext.Database.Migrate();
-      logger.LogInformation("Database migrations applied successfully");
+      migrationLogger.LogInformation("Database migrations applied successfully");
     }
     catch (Exception ex)
     {
-      logger.LogError(ex, "Error applying database migrations");
+      migrationLogger.LogError(ex, "Error applying database migrations");
       throw;
     }
   }
@@ -219,10 +217,19 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PlaylistProgressHub>("/hubs/playlist-progress", options =>
 {
-  options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.ServerSentEvents | 
-                      Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets | 
+  options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.ServerSentEvents |
+                      Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets |
                       Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
+
+  // Add detailed logging for SignalR connections
+  options.ApplicationMaxBufferSize = 65536;
+  options.TransportMaxBufferSize = 65536;
 });
+
+// Log SignalR hub mapping
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("SignalR Hub mapped at /hubs/playlist-progress with transports: {Transports}",
+    "ServerSentEvents, WebSockets, LongPolling");
 
 // Only add Hangfire dashboard in non-testing environments
 if (!app.Environment.IsEnvironment("Testing"))

@@ -105,40 +105,83 @@ export function usePlaylistProgressRealtime(
       return;
     }
 
-    console.debug('[SignalR] Connecting to job:', jobId);
+    console.log('[SignalR] Connecting to job:', jobId);
+    console.log('[SignalR] Auth token present:', !!authToken);
+    console.log('[SignalR] Auth token length:', authToken?.length || 0);
     startTimeRef.current = Date.now();
     setConnectionError(undefined);
 
     // Build SignalR connection
     const hubUrl = `${process.env.NEXT_PUBLIC_API_URL}/hubs/playlist-progress`;
-    console.debug('[SignalR Debug] Connecting to hub URL:', hubUrl);
+    console.log('[SignalR] Connecting to hub URL:', hubUrl);
+    console.log('[SignalR] User agent:', navigator.userAgent);
 
     // Test if the hub endpoint is reachable
+    console.log('[SignalR] Testing API reachability...');
     fetch(hubUrl.replace('/hubs/playlist-progress', '/api/healthcheck'))
-      .then((response) =>
-        console.debug('[SignalR Debug] API reachability test:', response.status)
-      )
-      .catch((error) =>
-        console.debug('[SignalR Debug] API reachability test failed:', error)
-      );
+      .then((response) => {
+        console.log(
+          '[SignalR] API reachability test SUCCESS:',
+          response.status
+        );
+        console.log(
+          '[SignalR] API response headers:',
+          Object.fromEntries(response.headers.entries())
+        );
+      })
+      .catch((error) => {
+        console.error('[SignalR] API reachability test FAILED:', error);
+        console.error('[SignalR] Error details:', {
+          message: error.message,
+          cause: error.cause,
+          stack: error.stack,
+        });
+      });
+
+    console.log('[SignalR] Building connection with config:', {
+      hubUrl,
+      hasAuthToken: !!authToken,
+      transport: 'ServerSentEvents',
+      reconnectDelays: [0, 2000, 10000, 30000],
+    });
 
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
         accessTokenFactory: () => {
+          console.log(
+            '[SignalR] Auth token factory called, token present:',
+            !!authToken
+          );
           return authToken;
         },
-        // Force SignalR to use only Server-Sent Events (SSE) transport
-        // transport: signalR.HttpTransportType.ServerSentEvents,
+        // Allow SignalR to negotiate the best transport (WebSocket preferred, fallback to SSE/LongPolling)
+        transport:
+          signalR.HttpTransportType.WebSockets |
+          signalR.HttpTransportType.ServerSentEvents |
+          signalR.HttpTransportType.LongPolling,
       })
-      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+      .withAutomaticReconnect([0, 2000, 10000, 30000])
       .configureLogging(signalR.LogLevel.Information)
       .build();
+
+    console.log('[SignalR] Connection object created:', {
+      state: connection.state,
+      baseUrl: connection.baseUrl,
+      connectionId: connection.connectionId,
+    });
 
     connectionRef.current = connection;
 
     // Set up event handlers
+    console.log('[SignalR] Setting up event handlers...');
+
     connection.on('ProgressUpdate', (update: ProgressUpdate) => {
-      console.debug('[SignalR Debug] ProgressUpdate received:', update);
+      console.log('[SignalR] ProgressUpdate received:', {
+        jobId,
+        update,
+        timestamp: new Date().toISOString(),
+        connectionState: connection.state,
+      });
       const estimatedTimeRemaining = calculateEstimatedTime(update.progress);
 
       setProgressState((prev) => ({
@@ -152,11 +195,13 @@ export function usePlaylistProgressRealtime(
     connection.on(
       'JobCompleted',
       (completedJobId: number, success: boolean, message?: string) => {
-        console.debug('[SignalR Debug] JobCompleted received:', {
+        console.log('[SignalR] JobCompleted received:', {
           completedJobId,
           success,
           message,
           currentJobId: jobId,
+          timestamp: new Date().toISOString(),
+          connectionState: connection.state,
         });
         if (completedJobId.toString() === jobId) {
           toast(`New Playlist Created!`);
@@ -198,10 +243,12 @@ export function usePlaylistProgressRealtime(
     );
 
     connection.on('JobFailed', (failedJobId: number, error: string) => {
-      console.debug('[SignalR Debug] JobFailed received:', {
+      console.log('[SignalR] JobFailed received:', {
         failedJobId,
         error,
         currentJobId: jobId,
+        timestamp: new Date().toISOString(),
+        connectionState: connection.state,
       });
       if (failedJobId.toString() === jobId) {
         setProgressState((prev) => ({
@@ -233,28 +280,46 @@ export function usePlaylistProgressRealtime(
     });
 
     // Connection state handlers
+    console.log('[SignalR] Setting up connection state handlers...');
+
     connection.onreconnecting((error) => {
-      console.debug('[SignalR Debug] Connection reconnecting:', error);
+      console.log('[SignalR] Connection RECONNECTING:', {
+        error: error?.message,
+        timestamp: new Date().toISOString(),
+        previousState: connection.state,
+      });
       setIsConnected(false);
       setProgressState((prev) => ({ ...prev, status: 'connecting' }));
     });
 
     connection.onreconnected((connectionId) => {
-      console.debug('[SignalR Debug] Connection reconnected:', connectionId);
+      console.log('[SignalR] Connection RECONNECTED:', {
+        connectionId,
+        timestamp: new Date().toISOString(),
+        state: connection.state,
+      });
       setIsConnected(true);
       setConnectionError(undefined);
       setProgressState((prev) => ({ ...prev, status: 'connected' }));
 
       // Rejoin the job group after reconnection
-      console.debug(
-        '[SignalR Debug] Rejoining job group after reconnection:',
-        jobId
-      );
-      connection.invoke('JoinJobGroup', jobId).catch(console.error);
+      console.log('[SignalR] Rejoining job group after reconnection:', jobId);
+      connection
+        .invoke('JoinJobGroup', jobId)
+        .then(() =>
+          console.log('[SignalR] Successfully rejoined job group:', jobId)
+        )
+        .catch((error) =>
+          console.error('[SignalR] Failed to rejoin job group:', error)
+        );
     });
 
     connection.onclose((error) => {
-      console.debug('[SignalR Debug] Connection closed:', error);
+      console.log('[SignalR] Connection CLOSED:', {
+        error: error?.message,
+        timestamp: new Date().toISOString(),
+        wasConnected: isConnected,
+      });
       setIsConnected(false);
       if (error) {
         setConnectionError(error.message);
@@ -264,25 +329,49 @@ export function usePlaylistProgressRealtime(
     // Start connection and join job group
     const startConnection = async () => {
       try {
-        console.debug('[SignalR Debug] Starting connection...');
+        console.log('[SignalR] STARTING connection...', {
+          timestamp: new Date().toISOString(),
+          jobId,
+          hubUrl,
+          initialState: connection.state,
+        });
         setProgressState((prev) => ({ ...prev, status: 'connecting' }));
+
+        const startTime = Date.now();
         await connection.start();
-        console.debug('[SignalR Debug] Connection started successfully');
+        const endTime = Date.now();
+
+        console.log('[SignalR] Connection started SUCCESSFULLY:', {
+          duration: `${endTime - startTime}ms`,
+          connectionId: connection.connectionId,
+          state: connection.state,
+          timestamp: new Date().toISOString(),
+        });
         setIsConnected(true);
         setProgressState((prev) => ({ ...prev, status: 'connected' }));
 
         // Join the specific job group to receive updates
-        console.debug('[SignalR Debug] Joining job group:', jobId);
+        console.log('[SignalR] JOINING job group:', jobId);
+        const joinStartTime = Date.now();
         await connection.invoke('JoinJobGroup', jobId);
-        console.debug(
-          '[SignalR Debug] Successfully joined job group for job:',
-          jobId
-        );
+        const joinEndTime = Date.now();
+
+        console.log('[SignalR] Successfully JOINED job group:', {
+          jobId,
+          duration: `${joinEndTime - joinStartTime}ms`,
+          connectionId: connection.connectionId,
+          timestamp: new Date().toISOString(),
+        });
       } catch (error) {
-        console.error(
-          '[SignalR Debug] Failed to start SignalR connection:',
-          error
-        );
+        console.error('[SignalR] FAILED to start SignalR connection:', {
+          error: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          errorCause: error instanceof Error ? error.cause : undefined,
+          jobId,
+          hubUrl,
+          timestamp: new Date().toISOString(),
+          connectionState: connection.state,
+        });
         setConnectionError(
           error instanceof Error ? error.message : 'Connection failed'
         );
@@ -294,12 +383,32 @@ export function usePlaylistProgressRealtime(
 
     // Cleanup function
     return () => {
-      console.debug('[SignalR Debug] Cleaning up connection for job:', jobId);
+      console.log('[SignalR] CLEANING UP connection for job:', {
+        jobId,
+        connectionState: connection?.state,
+        timestamp: new Date().toISOString(),
+      });
+
       if (connection && connection.state === HubConnectionState.Connected) {
-        connection.invoke('LeaveJobGroup', jobId).catch(console.error);
+        console.log('[SignalR] Leaving job group before cleanup:', jobId);
+        connection
+          .invoke('LeaveJobGroup', jobId)
+          .then(() =>
+            console.log('[SignalR] Successfully left job group:', jobId)
+          )
+          .catch((error) =>
+            console.error('[SignalR] Failed to leave job group:', error)
+          );
       }
+
       if (connection) {
-        connection.stop().catch(console.error);
+        console.log('[SignalR] Stopping connection...');
+        connection
+          .stop()
+          .then(() => console.log('[SignalR] Connection stopped successfully'))
+          .catch((error) =>
+            console.error('[SignalR] Failed to stop connection:', error)
+          );
       }
     };
   }, [jobId, authToken, calculateEstimatedTime]);
