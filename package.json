@@ -14,7 +14,7 @@
   "private": true,
   "dependencies": {
     "@microsoft/signalr": "^8.0.7",
-    "@nx-dotnet/core": "^2.5.0",
+    "@nx-dotnet/core": "^3.0.0",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-slot": "^1.2.3",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
