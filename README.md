@@ -119,6 +119,34 @@ In a new terminal, start the frontend:
 pnpm run dev:web
 ```
 
+### NX Commands
+
+This project uses NX for monorepo management. Common commands:
+
+```bash
+# Run specific project
+nx serve web              # Start Next.js dev server
+nx serve api              # Start .NET API with hot reload
+nx test api.Test          # Run .NET unit tests
+nx e2e web-e2e           # Run Playwright e2e tests
+
+# Build projects
+nx build web              # Build Next.js app
+nx build api              # Build .NET API
+
+# Lint and format
+nx lint web               # Lint frontend code
+nx lint api               # Format .NET code with dotnet-format
+
+# Run commands for affected projects only
+nx affected:build         # Build only changed projects
+nx affected:test          # Test only affected projects
+nx affected:lint          # Lint only affected projects
+
+# Visualize project dependencies
+nx graph                  # Open interactive dependency graph
+```
+
 ## Usage
 
 1. Open your browser and navigate to `http://127.0.0.1:3000`
@@ -139,14 +167,55 @@ pnpm run dev:web
 
 ## Architecture
 
-The application follows a clean architecture approach:
+### Project Structure
 
-- **Domain Models**: Represent the core business entities
-- **Data Access**: Entity Framework Core for database operations
-- **Services**: Business logic for authentication, Spotify API integration, and playlist processing
-- **API Controllers**: RESTful endpoints for frontend communication
-- **React Components**: Modular UI components for the frontend
-- **API Service**: Frontend service for communication with the backend
+This NX monorepo contains multiple projects with enforced module boundaries:
+
+- **`api/`** - ASP.NET Core 8 API (`scope:backend`, `type:app`, `platform:dotnet`)
+- **`api.Test/`** - .NET test project (`scope:backend`, `type:test`, `platform:dotnet`) 
+- **`web/`** - Next.js frontend (`scope:frontend`, `type:app`, `platform:nextjs`)
+- **`web-e2e/`** - End-to-end tests (`scope:frontend`, `type:test`, `platform:playwright`)
+
+### Module Boundary Enforcement
+
+The project uses NX's `@nx/enforce-module-boundaries` ESLint rule with strict architectural constraints:
+
+```javascript
+// eslint.config.mjs
+depConstraints: [
+  {
+    sourceTag: 'scope:frontend',
+    onlyDependOnLibsWithTags: ['scope:frontend', 'scope:shared'],
+  },
+  {
+    sourceTag: 'scope:backend', 
+    onlyDependOnLibsWithTags: ['scope:backend', 'scope:shared'],
+  },
+  {
+    sourceTag: 'type:test',
+    onlyDependOnLibsWithTags: ['*'],
+  },
+]
+```
+
+**Benefits:**
+- **Clean Architecture**: Prevents improper cross-scope dependencies
+- **Unified Governance**: Same rules apply to both TypeScript and .NET projects via `@nx-dotnet/core`
+- **Future-Ready**: Support for `scope:shared` libraries when needed
+
+### Clean Architecture Layers
+
+The application follows clean architecture principles:
+
+- **Domain Models**: Core business entities (`User`, `CleanPlaylistJob`, `TrackMapping`)
+- **Data Access**: Entity Framework Core with `RadioWashDbContext`
+- **Services**: Business logic interfaces and implementations
+  - Authentication and user management
+  - Spotify API integration  
+  - Playlist processing and track matching
+- **API Controllers**: RESTful endpoints with proper authentication
+- **React Components**: Modular UI components with TypeScript
+- **API Service**: Frontend service layer for backend communication
 
 ## Limitations
 
