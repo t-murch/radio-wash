@@ -11,7 +11,16 @@
   },
   "nxCloudId": "680678125833d941b3c13530",
   "plugins": [
-    "@nx-dotnet/core",
+    {
+      "plugin": "@nx-dotnet/core",
+      "options": {
+        "inferredTargets": {
+          "test": "test",
+          "build": "build",
+          "lint": "lint"
+        }
+      }
+    },
     {
       "plugin": "@nx/next/plugin",
       "options": {
@@ -39,6 +48,15 @@
   "targetDefaults": {
     "e2e-ci--**/*": {
       "dependsOn": ["^build"]
+    },
+    "test": {
+      "cache": true,
+      "dependsOn": ["build"],
+      "inputs": [
+        "default",
+        "{projectRoot}/**/*.{cs,csproj}",
+        "^production"
+      ]
     }
   },
   "generators": {
