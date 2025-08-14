@@ -7,7 +7,5 @@
     <MSBuildProjectDirRelativePath>$([MSBuild]::MakeRelative($(RepoRoot), $(MSBuildProjectDirectory)))</MSBuildProjectDirRelativePath>
     <NodeModulesRelativePath>$([MSBuild]::MakeRelative($(MSBuildProjectDirectory), $(RepoRoot)))</NodeModulesRelativePath>
   </PropertyGroup>
-  <Target Name="CheckNxModuleBoundaries" BeforeTargets="Build">
-    <Exec Command="npx @nx-dotnet/core:check-module-boundaries --project-root &quot;$(MSBuildProjectDirRelativePath)&quot;" WorkingDirectory="$(RepoRoot)"/>
-  </Target>
+  <!-- Module boundaries are enforced by ESLint @nx/enforce-module-boundaries rule and read by @nx-dotnet/core -->
 </Project>
