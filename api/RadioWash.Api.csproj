@@ -27,7 +27,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.4" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="SpotifyAPI.Web" Version="7.2.1" />
-    <PackageReference Include="Supabase.Gotrue" Version="4.1.0" />
+    <PackageReference Include="Supabase.Gotrue" Version="5.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="System.Text.Json" Version="9.0.4" />
   </ItemGroup>

@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
 using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Hubs;
@@ -29,6 +30,15 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
+
+// Repositories
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserProviderDataRepository, UserProviderDataRepository>();
+builder.Services.AddScoped<IUserMusicTokenRepository, UserMusicTokenRepository>();
+builder.Services.AddScoped<ICleanPlaylistJobRepository, CleanPlaylistJobRepository>();
+builder.Services.AddScoped<ITrackMappingRepository, TrackMappingRepository>();
+
+// Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
@@ -61,7 +71,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
-  options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+  options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Test");
 
   var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
   var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
@@ -120,8 +130,9 @@ builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
   });
 });
 
-// Hangfire (skip in testing environment)
-if (!builder.Environment.IsEnvironment("Testing"))
+// Hangfire (skip in testing environments)
+var skipHangfire = builder.Configuration.GetValue<bool>("SkipMigrations"); // Use same flag for consistency
+if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvironment("Test") && !skipHangfire)
 {
   builder.Services.AddHangfire(config => config
       .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
@@ -188,8 +199,9 @@ if (app.Environment.IsDevelopment())
   app.UseSwaggerUI();
 }
 
-// Apply migrations in development (skip for testing)
-if (!app.Environment.IsEnvironment("Testing"))
+// Apply migrations (skip only for unit testing environment)
+var skipMigrations = app.Configuration.GetValue<bool>("SkipMigrations");
+if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
 {
   using (var scope = app.Services.CreateScope())
   {
@@ -232,7 +244,8 @@ logger.LogInformation("SignalR Hub mapped at /hubs/playlist-progress with transp
     "ServerSentEvents, WebSockets, LongPolling");
 
 // Only add Hangfire dashboard in non-testing environments
-if (!app.Environment.IsEnvironment("Testing"))
+var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); // Use same flag for consistency
+if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
   app.UseHangfireDashboard();
 }
