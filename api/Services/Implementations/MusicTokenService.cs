@@ -1,6 +1,5 @@
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
 using SpotifyAPI.Web;
@@ -12,20 +11,20 @@ namespace RadioWash.Api.Services.Implementations;
 /// </summary>
 public class MusicTokenService : IMusicTokenService
 {
-    private readonly RadioWashDbContext _dbContext;
+    private readonly IUserMusicTokenRepository _tokenRepository;
     private readonly ITokenEncryptionService _encryptionService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MusicTokenService> _logger;
     private readonly HttpClient _httpClient;
 
     public MusicTokenService(
-        RadioWashDbContext dbContext,
+        IUserMusicTokenRepository tokenRepository,
         ITokenEncryptionService encryptionService,
         IConfiguration configuration,
         ILogger<MusicTokenService> logger,
         HttpClient httpClient)
     {
-        _dbContext = dbContext;
+        _tokenRepository = tokenRepository;
         _encryptionService = encryptionService;
         _configuration = configuration;
         _logger = logger;
@@ -35,8 +34,7 @@ public class MusicTokenService : IMusicTokenService
     public async Task<UserMusicToken> StoreTokensAsync(int userId, string provider, string accessToken, 
         string? refreshToken, int expiresInSeconds, string[]? scopes = null, object? metadata = null)
     {
-        var existingToken = await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
+        var existingToken = await _tokenRepository.GetByUserAndProviderAsync(userId, provider);
 
         var encryptedAccessToken = _encryptionService.EncryptToken(accessToken);
         var encryptedRefreshToken = refreshToken != null ? _encryptionService.EncryptToken(refreshToken) : null;
@@ -50,8 +48,8 @@ public class MusicTokenService : IMusicTokenService
             existingToken.ExpiresAt = DateTime.UtcNow.AddSeconds(expiresInSeconds);
             existingToken.Scopes = scopesJson;
             existingToken.ProviderMetadata = metadataJson;
-            existingToken.UpdatedAt = DateTime.UtcNow;
             
+            await _tokenRepository.UpdateAsync(existingToken);
             _logger.LogInformation("Updated tokens for user {UserId} provider {Provider}", userId, provider);
         }
         else
@@ -69,11 +67,10 @@ public class MusicTokenService : IMusicTokenService
                 UpdatedAt = DateTime.UtcNow
             };
             
-            _dbContext.UserMusicTokens.Add(existingToken);
+            await _tokenRepository.CreateAsync(existingToken);
             _logger.LogInformation("Created new tokens for user {UserId} provider {Provider}", userId, provider);
         }
 
-        await _dbContext.SaveChangesAsync();
         return existingToken;
     }
 
@@ -109,20 +106,12 @@ public class MusicTokenService : IMusicTokenService
 
     public async Task<UserMusicToken?> GetTokenInfoAsync(int userId, string provider)
     {
-        return await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider && !t.IsRevoked);
+        return await _tokenRepository.GetByUserAndProviderAsync(userId, provider);
     }
 
     public async Task<bool> HasValidTokensAsync(int userId, string provider)
     {
-        var tokenRecord = await GetTokenInfoAsync(userId, provider);
-        if (tokenRecord == null)
-        {
-            return false;
-        }
-
-        // Token is valid if not expired or we have a refresh token
-        return DateTime.UtcNow < tokenRecord.ExpiresAt || !string.IsNullOrEmpty(tokenRecord.EncryptedRefreshToken);
+        return await _tokenRepository.HasValidTokensAsync(userId, provider);
     }
 
     public async Task<bool> RefreshTokensAsync(int userId, string provider)
@@ -156,8 +145,7 @@ public class MusicTokenService : IMusicTokenService
         var tokenRecord = await GetTokenInfoAsync(userId, provider);
         if (tokenRecord != null)
         {
-            _dbContext.UserMusicTokens.Remove(tokenRecord);
-            await _dbContext.SaveChangesAsync();
+            await _tokenRepository.DeleteAsync(tokenRecord);
             _logger.LogInformation("Revoked tokens for user {UserId} provider {Provider}", userId, provider);
         }
     }
@@ -205,7 +193,7 @@ public class MusicTokenService : IMusicTokenService
                 }
                 
                 tokenRecord.MarkRefreshSuccess();
-                await _dbContext.SaveChangesAsync();
+                await _tokenRepository.UpdateAsync(tokenRecord);
                 
                 _logger.LogInformation("Successfully refreshed Spotify token for user {UserId}", tokenRecord.UserId);
                 return true;
@@ -213,7 +201,7 @@ public class MusicTokenService : IMusicTokenService
             else
             {
                 tokenRecord.MarkRefreshFailure();
-                await _dbContext.SaveChangesAsync();
+                await _tokenRepository.UpdateAsync(tokenRecord);
                 return false;
             }
         }
@@ -221,7 +209,7 @@ public class MusicTokenService : IMusicTokenService
         {
             _logger.LogError(ex, "Failed to refresh Spotify token for user {UserId}", tokenRecord.UserId);
             tokenRecord.MarkRefreshFailure();
-            await _dbContext.SaveChangesAsync();
+            await _tokenRepository.UpdateAsync(tokenRecord);
             return false;
         }
     }

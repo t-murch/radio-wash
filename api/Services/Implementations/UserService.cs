@@ -1,6 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
@@ -9,12 +8,17 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class UserService : IUserService
 {
-    private readonly RadioWashDbContext _dbContext;
+    private readonly IUserRepository _userRepository;
+    private readonly IUserProviderDataRepository _providerDataRepository;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(RadioWashDbContext dbContext, ILogger<UserService> logger)
+    public UserService(
+        IUserRepository userRepository, 
+        IUserProviderDataRepository providerDataRepository,
+        ILogger<UserService> logger)
     {
-        _dbContext = dbContext;
+        _userRepository = userRepository;
+        _providerDataRepository = providerDataRepository;
         _logger = logger;
     }
 
@@ -22,9 +26,7 @@ public class UserService : IUserService
     {
         try
         {
-            var user = await _dbContext.Users
-                .Include(u => u.ProviderData)
-                .FirstOrDefaultAsync(u => u.SupabaseId == supabaseId.ToString());
+            var user = await _userRepository.GetBySupabaseIdAsync(supabaseId.ToString());
 
             if (user == null)
             {
@@ -45,9 +47,7 @@ public class UserService : IUserService
     {
         try
         {
-            var user = await _dbContext.Users
-                .Include(u => u.ProviderData)
-                .FirstOrDefaultAsync(u => u.Email == email);
+            var user = await _userRepository.GetByEmailAsync(email);
 
             if (user == null)
             {
@@ -68,18 +68,15 @@ public class UserService : IUserService
     {
         try
         {
-            var userProviderData = await _dbContext.Set<UserProviderData>()
-                .Include(upd => upd.User)
-                .ThenInclude(u => u.ProviderData)
-                .FirstOrDefaultAsync(upd => upd.Provider == provider && upd.ProviderId == providerId);
+            var user = await _userRepository.GetByProviderAsync(provider, providerId);
 
-            if (userProviderData?.User == null)
+            if (user == null)
             {
                 _logger.LogInformation("User not found for provider: {Provider}, ID: {ProviderId}", provider, providerId);
                 return null;
             }
 
-            return MapToDto(userProviderData.User);
+            return MapToDto(user);
         }
         catch (Exception ex)
         {
@@ -102,13 +99,12 @@ public class UserService : IUserService
                 UpdatedAt = DateTime.UtcNow
             };
 
-            _dbContext.Users.Add(user);
-            await _dbContext.SaveChangesAsync();
+            var createdUser = await _userRepository.CreateAsync(user);
 
             _logger.LogInformation("Created new user with Supabase ID: {SupabaseId}, Primary Provider: {Provider}", 
                 supabaseId, primaryProvider ?? "email");
 
-            return MapToDto(user);
+            return MapToDto(createdUser);
         }
         catch (Exception ex)
         {
@@ -121,9 +117,7 @@ public class UserService : IUserService
     {
         try
         {
-            var user = await _dbContext.Users
-                .Include(u => u.ProviderData)
-                .FirstOrDefaultAsync(u => u.Id == userId);
+            var user = await _userRepository.GetByIdAsync(userId);
 
             if (user == null)
             {
@@ -140,13 +134,11 @@ public class UserService : IUserService
                 user.Email = email;
             }
 
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _dbContext.SaveChangesAsync();
+            var updatedUser = await _userRepository.UpdateAsync(user);
 
             _logger.LogInformation("Updated user with ID: {UserId}", userId);
 
-            return MapToDto(user);
+            return MapToDto(updatedUser);
         }
         catch (Exception ex)
         {
@@ -159,9 +151,7 @@ public class UserService : IUserService
     {
         try
         {
-            var user = await _dbContext.Users
-                .Include(u => u.ProviderData)
-                .FirstOrDefaultAsync(u => u.SupabaseId == supabaseId);
+            var user = await _userRepository.GetBySupabaseIdAsync(supabaseId);
 
             if (user == null)
             {
@@ -169,15 +159,14 @@ public class UserService : IUserService
             }
 
             // Check if provider is already linked
-            var existingProviderData = user.ProviderData
-                .FirstOrDefault(pd => pd.Provider == provider);
+            var existingProviderData = await _providerDataRepository.GetByUserAndProviderAsync(user.Id, provider);
 
             if (existingProviderData != null)
             {
                 // Update existing provider data
                 existingProviderData.ProviderId = providerId;
                 existingProviderData.ProviderMetadata = providerData != null ? JsonConvert.SerializeObject(providerData) : null;
-                existingProviderData.UpdatedAt = DateTime.UtcNow;
+                await _providerDataRepository.UpdateAsync(existingProviderData);
             }
             else
             {
@@ -192,21 +181,21 @@ public class UserService : IUserService
                     UpdatedAt = DateTime.UtcNow
                 };
 
-                user.ProviderData.Add(newProviderData);
+                await _providerDataRepository.CreateAsync(newProviderData);
             }
 
-            // Set as primary provider if this is the first provider or if explicitly requested
-            if (user.PrimaryProvider == null || user.ProviderData.Count == 1)
+            // Set as primary provider if this is the first provider
+            if (user.PrimaryProvider == null)
             {
                 user.PrimaryProvider = provider;
+                await _userRepository.UpdateAsync(user);
             }
-
-            user.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
 
             _logger.LogInformation("Linked provider {Provider} to user {SupabaseId}", provider, supabaseId);
 
-            return MapToDto(user);
+            // Get the updated user with provider data
+            var updatedUser = await _userRepository.GetBySupabaseIdAsync(supabaseId);
+            return MapToDto(updatedUser!);
         }
         catch (Exception ex)
         {
@@ -219,9 +208,7 @@ public class UserService : IUserService
     {
         try
         {
-            var user = await _dbContext.Users
-                .Include(u => u.ProviderData)
-                .FirstOrDefaultAsync(u => u.SupabaseId == supabaseId);
+            var user = await _userRepository.GetBySupabaseIdAsync(supabaseId);
 
             if (user == null)
             {
@@ -229,19 +216,18 @@ public class UserService : IUserService
             }
 
             // Verify the provider is linked
-            if (!user.ProviderData.Any(pd => pd.Provider == provider))
+            var hasProvider = await _userRepository.HasProviderLinkedAsync(supabaseId, provider);
+            if (!hasProvider)
             {
                 throw new ArgumentException($"Provider {provider} is not linked to user {supabaseId}");
             }
 
             user.PrimaryProvider = provider;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _dbContext.SaveChangesAsync();
+            var updatedUser = await _userRepository.UpdateAsync(user);
 
             _logger.LogInformation("Set primary provider to {Provider} for user {SupabaseId}", provider, supabaseId);
 
-            return MapToDto(user);
+            return MapToDto(updatedUser);
         }
         catch (Exception ex)
         {
@@ -254,10 +240,7 @@ public class UserService : IUserService
     {
         try
         {
-            return await _dbContext.Users
-                .Where(u => u.SupabaseId == supabaseId)
-                .SelectMany(u => u.ProviderData)
-                .AnyAsync(pd => pd.Provider == provider);
+            return await _userRepository.HasProviderLinkedAsync(supabaseId, provider);
         }
         catch (Exception ex)
         {
@@ -270,11 +253,7 @@ public class UserService : IUserService
     {
         try
         {
-            return await _dbContext.Users
-                .Where(u => u.SupabaseId == supabaseId)
-                .SelectMany(u => u.ProviderData)
-                .Select(pd => pd.Provider)
-                .ToListAsync();
+            return await _userRepository.GetLinkedProvidersAsync(supabaseId);
         }
         catch (Exception ex)
         {
