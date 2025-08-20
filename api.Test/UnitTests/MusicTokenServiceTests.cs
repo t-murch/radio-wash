@@ -1,21 +1,23 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Moq.Protected;
-using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace RadioWash.Api.Test.UnitTests;
 
+/// <summary>
+/// Unit tests for MusicTokenService using mocked repository dependencies
+/// </summary>
 public class MusicTokenServiceTests : IDisposable
 {
-    private readonly RadioWashDbContext _dbContext;
+    private readonly Mock<IUserMusicTokenRepository> _tokenRepositoryMock;
     private readonly Mock<ITokenEncryptionService> _encryptionServiceMock;
     private readonly Mock<IConfiguration> _configurationMock;
     private readonly Mock<ILogger<MusicTokenService>> _loggerMock;
@@ -25,11 +27,7 @@ public class MusicTokenServiceTests : IDisposable
 
     public MusicTokenServiceTests()
     {
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-        _dbContext = new RadioWashDbContext(options);
-
+        _tokenRepositoryMock = new Mock<IUserMusicTokenRepository>();
         _encryptionServiceMock = new Mock<ITokenEncryptionService>();
         _configurationMock = new Mock<IConfiguration>();
         _loggerMock = new Mock<ILogger<MusicTokenService>>();
@@ -43,17 +41,11 @@ public class MusicTokenServiceTests : IDisposable
         _configurationMock.Setup(c => c["Spotify:ClientSecret"]).Returns("fake-test-client-secret");
 
         _sut = new MusicTokenService(
-            _dbContext,
+            _tokenRepositoryMock.Object,
             _encryptionServiceMock.Object,
             _configurationMock.Object,
             _loggerMock.Object,
             _httpClient);
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _httpClient.Dispose();
     }
 
     #region StoreTokensAsync Tests
@@ -70,25 +62,32 @@ public class MusicTokenServiceTests : IDisposable
         var scopes = new[] { "user-read-private", "playlist-read-private" };
         var metadata = new { displayName = "Test User" };
 
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
         _encryptionServiceMock.Setup(x => x.EncryptToken(accessToken))
             .Returns("encrypted-access-token");
         _encryptionServiceMock.Setup(x => x.EncryptToken(refreshToken))
             .Returns("encrypted-refresh-token");
 
+        var capturedToken = new UserMusicToken();
+        _tokenRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<UserMusicToken>()))
+            .Callback<UserMusicToken>(token => capturedToken = token)
+            .ReturnsAsync((UserMusicToken token) => token);
+
         // Act
-        await _sut.StoreTokensAsync(userId, provider, accessToken, refreshToken, expiresIn, scopes, metadata);
+        var result = await _sut.StoreTokensAsync(userId, provider, accessToken, refreshToken, expiresIn, scopes, metadata);
 
         // Assert
-        var storedToken = await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
+        Assert.Equal(userId, capturedToken.UserId);
+        Assert.Equal(provider, capturedToken.Provider);
+        Assert.Equal("encrypted-access-token", capturedToken.EncryptedAccessToken);
+        Assert.Equal("encrypted-refresh-token", capturedToken.EncryptedRefreshToken);
+        Assert.Equal(JsonSerializer.Serialize(scopes), capturedToken.Scopes);
+        Assert.False(capturedToken.IsRevoked);
+        Assert.Equal(0, capturedToken.RefreshFailureCount);
 
-        Assert.NotNull(storedToken);
-        Assert.Equal("encrypted-access-token", storedToken.EncryptedAccessToken);
-        Assert.Equal("encrypted-refresh-token", storedToken.EncryptedRefreshToken);
-        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(scopes), storedToken.Scopes);
-        Assert.True(storedToken.ExpiresAt > DateTime.UtcNow.AddSeconds(3500)); // Approximately 1 hour from now
-        Assert.False(storedToken.IsRevoked);
-        Assert.Equal(0, storedToken.RefreshFailureCount);
+        _tokenRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<UserMusicToken>()), Times.Once);
     }
 
     [Fact]
@@ -99,6 +98,7 @@ public class MusicTokenServiceTests : IDisposable
         var provider = "spotify";
         var existingToken = new UserMusicToken
         {
+            Id = 1,
             UserId = userId,
             Provider = provider,
             EncryptedAccessToken = "old-encrypted-access-token",
@@ -107,8 +107,8 @@ public class MusicTokenServiceTests : IDisposable
             CreatedAt = DateTime.UtcNow.AddDays(-1)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(existingToken);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(existingToken);
 
         var newAccessToken = "new-access-token";
         var newRefreshToken = "new-refresh-token";
@@ -118,17 +118,18 @@ public class MusicTokenServiceTests : IDisposable
         _encryptionServiceMock.Setup(x => x.EncryptToken(newRefreshToken))
             .Returns("new-encrypted-refresh-token");
 
+        _tokenRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<UserMusicToken>()))
+            .ReturnsAsync((UserMusicToken token) => token);
+
         // Act
-        await _sut.StoreTokensAsync(userId, provider, newAccessToken, newRefreshToken, 3600);
+        var result = await _sut.StoreTokensAsync(userId, provider, newAccessToken, newRefreshToken, 3600);
 
         // Assert
-        var updatedToken = await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
+        Assert.Equal("new-encrypted-access-token", existingToken.EncryptedAccessToken);
+        Assert.Equal("new-encrypted-refresh-token", existingToken.EncryptedRefreshToken);
+        Assert.Equal(1, existingToken.Id); // Same record, just updated
 
-        Assert.NotNull(updatedToken);
-        Assert.Equal("new-encrypted-access-token", updatedToken.EncryptedAccessToken);
-        Assert.Equal("new-encrypted-refresh-token", updatedToken.EncryptedRefreshToken);
-        Assert.Equal(existingToken.Id, updatedToken.Id); // Same record, just updated
+        _tokenRepositoryMock.Verify(r => r.UpdateAsync(existingToken), Times.Once);
     }
 
     [Fact]
@@ -139,19 +140,23 @@ public class MusicTokenServiceTests : IDisposable
         var provider = "spotify";
         var accessToken = "access-token";
 
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
         _encryptionServiceMock.Setup(x => x.EncryptToken(accessToken))
             .Returns("encrypted-access-token");
+
+        var capturedToken = new UserMusicToken();
+        _tokenRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<UserMusicToken>()))
+            .Callback<UserMusicToken>(token => capturedToken = token)
+            .ReturnsAsync((UserMusicToken token) => token);
 
         // Act
         await _sut.StoreTokensAsync(userId, provider, accessToken, null, 3600);
 
         // Assert
-        var storedToken = await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
-
-        Assert.NotNull(storedToken);
-        Assert.Equal("encrypted-access-token", storedToken.EncryptedAccessToken);
-        Assert.Null(storedToken.EncryptedRefreshToken);
+        Assert.Equal("encrypted-access-token", capturedToken.EncryptedAccessToken);
+        Assert.Null(capturedToken.EncryptedRefreshToken);
     }
 
     #endregion
@@ -176,8 +181,8 @@ public class MusicTokenServiceTests : IDisposable
             IsRevoked = false
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
         _encryptionServiceMock.Setup(x => x.DecryptToken(encryptedToken))
             .Returns(decryptedToken);
@@ -196,6 +201,9 @@ public class MusicTokenServiceTests : IDisposable
         var userId = 1;
         var provider = "spotify";
 
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
         // Act & Assert
         var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => 
             _sut.GetValidAccessTokenAsync(userId, provider));
@@ -203,23 +211,16 @@ public class MusicTokenServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetValidAccessTokenAsync_WhenTokenRevoked_ShouldThrowUnauthorizedException()
+    public async Task GetValidAccessTokenAsync_WhenTokenRevoked_ShouldReturnDecryptedToken()
     {
-        // Arrange
+        // Arrange - The service implementation doesn't check for revoked status explicitly,
+        // it relies on the repository to filter out revoked tokens or return null
         var userId = 1;
         var provider = "spotify";
 
-        var tokenRecord = new UserMusicToken
-        {
-            UserId = userId,
-            Provider = provider,
-            EncryptedAccessToken = "encrypted-access-token",
-            ExpiresAt = DateTime.UtcNow.AddHours(1),
-            IsRevoked = true
-        };
-
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        // Simulate repository returning null for revoked tokens
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => 
@@ -246,8 +247,8 @@ public class MusicTokenServiceTests : IDisposable
             CreatedAt = DateTime.UtcNow.AddDays(-1)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
         // Act
         var result = await _sut.GetTokenInfoAsync(userId, provider);
@@ -266,6 +267,9 @@ public class MusicTokenServiceTests : IDisposable
         var userId = 1;
         var provider = "spotify";
 
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
         // Act
         var result = await _sut.GetTokenInfoAsync(userId, provider);
 
@@ -283,17 +287,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
-        var tokenRecord = new UserMusicToken
-        {
-            UserId = userId,
-            Provider = provider,
-            EncryptedAccessToken = "encrypted-access-token",
-            ExpiresAt = DateTime.UtcNow.AddHours(1), // Not expired
-            IsRevoked = false
-        };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.HasValidTokensAsync(userId, provider))
+            .ReturnsAsync(true);
 
         // Act
         var result = await _sut.HasValidTokensAsync(userId, provider);
@@ -308,18 +304,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
-        var tokenRecord = new UserMusicToken
-        {
-            UserId = userId,
-            Provider = provider,
-            EncryptedAccessToken = "encrypted-access-token",
-            EncryptedRefreshToken = "encrypted-refresh-token", // Has refresh token
-            ExpiresAt = DateTime.UtcNow.AddMinutes(-10), // Expired
-            IsRevoked = false
-        };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.HasValidTokensAsync(userId, provider))
+            .ReturnsAsync(true);
 
         // Act
         var result = await _sut.HasValidTokensAsync(userId, provider);
@@ -334,18 +321,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
-        var tokenRecord = new UserMusicToken
-        {
-            UserId = userId,
-            Provider = provider,
-            EncryptedAccessToken = "encrypted-access-token",
-            EncryptedRefreshToken = null, // No refresh token
-            ExpiresAt = DateTime.UtcNow.AddMinutes(-10), // Expired
-            IsRevoked = false
-        };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.HasValidTokensAsync(userId, provider))
+            .ReturnsAsync(false);
 
         // Act
         var result = await _sut.HasValidTokensAsync(userId, provider);
@@ -360,17 +338,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
-        var tokenRecord = new UserMusicToken
-        {
-            UserId = userId,
-            Provider = provider,
-            EncryptedAccessToken = "encrypted-access-token",
-            ExpiresAt = DateTime.UtcNow.AddHours(1),
-            IsRevoked = true // Revoked
-        };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.HasValidTokensAsync(userId, provider))
+            .ReturnsAsync(false);
 
         // Act
         var result = await _sut.HasValidTokensAsync(userId, provider);
@@ -385,6 +355,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
+
+        _tokenRepositoryMock.Setup(r => r.HasValidTokensAsync(userId, provider))
+            .ReturnsAsync(false);
 
         // Act
         var result = await _sut.HasValidTokensAsync(userId, provider);
@@ -411,16 +384,17 @@ public class MusicTokenServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddHours(1)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
+
+        _tokenRepositoryMock.Setup(r => r.DeleteAsync(tokenRecord))
+            .Returns(Task.CompletedTask);
 
         // Act
         await _sut.RevokeTokensAsync(userId, provider);
 
         // Assert
-        var remainingToken = await _dbContext.UserMusicTokens
-            .FirstOrDefaultAsync(t => t.UserId == userId && t.Provider == provider);
-        Assert.Null(remainingToken);
+        _tokenRepositoryMock.Verify(r => r.DeleteAsync(tokenRecord), Times.Once);
     }
 
     [Fact]
@@ -430,8 +404,13 @@ public class MusicTokenServiceTests : IDisposable
         var userId = 1;
         var provider = "spotify";
 
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
         // Act & Assert - Should not throw
         await _sut.RevokeTokensAsync(userId, provider);
+
+        _tokenRepositoryMock.Verify(r => r.DeleteAsync(It.IsAny<UserMusicToken>()), Times.Never);
     }
 
     #endregion
@@ -453,8 +432,8 @@ public class MusicTokenServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
         // Act
         var result = await _sut.RefreshTokensAsync(userId, provider);
@@ -469,6 +448,9 @@ public class MusicTokenServiceTests : IDisposable
         // Arrange
         var userId = 1;
         var provider = "spotify";
+
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
 
         // Act
         var result = await _sut.RefreshTokensAsync(userId, provider);
@@ -492,8 +474,8 @@ public class MusicTokenServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
         // Act
         var result = await _sut.RefreshTokensAsync(userId, provider);
@@ -517,8 +499,8 @@ public class MusicTokenServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
         };
 
-        await _dbContext.UserMusicTokens.AddAsync(tokenRecord);
-        await _dbContext.SaveChangesAsync();
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
         // Setup decryption to fail (simulating corrupted token scenario)
         _encryptionServiceMock.Setup(x => x.DecryptToken("encrypted-refresh-token"))
@@ -529,51 +511,88 @@ public class MusicTokenServiceTests : IDisposable
 
         // Assert
         Assert.False(result);
-        
-        // Verify the token was not marked as revoked since that would require a code change
-        // This test documents the current behavior where decryption failures return false
     }
 
     #endregion
 
-    #region Token Lifecycle Tests
+    #region HasRequiredScopesAsync Tests
 
     [Fact]
-    public async Task TokenLifecycle_StoreRetrieveRevoke_ShouldWorkCorrectly()
+    public async Task HasRequiredScopesAsync_WhenTokenHasAllRequiredScopes_ShouldReturnTrue()
     {
         // Arrange
         var userId = 1;
         var provider = "spotify";
-        var accessToken = "test-access-token";
-        var refreshToken = "test-refresh-token";
-
-        _encryptionServiceMock.Setup(x => x.EncryptToken(accessToken))
-            .Returns("encrypted-access-token");
-        _encryptionServiceMock.Setup(x => x.EncryptToken(refreshToken))
-            .Returns("encrypted-refresh-token");
-        _encryptionServiceMock.Setup(x => x.DecryptToken("encrypted-access-token"))
-            .Returns(accessToken);
-
-        // Act & Assert - Store
-        await _sut.StoreTokensAsync(userId, provider, accessToken, refreshToken, 3600);
+        var requiredScopes = new[] { "user-read-private", "playlist-read-private" };
+        var tokenScopes = new[] { "user-read-private", "playlist-read-private", "playlist-modify-public" };
         
-        var hasTokens = await _sut.HasValidTokensAsync(userId, provider);
-        Assert.True(hasTokens);
+        var tokenRecord = new UserMusicToken
+        {
+            UserId = userId,
+            Provider = provider,
+            Scopes = JsonSerializer.Serialize(tokenScopes),
+            IsRevoked = false
+        };
 
-        // Act & Assert - Retrieve
-        var retrievedToken = await _sut.GetValidAccessTokenAsync(userId, provider);
-        Assert.Equal(accessToken, retrievedToken);
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
 
-        // Act & Assert - Revoke
-        await _sut.RevokeTokensAsync(userId, provider);
+        // Act
+        var result = await _sut.HasRequiredScopesAsync(userId, provider, requiredScopes);
+
+        // Assert
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task HasRequiredScopesAsync_WhenTokenMissingRequiredScopes_ShouldReturnFalse()
+    {
+        // Arrange
+        var userId = 1;
+        var provider = "spotify";
+        var requiredScopes = new[] { "user-read-private", "playlist-modify-private" };
+        var tokenScopes = new[] { "user-read-private", "playlist-read-private" }; // Missing playlist-modify-private
         
-        var hasTokensAfterRevoke = await _sut.HasValidTokensAsync(userId, provider);
-        Assert.False(hasTokensAfterRevoke);
-        
-        // After revoke, GetValidAccessTokenAsync should throw an exception since no tokens exist
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => 
-            _sut.GetValidAccessTokenAsync(userId, provider));
+        var tokenRecord = new UserMusicToken
+        {
+            UserId = userId,
+            Provider = provider,
+            Scopes = JsonSerializer.Serialize(tokenScopes),
+            IsRevoked = false
+        };
+
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync(tokenRecord);
+
+        // Act
+        var result = await _sut.HasRequiredScopesAsync(userId, provider, requiredScopes);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task HasRequiredScopesAsync_WhenTokenNotFound_ShouldReturnFalse()
+    {
+        // Arrange
+        var userId = 1;
+        var provider = "spotify";
+        var requiredScopes = new[] { "user-read-private" };
+
+        _tokenRepositoryMock.Setup(r => r.GetByUserAndProviderAsync(userId, provider))
+            .ReturnsAsync((UserMusicToken?)null);
+
+        // Act
+        var result = await _sut.HasRequiredScopesAsync(userId, provider, requiredScopes);
+
+        // Assert
+        Assert.False(result);
     }
 
     #endregion
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+    }
 }

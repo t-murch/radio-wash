@@ -47,7 +47,6 @@ public class AuthControllerTests : IDisposable
             _memoryCacheMock.Object,
             _configurationMock.Object,
             _environmentMock.Object,
-            null!, // Supabase client - not used in tested methods
             _userServiceMock.Object,
             _musicTokenServiceMock.Object);
     }
@@ -57,35 +56,24 @@ public class AuthControllerTests : IDisposable
         // Cleanup if needed
     }
 
-    #region SpotifyLogin Tests
-
+    #region Legacy SpotifyLogin Tests - DISABLED (method removed in favor of frontend OAuth)
+    
+    // These tests are disabled because SpotifyLogin method was removed
+    // OAuth flow now happens entirely on frontend with Supabase Auth
+    
+    /*
     [Fact]
     public void SpotifyLogin_WhenConfigurationValid_ShouldRedirectToSpotifyAuth()
     {
-        // Act
-        var result = _sut.SpotifyLogin();
-
-        // Assert
-        var redirectResult = Assert.IsType<RedirectResult>(result);
-        Assert.Contains("accounts.spotify.com/authorize", redirectResult.Url);
-        Assert.Contains("client_id=fake-test-client-id", redirectResult.Url);
-        Assert.Contains("response_type=code", redirectResult.Url);
-        Assert.Contains("redirect_uri=http%3a%2f%2f127.0.0.1%3a5159%2fapi%2fauth%2fspotify%2fcallback", redirectResult.Url);
+        // DISABLED - SpotifyLogin method removed
     }
 
     [Fact]
     public void SpotifyLogin_WhenClientIdMissing_ShouldRedirectToErrorPage()
     {
-        // Arrange
-        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns((string?)null);
-
-        // Act
-        var result = _sut.SpotifyLogin();
-
-        // Assert
-        var redirectResult = Assert.IsType<RedirectResult>(result);
-        Assert.Contains("auth?error=server_error", redirectResult.Url);
+        // DISABLED - SpotifyLogin method removed
     }
+    */
 
     #endregion
 
@@ -369,36 +357,19 @@ public class AuthControllerTests : IDisposable
 
     #region Configuration Tests
 
+    /*
     [Fact]
     public void SpotifyLogin_WhenBackendUrlNotConfigured_ShouldUseDefaultHttpUrl()
     {
-        // Arrange
-        _configurationMock.Setup(c => c["BackendUrl"]).Returns((string?)null);
-
-        // Act
-        var result = _sut.SpotifyLogin();
-
-        // Assert
-        var redirectResult = Assert.IsType<RedirectResult>(result);
-        Assert.Contains("127.0.0.1%3a5159", redirectResult.Url);
-        Assert.Contains("http%3a%2f%2f", redirectResult.Url); // HTTP, not HTTPS
+        // DISABLED - SpotifyLogin method removed
     }
 
     [Fact]
     public void SpotifyLogin_WhenFrontendUrlNotConfigured_ShouldUseDefaultForErrors()
     {
-        // Arrange
-        _configurationMock.Setup(c => c["FrontendUrl"]).Returns((string?)null);
-        _configurationMock.Setup(c => c["Spotify:ClientId"]).Returns((string?)null); // Force error path
-
-        // Act
-        var result = _sut.SpotifyLogin();
-
-        // Assert
-        var redirectResult = Assert.IsType<RedirectResult>(result);
-        Assert.Contains("127.0.0.1:3000", redirectResult.Url);
-        Assert.StartsWith("http://", redirectResult.Url); // HTTP, not HTTPS
+        // DISABLED - SpotifyLogin method removed
     }
+    */
 
     #endregion
 }
