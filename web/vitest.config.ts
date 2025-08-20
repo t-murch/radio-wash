@@ -5,9 +5,18 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'happy-dom',
+    environment: 'jsdom',
     setupFiles: ['./src/app/test-utils/setup.ts'],
     globals: true,
+    clearMocks: true,
+    isolate: false,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true
+      }
+    }
+
   },
   resolve: {
     alias: {

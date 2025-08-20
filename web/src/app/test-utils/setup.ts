@@ -1,8 +1,17 @@
-import '@testing-library/jest-dom';
-import { vi, beforeEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { vi, beforeEach, afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
+
+// Automatic cleanup after each test
+afterEach(() => {
+  cleanup();
+});
 
 // Global mocks
-global.fetch = vi.fn();
+Object.defineProperty(globalThis, 'fetch', {
+  value: vi.fn(),
+  writable: true,
+});
 
 // Mock Next.js router
 vi.mock('next/navigation', () => ({
@@ -14,20 +23,23 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
-// Mock environment detection
-Object.defineProperty(globalThis, 'window', {
-  value: {
-    location: {
-      href: 'http://localhost:3000',
-    },
-  },
+// Mock localStorage for tests
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+};
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
   writable: true,
 });
 
 beforeEach(() => {
   // Reset all mocks before each test
   vi.clearAllMocks();
-  
-  // Reset fetch mock
-  (global.fetch as any).mockClear();
+  localStorageMock.getItem.mockClear();
+  localStorageMock.setItem.mockClear();
+  localStorageMock.removeItem.mockClear();
+  localStorageMock.clear.mockClear();
 });

@@ -9,6 +9,8 @@
     "test": "cd web && vitest",
     "test:watch": "cd web && vitest --watch",
     "test:ui": "cd web && vitest --ui",
+    "test:debug": "cd web && vitest --inspect-brk --no-file-parallelism --reporter=verbose",
+    "test:debug-ui": "cd web && vitest --ui --inspect-brk",
     "test:e2e": "nx run web-e2e:e2e"
   },
   "private": true,
@@ -70,6 +72,7 @@
     "eslint-plugin-react": "7.35.0",
     "eslint-plugin-react-hooks": "5.0.0",
     "happy-dom": "^18.0.1",
+    "jsdom": "^26.1.0",
     "msw": "^2.10.4",
     "nx": "20.8.0",
     "postcss": "8.4.38",
