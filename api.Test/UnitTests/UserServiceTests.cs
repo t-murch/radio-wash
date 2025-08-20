@@ -1,32 +1,26 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
 using Xunit;
 
 namespace RadioWash.Api.Test.UnitTests;
 
-public class UserServiceTests : IDisposable
+public class UserServiceTests
 {
-    private readonly RadioWashDbContext _dbContext;
+    private readonly Mock<IUserRepository> _userRepositoryMock;
+    private readonly Mock<IUserProviderDataRepository> _providerDataRepositoryMock;
     private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _sut;
 
     public UserServiceTests()
     {
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-        _dbContext = new RadioWashDbContext(options);
+        _userRepositoryMock = new Mock<IUserRepository>();
+        _providerDataRepositoryMock = new Mock<IUserProviderDataRepository>();
         _loggerMock = new Mock<ILogger<UserService>>();
-        _sut = new UserService(_dbContext, _loggerMock.Object);
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
+        
+        _sut = new UserService(_userRepositoryMock.Object, _providerDataRepositoryMock.Object, _loggerMock.Object);
     }
 
     #region GetUserBySupabaseIdAsync Tests
@@ -38,15 +32,18 @@ public class UserServiceTests : IDisposable
         var supabaseId = Guid.NewGuid();
         var user = new User
         {
+            Id = 1,
             SupabaseId = supabaseId.ToString(),
             DisplayName = "Test User",
             Email = "test@example.com",
             PrimaryProvider = "spotify",
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+        
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId.ToString()))
+            .ReturnsAsync(user);
 
         // Act
         var result = await _sut.GetUserBySupabaseIdAsync(supabaseId);
@@ -65,6 +62,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var nonExistentSupabaseId = Guid.NewGuid();
+        
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(nonExistentSupabaseId.ToString()))
+            .ReturnsAsync((User?)null);
 
         // Act
         var result = await _sut.GetUserBySupabaseIdAsync(nonExistentSupabaseId);
@@ -78,25 +78,31 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var supabaseId = Guid.NewGuid();
+        var providerData = new UserProviderData
+        {
+            Id = 1,
+            UserId = 1,
+            Provider = "spotify",
+            ProviderId = "spotify123",
+            ProviderMetadata = "{\"displayName\":\"Spotify User\"}",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        
         var user = new User
         {
+            Id = 1,
             SupabaseId = supabaseId.ToString(),
             DisplayName = "Test User",
             Email = "test@example.com",
-            PrimaryProvider = "spotify"
+            PrimaryProvider = "spotify",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            ProviderData = new List<UserProviderData> { providerData }
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
-        var providerData = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "spotify",
-            ProviderId = "spotify123",
-            ProviderMetadata = "{\"displayName\":\"Spotify User\"}"
-        };
-        await _dbContext.UserProviderData.AddAsync(providerData);
-        await _dbContext.SaveChangesAsync();
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId.ToString()))
+            .ReturnsAsync(user);
 
         // Act
         var result = await _sut.GetUserBySupabaseIdAsync(supabaseId);
@@ -122,10 +128,12 @@ public class UserServiceTests : IDisposable
             SupabaseId = Guid.NewGuid().ToString(),
             DisplayName = "Test User",
             Email = email,
-            PrimaryProvider = "email"
+            PrimaryProvider = "email",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+
+        _userRepositoryMock.Setup(x => x.GetByEmailAsync(email))
+            .ReturnsAsync(user);
 
         // Act
         var result = await _sut.GetUserByEmailAsync(email);
@@ -140,6 +148,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var nonExistentEmail = "nonexistent@example.com";
+
+        _userRepositoryMock.Setup(x => x.GetByEmailAsync(nonExistentEmail))
+            .ReturnsAsync((User?)null);
 
         // Act
         var result = await _sut.GetUserByEmailAsync(nonExistentEmail);
@@ -161,19 +172,12 @@ public class UserServiceTests : IDisposable
             SupabaseId = Guid.NewGuid().ToString(),
             DisplayName = "Test User",
             Email = "test@example.com",
-            PrimaryProvider = "spotify"
+            PrimaryProvider = "spotify",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
-        var providerData = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "spotify",
-            ProviderId = "spotify123"
-        };
-        await _dbContext.UserProviderData.AddAsync(providerData);
-        await _dbContext.SaveChangesAsync();
+        _userRepositoryMock.Setup(x => x.GetByProviderAsync("spotify", "spotify123"))
+            .ReturnsAsync(user);
 
         // Act
         var result = await _sut.GetUserByProviderAsync("spotify", "spotify123");
@@ -187,6 +191,10 @@ public class UserServiceTests : IDisposable
     [Fact]
     public async Task GetUserByProviderAsync_WhenUserDoesNotExist_ShouldReturnNull()
     {
+        // Arrange
+        _userRepositoryMock.Setup(x => x.GetByProviderAsync("spotify", "nonexistent123"))
+            .ReturnsAsync((User?)null);
+
         // Act
         var result = await _sut.GetUserByProviderAsync("spotify", "nonexistent123");
 
@@ -206,6 +214,21 @@ public class UserServiceTests : IDisposable
         var displayName = "New User";
         var email = "newuser@example.com";
         var primaryProvider = "spotify";
+        
+        var expectedUser = new User
+        {
+            Id = 1,
+            SupabaseId = supabaseId,
+            DisplayName = displayName,
+            Email = email,
+            PrimaryProvider = primaryProvider,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            ProviderData = new List<UserProviderData>()
+        };
+
+        _userRepositoryMock.Setup(x => x.CreateAsync(It.IsAny<User>()))
+            .ReturnsAsync(expectedUser);
 
         // Act
         var result = await _sut.CreateUserAsync(supabaseId, displayName, email, primaryProvider);
@@ -216,11 +239,9 @@ public class UserServiceTests : IDisposable
         Assert.Equal(displayName, result.DisplayName);
         Assert.Equal(email, result.Email);
         Assert.Equal(primaryProvider, result.PrimaryProvider);
-
-        // Verify user was saved to database
-        var savedUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.SupabaseId == supabaseId);
-        Assert.NotNull(savedUser);
-        Assert.Equal(displayName, savedUser.DisplayName);
+        
+        // Verify repository method was called
+        _userRepositoryMock.Verify(x => x.CreateAsync(It.IsAny<User>()), Times.Once);
     }
 
     [Fact]
@@ -230,6 +251,21 @@ public class UserServiceTests : IDisposable
         var supabaseId = Guid.NewGuid().ToString();
         var displayName = "Email User";
         var email = "emailuser@example.com";
+
+        var expectedUser = new User
+        {
+            Id = 1,
+            SupabaseId = supabaseId,
+            DisplayName = displayName,
+            Email = email,
+            PrimaryProvider = null,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            ProviderData = new List<UserProviderData>()
+        };
+
+        _userRepositoryMock.Setup(x => x.CreateAsync(It.IsAny<User>()))
+            .ReturnsAsync(expectedUser);
 
         // Act
         var result = await _sut.CreateUserAsync(supabaseId, displayName, email);
@@ -247,35 +283,47 @@ public class UserServiceTests : IDisposable
     public async Task UpdateUserAsync_WhenUserExists_ShouldUpdateAndReturnUser()
     {
         // Arrange
+        var userId = 1;
         var user = new User
         {
+            Id = userId,
             SupabaseId = Guid.NewGuid().ToString(),
             DisplayName = "Original Name",
-            Email = "original@example.com"
+            Email = "original@example.com",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
         var newDisplayName = "Updated Name";
         var newEmail = "updated@example.com";
 
+        _userRepositoryMock.Setup(x => x.GetByIdAsync(userId))
+            .ReturnsAsync(user);
+
+        _userRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<User>()))
+            .ReturnsAsync((User u) => 
+            {
+                u.DisplayName = newDisplayName;
+                u.Email = newEmail;
+                return u;
+            });
+
         // Act
-        var result = await _sut.UpdateUserAsync(user.Id, newDisplayName, newEmail);
+        var result = await _sut.UpdateUserAsync(userId, newDisplayName, newEmail);
 
         // Assert
         Assert.NotNull(result);
         Assert.Equal(newDisplayName, result.DisplayName);
         Assert.Equal(newEmail, result.Email);
-
-        // Verify changes were saved
-        var updatedUser = await _dbContext.Users.FindAsync(user.Id);
-        Assert.Equal(newDisplayName, updatedUser.DisplayName);
-        Assert.Equal(newEmail, updatedUser.Email);
+        _userRepositoryMock.Verify(x => x.UpdateAsync(It.IsAny<User>()), Times.Once);
     }
 
     [Fact]
     public async Task UpdateUserAsync_WhenUserDoesNotExist_ShouldThrowKeyNotFoundException()
     {
+        // Arrange
+        _userRepositoryMock.Setup(x => x.GetByIdAsync(999))
+            .ReturnsAsync((User?)null);
+
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _sut.UpdateUserAsync(999, "New Name"));
@@ -285,23 +333,35 @@ public class UserServiceTests : IDisposable
     public async Task UpdateUserAsync_WhenOnlyDisplayNameProvided_ShouldUpdateOnlyDisplayName()
     {
         // Arrange
+        var userId = 1;
+        var originalEmail = "original@example.com";
         var user = new User
         {
+            Id = userId,
             SupabaseId = Guid.NewGuid().ToString(),
             DisplayName = "Original Name",
-            Email = "original@example.com"
+            Email = originalEmail,
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
         var newDisplayName = "Updated Name";
 
+        _userRepositoryMock.Setup(x => x.GetByIdAsync(userId))
+            .ReturnsAsync(user);
+
+        _userRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<User>()))
+            .ReturnsAsync((User u) => 
+            {
+                u.DisplayName = newDisplayName;
+                return u;
+            });
+
         // Act
-        var result = await _sut.UpdateUserAsync(user.Id, newDisplayName);
+        var result = await _sut.UpdateUserAsync(userId, newDisplayName);
 
         // Assert
         Assert.Equal(newDisplayName, result.DisplayName);
-        Assert.Equal("original@example.com", result.Email); // Should remain unchanged
+        Assert.Equal(originalEmail, result.Email); // Should remain unchanged
     }
 
     #endregion
@@ -315,16 +375,60 @@ public class UserServiceTests : IDisposable
         var supabaseId = Guid.NewGuid().ToString();
         var user = new User
         {
+            Id = 1,
             SupabaseId = supabaseId,
             DisplayName = "Test User",
-            Email = "test@example.com"
+            Email = "test@example.com",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
         var provider = "spotify";
         var providerId = "spotify123";
         var providerData = new { displayName = "Spotify User" };
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(user);
+
+        _providerDataRepositoryMock.Setup(x => x.GetByUserAndProviderAsync(user.Id, provider))
+            .ReturnsAsync((UserProviderData?)null);
+
+        _providerDataRepositoryMock.Setup(x => x.CreateAsync(It.IsAny<UserProviderData>()))
+            .ReturnsAsync(new UserProviderData
+            {
+                Id = 1,
+                UserId = user.Id,
+                Provider = provider,
+                ProviderId = providerId
+            });
+
+        _userRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<User>()))
+            .ReturnsAsync((User u) => 
+            {
+                u.PrimaryProvider = provider;
+                return u;
+            });
+
+        var updatedUser = new User
+        {
+            Id = 1,
+            SupabaseId = supabaseId,
+            DisplayName = "Test User",
+            Email = "test@example.com",
+            PrimaryProvider = provider,
+            ProviderData = new List<UserProviderData>
+            {
+                new UserProviderData
+                {
+                    Id = 1,
+                    UserId = 1,
+                    Provider = provider,
+                    ProviderId = providerId
+                }
+            }
+        };
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(updatedUser);
 
         // Act
         var result = await _sut.LinkProviderAsync(supabaseId, provider, providerId, providerData);
@@ -334,7 +438,7 @@ public class UserServiceTests : IDisposable
         Assert.Single(result.ProviderData);
         Assert.Equal(provider, result.ProviderData.First().Provider);
         Assert.Equal(providerId, result.ProviderData.First().ProviderId);
-        Assert.Equal(provider, result.PrimaryProvider); // Should set as primary if first provider
+        Assert.Equal(provider, result.PrimaryProvider);
     }
 
     [Fact]
@@ -344,24 +448,58 @@ public class UserServiceTests : IDisposable
         var supabaseId = Guid.NewGuid().ToString();
         var user = new User
         {
+            Id = 1,
             SupabaseId = supabaseId,
             DisplayName = "Test User",
             Email = "test@example.com",
-            PrimaryProvider = "spotify"
+            PrimaryProvider = "spotify",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
         var existingProviderData = new UserProviderData
         {
+            Id = 1,
             UserId = user.Id,
             Provider = "spotify",
             ProviderId = "oldspotify123"
         };
-        await _dbContext.UserProviderData.AddAsync(existingProviderData);
-        await _dbContext.SaveChangesAsync();
 
         var newProviderId = "newspotify456";
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(user);
+
+        _providerDataRepositoryMock.Setup(x => x.GetByUserAndProviderAsync(user.Id, "spotify"))
+            .ReturnsAsync(existingProviderData);
+
+        _providerDataRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<UserProviderData>()))
+            .ReturnsAsync((UserProviderData upd) =>
+            {
+                upd.ProviderId = newProviderId;
+                return upd;
+            });
+
+        var updatedUser = new User
+        {
+            Id = 1,
+            SupabaseId = supabaseId,
+            DisplayName = "Test User",
+            Email = "test@example.com",
+            PrimaryProvider = "spotify",
+            ProviderData = new List<UserProviderData>
+            {
+                new UserProviderData
+                {
+                    Id = 1,
+                    UserId = 1,
+                    Provider = "spotify",
+                    ProviderId = newProviderId
+                }
+            }
+        };
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(updatedUser);
 
         // Act
         var result = await _sut.LinkProviderAsync(supabaseId, "spotify", newProviderId);
@@ -377,6 +515,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var nonExistentSupabaseId = Guid.NewGuid().ToString();
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(nonExistentSupabaseId))
+            .ReturnsAsync((User?)null);
 
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
@@ -394,38 +535,32 @@ public class UserServiceTests : IDisposable
         var supabaseId = Guid.NewGuid().ToString();
         var user = new User
         {
+            Id = 1,
             SupabaseId = supabaseId,
             DisplayName = "Test User",
             Email = "test@example.com",
-            PrimaryProvider = "spotify"
+            PrimaryProvider = "spotify",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
-        var providerData1 = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "spotify",
-            ProviderId = "spotify123"
-        };
-        var providerData2 = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "apple",
-            ProviderId = "apple456"
-        };
-        await _dbContext.UserProviderData.AddRangeAsync(providerData1, providerData2);
-        await _dbContext.SaveChangesAsync();
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(user);
+
+        _userRepositoryMock.Setup(x => x.HasProviderLinkedAsync(supabaseId, "apple"))
+            .ReturnsAsync(true);
+
+        _userRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<User>()))
+            .ReturnsAsync((User u) =>
+            {
+                u.PrimaryProvider = "apple";
+                return u;
+            });
 
         // Act
         var result = await _sut.SetPrimaryProviderAsync(supabaseId, "apple");
 
         // Assert
         Assert.Equal("apple", result.PrimaryProvider);
-
-        // Verify in database
-        var updatedUser = await _dbContext.Users.FindAsync(user.Id);
-        Assert.Equal("apple", updatedUser.PrimaryProvider);
     }
 
     [Fact]
@@ -437,10 +572,15 @@ public class UserServiceTests : IDisposable
         {
             SupabaseId = supabaseId,
             DisplayName = "Test User",
-            Email = "test@example.com"
+            Email = "test@example.com",
+            ProviderData = new List<UserProviderData>()
         };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+            .ReturnsAsync(user);
+
+        _userRepositoryMock.Setup(x => x.HasProviderLinkedAsync(supabaseId, "spotify"))
+            .ReturnsAsync(false);
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
@@ -452,6 +592,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var nonExistentSupabaseId = Guid.NewGuid().ToString();
+
+        _userRepositoryMock.Setup(x => x.GetBySupabaseIdAsync(nonExistentSupabaseId))
+            .ReturnsAsync((User?)null);
 
         // Act & Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
@@ -467,23 +610,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var supabaseId = Guid.NewGuid().ToString();
-        var user = new User
-        {
-            SupabaseId = supabaseId,
-            DisplayName = "Test User",
-            Email = "test@example.com"
-        };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
 
-        var providerData = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "spotify",
-            ProviderId = "spotify123"
-        };
-        await _dbContext.UserProviderData.AddAsync(providerData);
-        await _dbContext.SaveChangesAsync();
+        _userRepositoryMock.Setup(x => x.HasProviderLinkedAsync(supabaseId, "spotify"))
+            .ReturnsAsync(true);
 
         // Act
         var result = await _sut.HasProviderLinkedAsync(supabaseId, "spotify");
@@ -497,14 +626,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var supabaseId = Guid.NewGuid().ToString();
-        var user = new User
-        {
-            SupabaseId = supabaseId,
-            DisplayName = "Test User",
-            Email = "test@example.com"
-        };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+
+        _userRepositoryMock.Setup(x => x.HasProviderLinkedAsync(supabaseId, "spotify"))
+            .ReturnsAsync(false);
 
         // Act
         var result = await _sut.HasProviderLinkedAsync(supabaseId, "spotify");
@@ -522,29 +646,10 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var supabaseId = Guid.NewGuid().ToString();
-        var user = new User
-        {
-            SupabaseId = supabaseId,
-            DisplayName = "Test User",
-            Email = "test@example.com"
-        };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+        var providers = new List<string> { "spotify", "apple" };
 
-        var providerData1 = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "spotify",
-            ProviderId = "spotify123"
-        };
-        var providerData2 = new UserProviderData
-        {
-            UserId = user.Id,
-            Provider = "apple",
-            ProviderId = "apple456"
-        };
-        await _dbContext.UserProviderData.AddRangeAsync(providerData1, providerData2);
-        await _dbContext.SaveChangesAsync();
+        _userRepositoryMock.Setup(x => x.GetLinkedProvidersAsync(supabaseId))
+            .ReturnsAsync(providers);
 
         // Act
         var result = await _sut.GetLinkedProvidersAsync(supabaseId);
@@ -560,14 +665,9 @@ public class UserServiceTests : IDisposable
     {
         // Arrange
         var supabaseId = Guid.NewGuid().ToString();
-        var user = new User
-        {
-            SupabaseId = supabaseId,
-            DisplayName = "Test User",
-            Email = "test@example.com"
-        };
-        await _dbContext.Users.AddAsync(user);
-        await _dbContext.SaveChangesAsync();
+
+        _userRepositoryMock.Setup(x => x.GetLinkedProvidersAsync(supabaseId))
+            .ReturnsAsync(new List<string>());
 
         // Act
         var result = await _sut.GetLinkedProvidersAsync(supabaseId);

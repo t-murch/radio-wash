@@ -1,6 +1,7 @@
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
@@ -16,6 +17,9 @@ namespace RadioWash.Api.Services.Implementations;
 public class CleanPlaylistService : ICleanPlaylistService
 {
   private readonly RadioWashDbContext _dbContext;
+  private readonly IUserRepository _userRepository;
+  private readonly ICleanPlaylistJobRepository _jobRepository;
+  private readonly ITrackMappingRepository _trackMappingRepository;
   private readonly ISpotifyService _spotifyService;
   private readonly ILogger<CleanPlaylistService> _logger;
   private readonly IBackgroundJobClient _backgroundJobClient;
@@ -23,12 +27,18 @@ public class CleanPlaylistService : ICleanPlaylistService
 
   public CleanPlaylistService(
       RadioWashDbContext dbContext,
+      IUserRepository userRepository,
+      ICleanPlaylistJobRepository jobRepository,
+      ITrackMappingRepository trackMappingRepository,
       ISpotifyService spotifyService,
       ILogger<CleanPlaylistService> logger,
       IBackgroundJobClient backgroundJobClient,
       IProgressBroadcastService progressBroadcastService)
   {
     _dbContext = dbContext;
+    _userRepository = userRepository;
+    _jobRepository = jobRepository;
+    _trackMappingRepository = trackMappingRepository;
     _spotifyService = spotifyService;
     _logger = logger;
     _backgroundJobClient = backgroundJobClient;
@@ -46,7 +56,7 @@ public class CleanPlaylistService : ICleanPlaylistService
     using var transaction = await _dbContext.Database.BeginTransactionAsync();
     try
     {
-      var user = await _dbContext.Users.FindAsync(userId);
+      var user = await _userRepository.GetByIdAsync(userId);
       if (user == null)
       {
         throw new KeyNotFoundException("User not found");
@@ -74,8 +84,7 @@ public class CleanPlaylistService : ICleanPlaylistService
         TotalTracks = sourcePlaylist.TrackCount
       };
 
-      await _dbContext.CleanPlaylistJobs.AddAsync(job);
-      await _dbContext.SaveChangesAsync();
+      await _jobRepository.CreateAsync(job);
 
       // Enqueue the job for processing in the background with Hangfire.
       var hangfireJobId = _backgroundJobClient.Enqueue<ICleanPlaylistService>(service => service.ProcessJobAsync(job.Id));
@@ -118,7 +127,7 @@ public class CleanPlaylistService : ICleanPlaylistService
   {
     _logger.LogInformation("Starting ProcessJobAsync for job {JobId}", jobId);
     
-    var job = await _dbContext.CleanPlaylistJobs.FindAsync(jobId);
+    var job = await _jobRepository.GetByIdAsync(jobId);
     if (job == null)
     {
       _logger.LogError("Job {JobId} not found for processing.", jobId);
@@ -127,7 +136,7 @@ public class CleanPlaylistService : ICleanPlaylistService
 
     try
     {
-      var user = await _dbContext.Users.FindAsync(job.UserId);
+      var user = await _userRepository.GetByIdAsync(job.UserId);
       if (user == null) throw new InvalidOperationException($"User for job {jobId} not found.");
 
       // Fetch all tracks and initialize smart progress reporter
@@ -142,8 +151,7 @@ public class CleanPlaylistService : ICleanPlaylistService
         job.Status = JobStatus.Processing;
         job.TotalTracks = totalTracks;
         job.BatchSize = progressReporter.BatchSize;
-        job.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        await _jobRepository.UpdateAsync(job);
         await initTransaction.CommitAsync();
 
         // Initialize progress tracking
@@ -238,15 +246,12 @@ public class CleanPlaylistService : ICleanPlaylistService
               // Save track mappings batch
               if (trackBatch.Any())
               {
-                await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
+                await _trackMappingRepository.AddRangeAsync(trackBatch);
                 trackBatch.Clear();
               }
 
               // Update job progress
-              job.ProcessedTracks = tracksProcessed;
-              job.CurrentBatch = update.CurrentBatch;
-              job.UpdatedAt = DateTime.UtcNow;
-              await _dbContext.SaveChangesAsync();
+              await _jobRepository.UpdateProgressAsync(jobId, tracksProcessed, update.CurrentBatch);
               await batchTransaction.CommitAsync();
 
               _logger.LogDebug("Progress saved for job {JobId}: {ProcessedTracks}/{TotalTracks} ({Progress}%)",
@@ -269,7 +274,7 @@ public class CleanPlaylistService : ICleanPlaylistService
         // Save any remaining track mappings
         if (trackBatch.Any())
         {
-          await _dbContext.TrackMappings.AddRangeAsync(trackBatch);
+          await _trackMappingRepository.AddRangeAsync(trackBatch);
         }
 
         // Create new playlist
@@ -286,8 +291,8 @@ public class CleanPlaylistService : ICleanPlaylistService
         job.Status = JobStatus.Completed;
         job.ProcessedTracks = totalTracks;
         job.CurrentBatch = "Completed";
-        job.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        job.TargetPlaylistId = newPlaylist.Id;
+        await _jobRepository.UpdateAsync(job);
         await completionTransaction.CommitAsync();
 
         _logger.LogInformation("Successfully completed job {JobId}. Processed {ProcessedTracks} tracks, matched {MatchedTracks} clean versions",
@@ -320,12 +325,11 @@ public class CleanPlaylistService : ICleanPlaylistService
         _logger.LogError(ex, "Error processing job {JobId}", jobId);
 
         // Reload job to get latest state in case it was modified in a failed transaction
-        await _dbContext.Entry(job).ReloadAsync();
-
-        job.Status = JobStatus.Failed;
-        job.ErrorMessage = ex.Message;
-        job.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        job = await _jobRepository.GetByIdAsync(jobId);
+        if (job != null)
+        {
+          await _jobRepository.UpdateErrorAsync(jobId, ex.Message);
+        }
         await errorTransaction.CommitAsync();
 
         // Broadcast job failure to connected clients

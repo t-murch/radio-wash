@@ -34,7 +34,7 @@ ENV NEXT_PUBLIC_WEB_URL=$NEXT_PUBLIC_WEB_URL
 
 # Remove dotnet plugin for web build
 RUN apk update && apk add jq
-RUN jq 'del(.plugins[] | select(. == "@nx-dotnet/core"))' nx.json > nx-web.json && mv nx-web.json nx.json
+RUN jq 'del(.plugins[] | select(.plugin == "@nx-dotnet/core"))' nx.json > nx-web.json && mv nx-web.json nx.json
 
 # Build the web application using NX with production config
 RUN corepack enable pnpm && pnpm nx build web --configuration=production
