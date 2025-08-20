@@ -1,0 +1,55 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Vitest Tests",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+            "args": [
+                "--run",
+                "--reporter=verbose"
+            ],
+            "cwd": "${workspaceFolder}/web",
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+            "env": {
+                "NODE_ENV": "test"
+            },
+            "skipFiles": [
+                "<node_modules>/**"
+            ]
+        },
+        {
+            "name": "Debug Specific Test File",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+            "args": [
+                "--run",
+                "${relativeFile}"
+            ],
+            "cwd": "${workspaceFolder}/web",
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen"
+        },
+        {
+            "name": "Debug Current Test",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+            "args": [
+                "--run",
+                "--reporter=verbose",
+                "--no-coverage"
+            ],
+            "cwd": "${workspaceFolder}/web",
+            "console": "integratedTerminal",
+            "sourceMaps": true,
+            "smartStep": true
+        }
+    ]
+}

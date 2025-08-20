@@ -1,0 +1,47 @@
+services:
+  test-db:
+    image: postgres:15
+    container_name: radiowash-test-db
+    ports:
+      - "15432:5432"
+    environment:
+      POSTGRES_DB: radiowash_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: api.Test/Dockerfile
+    container_name: radiowash-test-runner
+    depends_on:
+      test-db:
+        condition: service_healthy
+    environment:
+      # Test Supabase Configuration (from environment variables)
+      TEST_SUPABASE_URL: ${TEST_SUPABASE_URL:-http://localhost:54321}
+      TEST_SUPABASE_PUBLIC_URL: ${TEST_SUPABASE_PUBLIC_URL:-http://localhost:54321}
+      TEST_SUPABASE_SERVICE_ROLE_KEY: ${TEST_SUPABASE_SERVICE_ROLE_KEY:-test-service-role-key}
+      TEST_SUPABASE_ANON_KEY: ${TEST_SUPABASE_ANON_KEY:-test-anon-key}
+      TEST_SUPABASE_JWT_SECRET: ${TEST_SUPABASE_JWT_SECRET:-test-jwt-secret-key-exactly-32-chars}
+      TEST_SUPABASE_JWT_ISSUER: ${TEST_SUPABASE_JWT_ISSUER:-test-issuer}
+      # Test database connection (container-to-container)
+      TEST_DB_CONNECTION: Host=test-db;Port=5432;Database=radiowash_test;Username=postgres;Password=postgres
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  test_postgres_data:
