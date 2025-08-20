@@ -155,12 +155,11 @@ public abstract class IntegrationTestBase : IDisposable
         // Ensure database is created and up-to-date
         DbContext.Database.EnsureCreated();
         
-        // Clean up any existing test data
+        // Check if test user already exists and return it
         var existingTestUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == "test-user-id");
         if (existingTestUser != null)
         {
-            DbContext.Users.Remove(existingTestUser);
-            DbContext.SaveChanges();
+            return existingTestUser;
         }
         
         // Add test user that corresponds to JWT token
@@ -191,6 +190,15 @@ public abstract class IntegrationTestBase : IDisposable
             var testUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == "test-user-id");
             if (testUser != null)
             {
+                // Remove associated clean playlist jobs and track mappings
+                var userJobs = DbContext.CleanPlaylistJobs.Where(j => j.UserId == testUser.Id);
+                foreach (var job in userJobs)
+                {
+                    var trackMappings = DbContext.TrackMappings.Where(tm => tm.JobId == job.Id);
+                    DbContext.TrackMappings.RemoveRange(trackMappings);
+                }
+                DbContext.CleanPlaylistJobs.RemoveRange(userJobs);
+                
                 // Remove associated music tokens
                 var userTokens = DbContext.UserMusicTokens.Where(t => t.UserId == testUser.Id);
                 DbContext.UserMusicTokens.RemoveRange(userTokens);
