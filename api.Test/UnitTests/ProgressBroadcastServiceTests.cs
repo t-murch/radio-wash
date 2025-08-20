@@ -204,7 +204,7 @@ public class ProgressBroadcastServiceTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Broadcasted progress update for job 555: 80% - Processing track")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Successfully broadcasted progress update for job 555") && v.ToString()!.Contains("Progress: 80%")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -225,7 +225,7 @@ public class ProgressBroadcastServiceTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Broadcasted job completion for job 666: All done!")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Successfully broadcasted job completion for job 666")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -246,7 +246,7 @@ public class ProgressBroadcastServiceTests
             x => x.Log(
                 LogLevel.Warning,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Broadcasted job failure for job 777: Failed to process")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Successfully broadcasted job failure for job 777") && v.ToString()!.Contains("Error: Failed to process")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
