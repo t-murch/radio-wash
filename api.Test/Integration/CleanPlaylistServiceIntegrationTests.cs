@@ -53,19 +53,16 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   public async Task CreateJobAsync_WhenUserAndPlaylistExist_ShouldCreateAndEnqueueJob()
   {
     // Arrange
-    var userId = 1;
-    var supabaseId = "user-supabase-id-123";
+    CleanupTestData();
+    var testUser = SeedTestData();
+    
+    var userId = testUser.Id;
     var playlistId = "spotify-playlist-id-456";
-
-    // 1. Seed the database with a user
-    var user = new User { Id = userId, SupabaseId = supabaseId, DisplayName = "Test User", Email = "test@test.com" };
-    await DbContext!.Users.AddAsync(user);
-    await DbContext!.SaveChangesAsync();
 
     // 2. Mock the SpotifyService response
     var mockPlaylistDto = new PlaylistDto { Id = playlistId, Name = "My Awesome Mix", TrackCount = 50 };
     _spotifyServiceMock
-        .Setup(s => s.GetUserPlaylistsAsync(1))
+        .Setup(s => s.GetUserPlaylistsAsync(userId))
         .ReturnsAsync(new List<PlaylistDto> { mockPlaylistDto });
 
     var createJobDto = new CreateCleanPlaylistJobDto
@@ -101,6 +98,7 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   public async Task CreateJobAsync_WhenUserDoesNotExist_ShouldThrowKeyNotFoundException()
   {
     // Arrange
+    CleanupTestData();
     var nonExistentUserId = 999;
     var createJobDto = new CreateCleanPlaylistJobDto { SourcePlaylistId = "any-playlist" };
 
@@ -112,10 +110,10 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   public async Task CreateJobAsync_WhenPlaylistNotFound_ShouldThrowKeyNotFoundException()
   {
     // Arrange
-    var userId = 1;
-    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
-    await DbContext!.Users.AddAsync(user);
-    await DbContext!.SaveChangesAsync();
+    CleanupTestData();
+    var testUser = SeedTestData();
+    
+    var userId = testUser.Id;
 
     // Mock empty playlist list (playlist not found)
     _spotifyServiceMock
@@ -132,12 +130,12 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   public async Task CreateJobAsync_WithEmptyTargetName_ShouldUseDefaultNaming()
   {
     // Arrange
-    var userId = 1;
-    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
-    await DbContext!.Users.AddAsync(user);
-    await DbContext!.SaveChangesAsync();
+    CleanupTestData();
+    var testUser = SeedTestData();
+    
+    var userId = testUser.Id;
 
-    var mockPlaylistDto = new PlaylistDto { Id = "playlist-123", Name = "My Awesome Mix", TrackCount = 25 };
+    var mockPlaylistDto = new PlaylistDto { Id = "playlist-123", Name = "My Mix", TrackCount = 25 };
     _spotifyServiceMock
         .Setup(s => s.GetUserPlaylistsAsync(userId))
         .ReturnsAsync(new List<PlaylistDto> { mockPlaylistDto });
@@ -152,17 +150,18 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
     var result = await _sut.CreateJobAsync(userId, createJobDto);
 
     // Assert
-    Assert.Equal("Clean - My Awesome Mix", result.TargetPlaylistName);
+    Assert.Equal("Clean - My Mix", result.TargetPlaylistName);
 
     var jobInDb = await DbContext!.CleanPlaylistJobs.FirstOrDefaultAsync();
     Assert.NotNull(jobInDb);
-    Assert.Equal("Clean - My Awesome Mix", jobInDb.TargetPlaylistName);
+    Assert.Equal("Clean - My Mix", jobInDb.TargetPlaylistName);
   }
 
   [Fact]
   public async Task ProcessJobAsync_WhenJobNotFound_ShouldLogErrorAndReturn()
   {
     // Arrange
+    CleanupTestData();
     var nonExistentJobId = 999;
     var loggerMock = new Mock<ILogger<CleanPlaylistService>>();
     var service = new CleanPlaylistService(
@@ -192,13 +191,15 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   [Fact]
   public async Task ProcessJobAsync_WhenUserNotFound_ShouldFailJob()
   {
-    // Arrange - Disable FK constraints temporarily
-    await DbContext!.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+    // Arrange
+    CleanupTestData();
+    
+    // Create a valid user first to create the job, then manually update the UserId to non-existent value
+    var testUser = SeedTestData();
     
     var job = new CleanPlaylistJob
     {
-      Id = 1,
-      UserId = 999, // Non-existent user
+      UserId = testUser.Id,
       SourcePlaylistId = "playlist-123",
       SourcePlaylistName = "Test Playlist", 
       TargetPlaylistName = "Clean Test",
@@ -213,8 +214,8 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
     await DbContext!.CleanPlaylistJobs.AddAsync(job);
     await DbContext!.SaveChangesAsync();
     
-    // Re-enable FK constraints
-    await DbContext!.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON");
+    // Manually update the job to reference a non-existent user
+    await DbContext!.Database.ExecuteSqlRawAsync($"UPDATE \"CleanPlaylistJobs\" SET \"UserId\" = 999 WHERE \"Id\" = {job.Id}");
 
     // Act
     await _sut.ProcessJobAsync(job.Id);
@@ -223,20 +224,20 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
     var updatedJob = await DbContext!.CleanPlaylistJobs.FindAsync(job.Id);
     Assert.NotNull(updatedJob);
     Assert.Equal(JobStatus.Failed, updatedJob.Status);
-    Assert.Contains("User for job 1 not found", updatedJob.ErrorMessage!);
+    Assert.Contains($"User for job {job.Id} not found", updatedJob.ErrorMessage!);
   }
 
   [Fact]
   public async Task ProcessJobAsync_SuccessfulProcessing_ShouldCompleteJob()
   {
     // Arrange
-    var userId = 1;
-    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
-    await DbContext!.Users.AddAsync(user);
+    CleanupTestData();
+    var testUser = SeedTestData();
+    
+    var userId = testUser.Id;
 
     var job = new CleanPlaylistJob
     {
-      Id = 1,
       UserId = userId,
       SourcePlaylistId = "playlist-123",
       SourcePlaylistName = "Test Playlist",
@@ -288,13 +289,13 @@ public class CleanPlaylistServiceIntegrationTests : IntegrationTestBase
   public async Task ProcessJobAsync_WithNoCleanMatches_ShouldStillCreatePlaylist()
   {
     // Arrange
-    var userId = 1;
-    var user = new User { Id = userId, SupabaseId = "user-123", DisplayName = "Test User", Email = "test@test.com" };
-    await DbContext!.Users.AddAsync(user);
+    CleanupTestData();
+    var testUser = SeedTestData();
+    
+    var userId = testUser.Id;
 
     var job = new CleanPlaylistJob
     {
-      Id = 1,
       UserId = userId,
       SourcePlaylistId = "playlist-123",
       SourcePlaylistName = "Test Playlist",
