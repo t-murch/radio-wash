@@ -24,11 +24,14 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly IServiceScope Scope;
     protected readonly IConfiguration Configuration;
     protected readonly RadioWashDbContext? DbContext;
+    protected readonly string TestDatabaseName;
+    protected readonly string TestUserId;
 
     protected IntegrationTestBase()
     {
-        // Create the auth schema before the WebApplicationFactory starts Program.cs
-        CreateSupabaseAuthSchemaBeforeStartup();
+        // Generate unique identifiers for this test instance
+        TestDatabaseName = $"radiowash_test_{Guid.NewGuid():N}";
+        TestUserId = $"test-user-{Guid.NewGuid():N}";
         
         Factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -42,8 +45,11 @@ public abstract class IntegrationTestBase : IDisposable
                     services.RemoveAll<DbContextOptions<RadioWashDbContext>>();
                     services.RemoveAll<RadioWashDbContext>();
 
-                    // Use dedicated test database
-                    var testConnectionString = "Host=localhost;Port=15432;Database=radiowash_test;Username=postgres;Password=postgres";
+                    // Create test database with auth schema (for Supabase compatibility)
+                    CreateTestDatabaseWithAuthSchema();
+
+                    // Use database-per-test for true isolation (simplified Supabase stack)
+                    var testConnectionString = $"Host=localhost;Port=15432;Database={TestDatabaseName};Username=postgres;Password=postgres";
                     
                     services.AddDbContext<RadioWashDbContext>(options =>
                         options.UseNpgsql(testConnectionString));
@@ -61,29 +67,33 @@ public abstract class IntegrationTestBase : IDisposable
         Scope = Factory.Services.CreateScope();
         Configuration = Scope.ServiceProvider.GetRequiredService<IConfiguration>();
         
-        // Get the test database context and ensure it's created
+        // Get the test database context
         DbContext = Scope.ServiceProvider.GetService<RadioWashDbContext>();
-        if (DbContext != null)
-        {
-            DbContext.Database.EnsureCreated();
-        }
     }
 
     /// <summary>
-    /// Creates the auth schema and users table required by Supabase migrations
+    /// Creates the test database and auth schema required by Supabase migrations
     /// </summary>
-    private static void CreateSupabaseAuthSchemaBeforeStartup()
+    private void CreateTestDatabaseWithAuthSchema()
     {
-        // Use the same connection string as defined in appsettings.Test.json
-        var connectionString = "Host=localhost;Port=15432;Database=radiowash_test;Username=postgres;Password=postgres";
-        
         try
         {
-            using var connection = new Npgsql.NpgsqlConnection(connectionString);
-            connection.Open();
+            // Use simplified Supabase database but create test database for isolation
+            var systemConnectionString = "Host=localhost;Port=15432;Database=postgres;Username=postgres;Password=postgres";
+            using var systemConnection = new Npgsql.NpgsqlConnection(systemConnectionString);
+            systemConnection.Open();
             
-            // Create auth schema
-            using var cmd1 = new Npgsql.NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth;", connection);
+            // Create the test database
+            using var createDbCmd = new Npgsql.NpgsqlCommand($"CREATE DATABASE \"{TestDatabaseName}\";", systemConnection);
+            createDbCmd.ExecuteNonQuery();
+            
+            // Now connect to the new test database to create the auth schema
+            var testConnectionString = $"Host=localhost;Port=15432;Database={TestDatabaseName};Username=postgres;Password=postgres";
+            using var testConnection = new Npgsql.NpgsqlConnection(testConnectionString);
+            testConnection.Open();
+            
+            // Create auth schema (required by Supabase migrations)
+            using var cmd1 = new Npgsql.NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth;", testConnection);
             cmd1.ExecuteNonQuery();
             
             // Create minimal auth.users table with required columns for the migration
@@ -95,21 +105,23 @@ public abstract class IntegrationTestBase : IDisposable
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
-            ", connection);
+            ", testConnection);
             cmd2.ExecuteNonQuery();
         }
         catch (Exception ex)
         {
-            // Log the error but don't fail the test setup
-            Console.WriteLine($"Warning: Could not create auth schema: {ex.Message}");
+            // Log the error but don't fail the test setup - the database might already exist
+            Console.WriteLine($"Warning: Could not create test database or auth schema: {ex.Message}");
         }
     }
 
     /// <summary>
     /// Creates a JWT token for testing authentication
     /// </summary>
-    protected string CreateTestJwtToken(string userId = "test-user-id", string email = "test@example.com")
+    protected string CreateTestJwtToken(string? userId = null, string email = "test@example.com")
     {
+        userId ??= TestUserId; // Use unique test user ID if none provided
+        
         var jwtSecret = Configuration["Supabase:JwtSecret"]!;
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -124,7 +136,7 @@ public abstract class IntegrationTestBase : IDisposable
         };
 
         var token = new JwtSecurityToken(
-            issuer: $"{Configuration["Supabase:PublicUrl"]}/auth/v1",
+            issuer: Configuration["Supabase:JwtIssuer"],
             audience: "authenticated",
             claims: claims,
             expires: DateTime.UtcNow.AddHours(1),
@@ -152,11 +164,19 @@ public abstract class IntegrationTestBase : IDisposable
     {
         if (DbContext == null) throw new InvalidOperationException("DbContext is null");
         
-        // Ensure database is created and up-to-date
-        DbContext.Database.EnsureCreated();
+        // Ensure database is created and up-to-date by running migrations
+        try
+        {
+            DbContext.Database.Migrate();
+        }
+        catch
+        {
+            // If migration fails, fall back to EnsureCreated as backup
+            DbContext.Database.EnsureCreated();
+        }
         
         // Check if test user already exists and return it
-        var existingTestUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == "test-user-id");
+        var existingTestUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == TestUserId);
         if (existingTestUser != null)
         {
             return existingTestUser;
@@ -165,7 +185,7 @@ public abstract class IntegrationTestBase : IDisposable
         // Add test user that corresponds to JWT token
         var testUser = new RadioWash.Api.Models.Domain.User
         {
-            SupabaseId = "test-user-id",
+            SupabaseId = TestUserId,
             Email = "test@example.com",
             DisplayName = "Test User", // Add the required DisplayName field
             CreatedAt = DateTime.UtcNow
@@ -187,7 +207,7 @@ public abstract class IntegrationTestBase : IDisposable
         try
         {
             // Remove test user and associated data
-            var testUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == "test-user-id");
+            var testUser = DbContext.Users.FirstOrDefault(u => u.SupabaseId == TestUserId);
             if (testUser != null)
             {
                 // Remove associated clean playlist jobs and track mappings
@@ -220,10 +240,35 @@ public abstract class IntegrationTestBase : IDisposable
 
     public virtual void Dispose()
     {
-        DbContext?.Dispose();
-        Scope?.Dispose();
-        Client?.Dispose();
-        Factory?.Dispose();
+        try
+        {
+            // Drop the test database completely to prevent accumulation
+            DbContext?.Dispose();
+            Scope?.Dispose();
+            Client?.Dispose();
+            Factory?.Dispose();
+            
+            // Drop the test database using system connection
+            var systemConnectionString = "Host=localhost;Port=15432;Database=postgres;Username=postgres;Password=postgres";
+            using var systemConnection = new Npgsql.NpgsqlConnection(systemConnectionString);
+            systemConnection.Open();
+            
+            // Terminate any connections to the test database first
+            using var terminateCmd = new Npgsql.NpgsqlCommand($@"
+                SELECT pg_terminate_backend(pid) 
+                FROM pg_stat_activity 
+                WHERE datname = '{TestDatabaseName}' AND pid <> pg_backend_pid();", systemConnection);
+            terminateCmd.ExecuteNonQuery();
+            
+            // Drop the test database
+            using var dropDbCmd = new Npgsql.NpgsqlCommand($"DROP DATABASE IF EXISTS \"{TestDatabaseName}\";", systemConnection);
+            dropDbCmd.ExecuteNonQuery();
+        }
+        catch
+        {
+            // Ignore cleanup errors - database might not exist or be in use
+        }
+        
         GC.SuppressFinalize(this);
     }
 }
