@@ -1,47 +1,73 @@
+version: "3.8"
+
 services:
-  test-db:
-    image: postgres:15
-    container_name: radiowash-test-db
+  db:
+    image: supabase/postgres:15.1.0.118
+    restart: unless-stopped
     ports:
       - "15432:5432"
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: radiowash_test
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - test_postgres_data:/var/lib/postgresql/data
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - test-network
 
-  test-runner:
-    build:
-      context: .
-      dockerfile: api.Test/Dockerfile
-    container_name: radiowash-test-runner
+  auth:
+    image: supabase/gotrue:v2.165.1
     depends_on:
-      test-db:
+      db:
         condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    env_file:
+      - .env
     environment:
-      # Test Supabase Configuration (from environment variables)
-      TEST_SUPABASE_URL: ${TEST_SUPABASE_URL:-http://localhost:54321}
-      TEST_SUPABASE_PUBLIC_URL: ${TEST_SUPABASE_PUBLIC_URL:-http://localhost:54321}
-      TEST_SUPABASE_SERVICE_ROLE_KEY: ${TEST_SUPABASE_SERVICE_ROLE_KEY:-test-service-role-key}
-      TEST_SUPABASE_ANON_KEY: ${TEST_SUPABASE_ANON_KEY:-test-anon-key}
-      TEST_SUPABASE_JWT_SECRET: ${TEST_SUPABASE_JWT_SECRET:-test-jwt-secret-key-exactly-32-chars}
-      TEST_SUPABASE_JWT_ISSUER: ${TEST_SUPABASE_JWT_ISSUER:-test-issuer}
-      # Test database connection (container-to-container)
-      TEST_DB_CONNECTION: Host=test-db;Port=5432;Database=radiowash_test;Username=postgres;Password=postgres
-    networks:
-      - test-network
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
 
-networks:
-  test-network:
-    driver: bridge
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
 
-volumes:
-  test_postgres_data:
+  kong:
+    image: kong:2.8.1
+    depends_on:
+      - db
+      - auth
+      - rest
+    restart: unless-stopped
+    ports:
+      - "54321:8000" # main Supabase API gateway
+    env_file:
+      - .env
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: "https://raw.githubusercontent.com/supabase/supabase/master/docker/volumes/api/kong.yml"
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr

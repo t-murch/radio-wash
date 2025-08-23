@@ -4,6 +4,8 @@
   "license": "MIT",
   "scripts": {
     "prepare": "nx g @nx-dotnet/core:restore",
+    "ci:test": "bash ./scripts/ci-test.sh",
+    "ci:test:shard": "bash ./scripts/ci-test.sh shard",
     "dev:api": "docker compose -f docker-compose.yml up",
     "dev:web": "nx run web:dev --experimental-https",
     "test": "cd web && vitest",
