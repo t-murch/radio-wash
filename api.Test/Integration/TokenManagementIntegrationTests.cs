@@ -17,7 +17,7 @@ namespace RadioWash.Api.Test.Integration;
 public class TokenManagementIntegrationTests : IntegrationTestBase
 {
     [Fact]
-    public async Task SupabaseUserProviderTokenService_ShouldBeRegistered()
+    public void SupabaseUserProviderTokenService_ShouldBeRegistered()
     {
         // Test that SupabaseUserProviderTokenService is properly registered
         var service = Scope.ServiceProvider.GetService<IUserProviderTokenService>();

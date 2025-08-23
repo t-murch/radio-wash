@@ -15,7 +15,7 @@ namespace RadioWash.Api.Test.Integration;
 public class AuthenticationIntegrationTests : IntegrationTestBase
 {
     [Fact]
-    public async Task GoTrueClient_ShouldInitializeWithCorrectConfiguration()
+    public void GoTrueClient_ShouldInitializeWithCorrectConfiguration()
     {
         // Test GoTrue client configuration (api/Program.cs:106-121)
         var client = Scope.ServiceProvider.GetService<Supabase.Gotrue.Client>();

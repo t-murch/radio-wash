@@ -13,7 +13,7 @@ namespace RadioWash.Api.Test.Integration;
 public class GoTrueV5CompatibilityTests : IntegrationTestBase
 {
     [Fact]
-    public async Task GoTrueV5_ClientInitialization_ShouldMaintainCompatibility()
+    public void GoTrueV5_ClientInitialization_ShouldMaintainCompatibility()
     {
         // Test that v5 client initializes with same configuration
         // Based on api/Program.cs:106-121 configuration pattern
@@ -45,7 +45,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_ServiceRegistration_ShouldMaintainCompatibility()
+    public void GoTrueV5_ServiceRegistration_ShouldMaintainCompatibility()
     {
         // Test that GoTrue client service registration continues to work
         var client = Scope.ServiceProvider.GetService<Supabase.Gotrue.Client>();
@@ -59,7 +59,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_ExceptionHandling_ShouldHandleNewExceptionTypes()
+    public void GoTrueV5_ExceptionHandling_ShouldHandleNewExceptionTypes()
     {
         // Test new GotrueException handling (v5 breaking change)
         var client = Scope.ServiceProvider.GetRequiredService<Supabase.Gotrue.Client>();
@@ -87,7 +87,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_ConfigurationCompatibility_ShouldMaintainAllOptions()
+    public void GoTrueV5_ConfigurationCompatibility_ShouldMaintainAllOptions()
     {
         // Test that all current configuration options are still supported in v5
         var config = Scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -112,7 +112,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_UserProviderTokenService_ShouldMaintainCompatibility()
+    public void GoTrueV5_UserProviderTokenService_ShouldMaintainCompatibility()
     {
         // Test that SupabaseUserProviderTokenService continues to work with v5
         var service = Scope.ServiceProvider.GetService<IUserProviderTokenService>();
@@ -142,7 +142,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_ManagementApiCalls_ShouldMaintainCompatibility()
+    public void GoTrueV5_ManagementApiCalls_ShouldMaintainCompatibility()
     {
         // Test that Management API calls (used by SupabaseUserProviderTokenService) remain compatible
         var config = Scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -169,7 +169,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_NewFeatures_ShouldBeOptional()
+    public void GoTrueV5_NewFeatures_ShouldBeOptional()
     {
         // Test that new v5 features (MFA, PKCE, Unity support) don't break existing functionality
         var client = Scope.ServiceProvider.GetRequiredService<Supabase.Gotrue.Client>();
@@ -186,7 +186,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_PerformanceBaseline_ShouldMaintainOrImprove()
+    public void GoTrueV5_PerformanceBaseline_ShouldMaintainOrImprove()
     {
         // Establish performance baseline for v5 upgrade
         var startTime = DateTime.UtcNow;
@@ -214,7 +214,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_PackageCompatibility_ShouldUseCorrectVersion()
+    public void GoTrueV5_PackageCompatibility_ShouldUseCorrectVersion()
     {
         // Test that we're using the correct package version
         var client = Scope.ServiceProvider.GetRequiredService<Supabase.Gotrue.Client>();
@@ -232,7 +232,7 @@ public class GoTrueV5CompatibilityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GoTrueV5_DependencyInjection_ShouldMaintainLifetime()
+    public void GoTrueV5_DependencyInjection_ShouldMaintainLifetime()
     {
         // Test that DI registration lifetime remains appropriate
         var client1 = Scope.ServiceProvider.GetRequiredService<Supabase.Gotrue.Client>();
