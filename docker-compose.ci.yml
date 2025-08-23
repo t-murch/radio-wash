@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  db:
+    image: supabase/postgres:15.1.0.114
+    container_name: supabase_db
+    restart: unless-stopped
+    ports:
+      - '54322:5432'
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    image: supabase/gotrue:v2.144.1
+    container_name: supabase_auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '9999:9999'
+    environment:
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_DB_DRIVER: postgres
+      DATABASE_URL: postgres://postgres:postgres@db:5432/postgres
+      API_EXTERNAL_URL: http://localhost:9999
+      SITE_URL: http://localhost:3000
+      GOTRUE_DISABLE_SIGNUP: 'false'
+
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: supabase_rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3001:3000'
+    environment:
+      PGRST_DB_URI: postgres://postgres:postgres@db:5432/postgres
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_SERVER_PORT: 3000
+
+  kong:
+    image: kong:2.8
+    container_name: supabase_kong
+    restart: unless-stopped
+    depends_on:
+      - rest
+      - auth
+    ports:
+      - '54321:8000'
+    environment:
+      KONG_DATABASE: off
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+    volumes:
+      - ./supabase/config/kong.yml:/var/lib/kong/kong.yml:ro

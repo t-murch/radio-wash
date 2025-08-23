@@ -1,0 +1,35 @@
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:15.1.0.86
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      auth:
+        image: supabase/gotrue:v2.132.0
+        env:
+          GOTRUE_SITE_URL: http://localhost:9999
+          GOTRUE_API_HOST: 0.0.0.0
+          GOTRUE_DB_DRIVER: postgres
+          DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+          GOTRUE_JWT_SECRET: super-secret-jwt
+          GOTRUE_DISABLE_SIGNUP: 'false'
+        ports: [9999:9999]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci:test
