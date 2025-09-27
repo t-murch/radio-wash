@@ -6,54 +6,49 @@ namespace RadioWash.Api.Infrastructure.Data;
 
 public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
 {
-  public RadioWashDbContext(DbContextOptions<RadioWashDbContext> options) : base(options)
-  {
-  }
+    public RadioWashDbContext(DbContextOptions<RadioWashDbContext> options) : base(options)
+    {
+    }
 
-  public DbSet<User> Users { get; set; } = null!;
-  public DbSet<UserProviderData> UserProviderData { get; set; } = null!;
-  public DbSet<UserMusicToken> UserMusicTokens { get; set; } = null!;
-  public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
-  public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
-  
-  // Data Protection Keys
-  public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
+    public DbSet<User> Users { get; set; } = null!;
+    public DbSet<UserProviderData> UserProviderData { get; set; } = null!;
+    public DbSet<UserMusicToken> UserMusicTokens { get; set; } = null!;
+    public DbSet<CleanPlaylistJob> CleanPlaylistJobs { get; set; } = null!;
+    public DbSet<TrackMapping> TrackMappings { get; set; } = null!;
 
-  protected override void OnModelCreating(ModelBuilder modelBuilder)
-  {
-    base.OnModelCreating(modelBuilder);
+    // Data Protection Keys
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
-    modelBuilder.Entity<User>()
-        .HasIndex(u => u.SupabaseId)
-        .IsUnique();
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
 
-    modelBuilder.Entity<CleanPlaylistJob>()
-        .HasOne(j => j.User)
-        .WithMany(u => u.Jobs)
-        .HasForeignKey(j => j.UserId);
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.SupabaseId)
+            .IsUnique();
 
-    modelBuilder.Entity<TrackMapping>()
-        .HasOne(t => t.Job)
-        .WithMany(j => j.TrackMappings)
-        .HasForeignKey(t => t.JobId);
+        modelBuilder.Entity<CleanPlaylistJob>()
+            .HasOne(j => j.User)
+            .WithMany(u => u.Jobs)
+            .HasForeignKey(j => j.UserId);
 
-    modelBuilder.Entity<UserProviderData>()
-        .HasOne(upd => upd.User)
-        .WithMany(u => u.ProviderData)
-        .HasForeignKey(upd => upd.UserId);
+        modelBuilder.Entity<UserProviderData>()
+            .HasOne(upd => upd.User)
+            .WithMany(u => u.ProviderData)
+            .HasForeignKey(upd => upd.UserId);
 
-    modelBuilder.Entity<UserProviderData>()
-        .HasIndex(upd => new { upd.Provider, upd.ProviderId })
-        .IsUnique();
+        modelBuilder.Entity<UserProviderData>()
+            .HasIndex(upd => new { upd.Provider, upd.ProviderId })
+            .IsUnique();
 
-    modelBuilder.Entity<UserMusicToken>()
-        .HasOne(umt => umt.User)
-        .WithMany()
-        .HasForeignKey(umt => umt.UserId);
+        modelBuilder.Entity<UserMusicToken>()
+            .HasOne(umt => umt.User)
+            .WithMany()
+            .HasForeignKey(umt => umt.UserId);
 
-    modelBuilder.Entity<UserMusicToken>()
-        .HasIndex(umt => new { umt.UserId, umt.Provider })
-        .IsUnique();
+        modelBuilder.Entity<UserMusicToken>()
+            .HasIndex(umt => new { umt.UserId, umt.Provider })
+            .IsUnique();
+    }
 
-  }
 }

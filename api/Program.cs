@@ -13,11 +13,13 @@ using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Hubs;
+using RadioWash.Api.Models.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
+builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // Services
@@ -44,6 +46,21 @@ builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenS
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
+
+// SOLID Refactored Services
+builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
+builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
+builder.Services.AddScoped<IJobOrchestrator, HangfireJobOrchestrator>();
+builder.Services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
+builder.Services.AddScoped<SpotifyPlaylistCleaner>();
+builder.Services.AddScoped<ITrackProcessor, SpotifyTrackProcessor>();
+builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
+builder.Services.AddSingleton<BatchConfiguration>(provider =>
+{
+    var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
+        .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
+    return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
+});
 
 // SignalR
 builder.Services.AddSignalR();
