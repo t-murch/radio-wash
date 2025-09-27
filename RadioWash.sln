@@ -5,6 +5,10 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RadioWash.Api", "api\RadioWash.Api.csproj", "{CC2755ED-EE81-416B-B872-B2B853E86A1F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "api.Tests", "api.Tests", "{47FC8696-6896-4A26-8D41-FB3F15FC2CA5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RadioWash.Api.Tests.Unit", "api.Tests\Unit\RadioWash.Api.Tests.Unit.csproj", "{3AAA7247-4FFE-4712-9806-0AE7C8275431}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +22,12 @@ Global
 		{CC2755ED-EE81-416B-B872-B2B853E86A1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CC2755ED-EE81-416B-B872-B2B853E86A1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CC2755ED-EE81-416B-B872-B2B853E86A1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3AAA7247-4FFE-4712-9806-0AE7C8275431}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3AAA7247-4FFE-4712-9806-0AE7C8275431}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3AAA7247-4FFE-4712-9806-0AE7C8275431}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3AAA7247-4FFE-4712-9806-0AE7C8275431}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3AAA7247-4FFE-4712-9806-0AE7C8275431} = {47FC8696-6896-4A26-8D41-FB3F15FC2CA5}
 	EndGlobalSection
 EndGlobal
