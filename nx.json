@@ -55,6 +55,21 @@
       "inputs": [
         "default",
         "{projectRoot}/**/*.{cs,csproj}",
+        "{projectRoot}/**/*.{ts,tsx,js,jsx}",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/TestResults/**",
+        "{workspaceRoot}/test-results/**",
+        "{projectRoot}/coverage/**"
+      ]
+    },
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "default",
+        "{projectRoot}/**/*.{cs,csproj}",
         "^production"
       ]
     }
