@@ -78,3 +78,11 @@ CLAUDE.md
 # NX generated files
 graph.html
 static/
+
+# Test results and coverage
+test-results/
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.cobertura.xml

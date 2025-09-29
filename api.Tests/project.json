@@ -5,5 +5,51 @@
   "sourceRoot": "api.Tests",
   "tags": ["scope:backend", "type:test", "platform:dotnet"],
   "// targets": "to see all targets run: nx show project api.tests --web",
-  "targets": {}
+  "targets": {
+    "test": {
+      "executor": "@nx-dotnet/core:test",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/**/*.{cs,csproj}",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/TestResults",
+        "{workspaceRoot}/test-results"
+      ],
+      "dependsOn": ["^build"],
+      "options": {
+        "configuration": "Debug"
+      },
+      "configurations": {
+        "ci": {
+          "configuration": "Release"
+        }
+      }
+    },
+    "build": {
+      "executor": "@nx-dotnet/core:build",
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "default",
+        "{projectRoot}/**/*.{cs,csproj}",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/bin",
+        "{projectRoot}/obj"
+      ],
+      "options": {
+        "configuration": "Debug"
+      },
+      "configurations": {
+        "production": {
+          "configuration": "Release"
+        }
+      }
+    }
+  },
+  "implicitDependencies": ["api"]
 }
