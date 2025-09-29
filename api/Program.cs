@@ -70,9 +70,9 @@ builder.Services.AddScoped<ITrackProcessor, SpotifyTrackProcessor>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {
-    var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
-        .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
-    return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
+  var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
+      .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
+  return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
 });
 
 // SignalR
@@ -278,7 +278,7 @@ var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); 
 if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
   app.UseHangfireDashboard();
-  
+
   // Initialize scheduled sync jobs
   using (var scope = app.Services.CreateScope())
   {
