@@ -27,6 +27,13 @@ public class TrackMappingRepository : ITrackMappingRepository
         return trackMapping;
     }
 
+    public async Task AddAsync(TrackMapping trackMapping)
+    {
+        _dbContext.TrackMappings.Add(trackMapping);
+        // Note: SaveChangesAsync is not called here - caller should call it
+        await Task.CompletedTask;
+    }
+
     public async Task AddRangeAsync(IEnumerable<TrackMapping> trackMappings)
     {
         await _dbContext.TrackMappings.AddRangeAsync(trackMappings);

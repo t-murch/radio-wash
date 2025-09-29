@@ -9,4 +9,5 @@ namespace RadioWash.Api.Services.Interfaces;
 public interface ITrackProcessor
 {
     Task<TrackMapping> ProcessTrackAsync(int userId, int jobId, SpotifyTrack track);
+    Task<SpotifyTrack?> FindCleanVersionAsync(SpotifyTrack explicitTrack);
 }

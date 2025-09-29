@@ -33,6 +33,18 @@ public class SpotifyTrackProcessor : ITrackProcessor
         };
     }
 
+    public async Task<SpotifyTrack?> FindCleanVersionAsync(SpotifyTrack explicitTrack)
+    {
+        // This is a simplified implementation - for a real implementation,
+        // you would need to use the Spotify search API to find clean versions
+        // For now, we'll just return null to indicate no clean version found
+        _logger.LogInformation("Searching for clean version of track {TrackId} ({TrackName})", 
+            explicitTrack.Id, explicitTrack.Name);
+        
+        // TODO: Implement actual clean version search logic
+        return await Task.FromResult<SpotifyTrack?>(null);
+    }
+
     private string FormatArtists(SpotifyArtist[]? artists)
     {
         return artists?.Length > 0 

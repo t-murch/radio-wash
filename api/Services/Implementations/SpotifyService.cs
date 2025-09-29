@@ -196,6 +196,22 @@ public class SpotifyService : ISpotifyService
     }
   }
 
+  public async Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris)
+  {
+    if (!trackUris.Any()) return;
+
+    foreach (var uriChunk in trackUris.Chunk(100))
+    {
+      var url = $"{_spotifySettings.ApiBaseUrl}/playlists/{playlistId}/tracks";
+      var request = await CreateSpotifyRequestAsync(HttpMethod.Delete, url, userId);
+      var tracks = uriChunk.Select(uri => new { uri }).ToArray();
+      var payload = new { tracks };
+      request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+      var response = await SendWithRetryAsync(request, userId);
+      response.EnsureSuccessStatusCode();
+    }
+  }
+
   public async Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack)
   {
     if (!explicitTrack.Explicit) return explicitTrack;
