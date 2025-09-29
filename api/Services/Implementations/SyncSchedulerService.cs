@@ -7,111 +7,111 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class SyncSchedulerService : ISyncSchedulerService
 {
-    private readonly IRecurringJobManager _recurringJobManager;
-    private readonly IBackgroundJobClient _backgroundJobClient;
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IPlaylistSyncService _syncService;
-    private readonly ISubscriptionService _subscriptionService;
-    private readonly ILogger<SyncSchedulerService> _logger;
+  private readonly IRecurringJobManager _recurringJobManager;
+  private readonly IBackgroundJobClient _backgroundJobClient;
+  private readonly IUnitOfWork _unitOfWork;
+  private readonly IPlaylistSyncService _syncService;
+  private readonly ISubscriptionService _subscriptionService;
+  private readonly ILogger<SyncSchedulerService> _logger;
 
-    public SyncSchedulerService(
-        IRecurringJobManager recurringJobManager,
-        IBackgroundJobClient backgroundJobClient,
-        IUnitOfWork unitOfWork,
-        IPlaylistSyncService syncService,
-        ISubscriptionService subscriptionService,
-        ILogger<SyncSchedulerService> logger)
+  public SyncSchedulerService(
+      IRecurringJobManager recurringJobManager,
+      IBackgroundJobClient backgroundJobClient,
+      IUnitOfWork unitOfWork,
+      IPlaylistSyncService syncService,
+      ISubscriptionService subscriptionService,
+      ILogger<SyncSchedulerService> logger)
+  {
+    _recurringJobManager = recurringJobManager;
+    _backgroundJobClient = backgroundJobClient;
+    _unitOfWork = unitOfWork;
+    _syncService = syncService;
+    _subscriptionService = subscriptionService;
+    _logger = logger;
+  }
+
+  public void InitializeScheduledJobs()
+  {
+    _logger.LogInformation("Initializing scheduled sync jobs");
+
+    // Schedule main sync job to run daily at 00:01 (12:01 AM)
+    _recurringJobManager.AddOrUpdate(
+        "playlist-sync-processor",
+        () => ProcessScheduledSyncsAsync(),
+        "1 0 * * *" // Daily at 00:01
+    );
+
+    // Schedule subscription validation job daily at 02:00
+    _recurringJobManager.AddOrUpdate(
+        "subscription-validator",
+        () => ValidateSubscriptionsAsync(),
+        "0 2 * * *" // Daily at 2 AM
+    );
+
+    _logger.LogInformation("Scheduled sync jobs initialized");
+  }
+
+  public async Task ProcessScheduledSyncsAsync()
+  {
+    _logger.LogInformation("Starting scheduled sync processing");
+
+    var dueConfigs = await _unitOfWork.SyncConfigs.GetDueForSyncAsync(DateTime.UtcNow);
+
+    _logger.LogInformation("Found {ConfigCount} sync configurations due for processing", dueConfigs.Count());
+
+    foreach (var config in dueConfigs)
     {
-        _recurringJobManager = recurringJobManager;
-        _backgroundJobClient = backgroundJobClient;
-        _unitOfWork = unitOfWork;
-        _syncService = syncService;
-        _subscriptionService = subscriptionService;
-        _logger = logger;
-    }
+      try
+      {
+        // Check if user has active subscription
+        var hasActiveSubscription = await _subscriptionService.HasActiveSubscriptionAsync(config.UserId);
 
-    public void InitializeScheduledJobs()
-    {
-        _logger.LogInformation("Initializing scheduled sync jobs");
-
-        // Schedule main sync job to run daily at 00:01 (12:01 AM)
-        _recurringJobManager.AddOrUpdate(
-            "playlist-sync-processor",
-            () => ProcessScheduledSyncsAsync(),
-            "1 0 * * *" // Daily at 00:01
-        );
-        
-        // Schedule subscription validation job daily at 02:00
-        _recurringJobManager.AddOrUpdate(
-            "subscription-validator",
-            () => ValidateSubscriptionsAsync(),
-            "0 2 * * *" // Daily at 2 AM
-        );
-
-        _logger.LogInformation("Scheduled sync jobs initialized");
-    }
-    
-    public async Task ProcessScheduledSyncsAsync()
-    {
-        _logger.LogInformation("Starting scheduled sync processing");
-
-        var dueConfigs = await _unitOfWork.SyncConfigs.GetDueForSyncAsync(DateTime.UtcNow);
-        
-        _logger.LogInformation("Found {ConfigCount} sync configurations due for processing", dueConfigs.Count());
-
-        foreach (var config in dueConfigs)
+        if (!hasActiveSubscription)
         {
-            try
-            {
-                // Check if user has active subscription
-                var hasActiveSubscription = await _subscriptionService.HasActiveSubscriptionAsync(config.UserId);
-                
-                if (!hasActiveSubscription)
-                {
-                    _logger.LogWarning("User {UserId} does not have active subscription, disabling sync config {ConfigId}", 
-                        config.UserId, config.Id);
-                    await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
-                    continue;
-                }
-                
-                // Queue individual sync job
-                _backgroundJobClient.Enqueue(() => _syncService.SyncPlaylistAsync(config));
-                
-                _logger.LogDebug("Queued sync job for config {ConfigId}, user {UserId}", config.Id, config.UserId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing sync config {ConfigId}", config.Id);
-            }
+          _logger.LogWarning("User {UserId} does not have active subscription, disabling sync config {ConfigId}",
+              config.UserId, config.Id);
+          await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
+          continue;
         }
 
-        _logger.LogInformation("Scheduled sync processing completed");
+        // Queue individual sync job
+        _backgroundJobClient.Enqueue(() => _syncService.SyncPlaylistAsync(config));
+
+        _logger.LogDebug("Queued sync job for config {ConfigId}, user {UserId}", config.Id, config.UserId);
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Error processing sync config {ConfigId}", config.Id);
+      }
     }
 
-    public async Task ValidateSubscriptionsAsync()
-    {
-        _logger.LogInformation("Starting subscription validation");
-        await _subscriptionService.ValidateSubscriptionsAsync();
-        _logger.LogInformation("Subscription validation completed");
-    }
+    _logger.LogInformation("Scheduled sync processing completed");
+  }
 
-    public DateTime CalculateNextSyncTime(string frequency, DateTime? lastSync = null)
-    {
-        var baseTime = lastSync ?? DateTime.UtcNow;
-        
-        return frequency switch
-        {
-            SyncFrequency.Daily => GetNextDailySync(baseTime),
-            SyncFrequency.Weekly => baseTime.AddDays(7),
-            SyncFrequency.Manual => DateTime.MaxValue,
-            _ => GetNextDailySync(baseTime)
-        };
-    }
+  public async Task ValidateSubscriptionsAsync()
+  {
+    _logger.LogInformation("Starting subscription validation");
+    await _subscriptionService.ValidateSubscriptionsAsync();
+    _logger.LogInformation("Subscription validation completed");
+  }
 
-    private static DateTime GetNextDailySync(DateTime baseTime)
+  public DateTime CalculateNextSyncTime(string frequency, DateTime? lastSync = null)
+  {
+    var baseTime = lastSync ?? DateTime.UtcNow;
+
+    return frequency switch
     {
-        // Schedule for 00:01 (12:01 AM) the next day
-        var nextDay = baseTime.Date.AddDays(1);
-        return nextDay.AddMinutes(1); // 00:01
-    }
+      SyncFrequency.Daily => GetNextDailySync(baseTime),
+      SyncFrequency.Weekly => baseTime.AddDays(7),
+      SyncFrequency.Manual => DateTime.MaxValue,
+      _ => GetNextDailySync(baseTime)
+    };
+  }
+
+  private static DateTime GetNextDailySync(DateTime baseTime)
+  {
+    // Schedule for 00:01 (12:01 AM) the next day
+    var nextDay = baseTime.Date.AddDays(1);
+    return nextDay.AddMinutes(1); // 00:01
+  }
 }

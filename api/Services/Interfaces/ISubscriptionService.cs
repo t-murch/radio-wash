@@ -4,13 +4,13 @@ namespace RadioWash.Api.Services.Interfaces;
 
 public interface ISubscriptionService
 {
-    Task<UserSubscription?> GetActiveSubscriptionAsync(int userId);
-    Task<bool> HasActiveSubscriptionAsync(int userId);
-    Task<UserSubscription> CreateSubscriptionAsync(int userId, int planId, string stripeSubscriptionId, string stripeCustomerId);
-    Task<UserSubscription> UpdateSubscriptionStatusAsync(string stripeSubscriptionId, string status);
-    Task<UserSubscription> UpdateSubscriptionDatesAsync(string stripeSubscriptionId, DateTime currentPeriodStart, DateTime currentPeriodEnd);
-    Task<UserSubscription> CancelSubscriptionAsync(int userId);
-    Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();
-    Task<SubscriptionPlan?> GetPlanByIdAsync(int planId);
-    Task ValidateSubscriptionsAsync(); // For periodic validation
+  Task<UserSubscription?> GetActiveSubscriptionAsync(int userId);
+  Task<bool> HasActiveSubscriptionAsync(int userId);
+  Task<UserSubscription> CreateSubscriptionAsync(int userId, int planId, string stripeSubscriptionId, string stripeCustomerId);
+  Task<UserSubscription> UpdateSubscriptionStatusAsync(string stripeSubscriptionId, string status);
+  Task<UserSubscription> UpdateSubscriptionDatesAsync(string stripeSubscriptionId, DateTime currentPeriodStart, DateTime currentPeriodEnd);
+  Task<UserSubscription> CancelSubscriptionAsync(int userId);
+  Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();
+  Task<SubscriptionPlan?> GetPlanByIdAsync(int planId);
+  Task ValidateSubscriptionsAsync(); // For periodic validation
 }
