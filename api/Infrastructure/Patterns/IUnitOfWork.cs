@@ -10,6 +10,13 @@ public interface IUnitOfWork : IDisposable
     ICleanPlaylistJobRepository Jobs { get; }
     ITrackMappingRepository TrackMappings { get; }
     IUserRepository Users { get; }
+    
+    // Subscription repositories
+    ISubscriptionPlanRepository SubscriptionPlans { get; }
+    IUserSubscriptionRepository UserSubscriptions { get; }
+    IPlaylistSyncConfigRepository SyncConfigs { get; }
+    IPlaylistSyncHistoryRepository SyncHistory { get; }
+    
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();
     Task CommitTransactionAsync();

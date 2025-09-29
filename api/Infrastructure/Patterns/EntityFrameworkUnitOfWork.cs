@@ -18,17 +18,31 @@ public class EntityFrameworkUnitOfWork : IUnitOfWork
     public ICleanPlaylistJobRepository Jobs { get; }
     public ITrackMappingRepository TrackMappings { get; }
     public IUserRepository Users { get; }
+    
+    // Subscription repositories
+    public ISubscriptionPlanRepository SubscriptionPlans { get; }
+    public IUserSubscriptionRepository UserSubscriptions { get; }
+    public IPlaylistSyncConfigRepository SyncConfigs { get; }
+    public IPlaylistSyncHistoryRepository SyncHistory { get; }
 
     public EntityFrameworkUnitOfWork(
         RadioWashDbContext context,
         ICleanPlaylistJobRepository jobs,
         ITrackMappingRepository trackMappings,
-        IUserRepository users)
+        IUserRepository users,
+        ISubscriptionPlanRepository subscriptionPlans,
+        IUserSubscriptionRepository userSubscriptions,
+        IPlaylistSyncConfigRepository syncConfigs,
+        IPlaylistSyncHistoryRepository syncHistory)
     {
         _context = context;
         Jobs = jobs;
         TrackMappings = trackMappings;
         Users = users;
+        SubscriptionPlans = subscriptionPlans;
+        UserSubscriptions = userSubscriptions;
+        SyncConfigs = syncConfigs;
+        SyncHistory = syncHistory;
     }
 
     public async Task<int> SaveChangesAsync()
