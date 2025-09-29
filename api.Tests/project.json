@@ -1,0 +1,9 @@
+{
+  "name": "api.tests",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "api.Tests",
+  "tags": ["scope:backend", "type:test", "platform:dotnet"],
+  "// targets": "to see all targets run: nx show project api.tests --web",
+  "targets": {}
+}
