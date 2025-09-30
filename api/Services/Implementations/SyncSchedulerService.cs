@@ -12,6 +12,7 @@ public class SyncSchedulerService : ISyncSchedulerService
   private readonly IUnitOfWork _unitOfWork;
   private readonly IPlaylistSyncService _syncService;
   private readonly ISubscriptionService _subscriptionService;
+  private readonly ISyncTimeCalculator _timeCalculator;
   private readonly ILogger<SyncSchedulerService> _logger;
 
   public SyncSchedulerService(
@@ -20,6 +21,7 @@ public class SyncSchedulerService : ISyncSchedulerService
       IUnitOfWork unitOfWork,
       IPlaylistSyncService syncService,
       ISubscriptionService subscriptionService,
+      ISyncTimeCalculator timeCalculator,
       ILogger<SyncSchedulerService> logger)
   {
     _recurringJobManager = recurringJobManager;
@@ -27,6 +29,7 @@ public class SyncSchedulerService : ISyncSchedulerService
     _unitOfWork = unitOfWork;
     _syncService = syncService;
     _subscriptionService = subscriptionService;
+    _timeCalculator = timeCalculator;
     _logger = logger;
   }
 
@@ -95,23 +98,4 @@ public class SyncSchedulerService : ISyncSchedulerService
     _logger.LogInformation("Subscription validation completed");
   }
 
-  public DateTime CalculateNextSyncTime(string frequency, DateTime? lastSync = null)
-  {
-    var baseTime = lastSync ?? DateTime.UtcNow;
-
-    return frequency switch
-    {
-      SyncFrequency.Daily => GetNextDailySync(baseTime),
-      SyncFrequency.Weekly => baseTime.AddDays(7),
-      SyncFrequency.Manual => DateTime.MaxValue,
-      _ => GetNextDailySync(baseTime)
-    };
-  }
-
-  private static DateTime GetNextDailySync(DateTime baseTime)
-  {
-    // Schedule for 00:01 (12:01 AM) the next day
-    var nextDay = baseTime.Date.AddDays(1);
-    return nextDay.AddMinutes(1); // 00:01
-  }
 }
