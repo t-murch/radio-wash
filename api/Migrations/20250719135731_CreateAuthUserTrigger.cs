@@ -1,17 +1,17 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace RadioWash.Api.Migrations
 {
+  /// <inheritdoc />
+  public partial class CreateAuthUserTrigger : Migration
+  {
     /// <inheritdoc />
-    public partial class CreateAuthUserTrigger : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            // Create function to handle new auth users
-            migrationBuilder.Sql(@"
+      // Create function to handle new auth users
+      migrationBuilder.Sql(@"
                 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
                 RETURNS TRIGGER
                 LANGUAGE plpgsql
@@ -32,23 +32,23 @@ namespace RadioWash.Api.Migrations
                 $$;
             ");
 
-            // Create trigger on auth.users table
-            migrationBuilder.Sql(@"
+      // Create trigger on auth.users table
+      migrationBuilder.Sql(@"
                 CREATE TRIGGER on_auth_user_created
                     AFTER INSERT ON auth.users
                     FOR EACH ROW
                     EXECUTE FUNCTION public.handle_new_auth_user();
             ");
-        }
-
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            // Drop trigger
-            migrationBuilder.Sql("DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;");
-            
-            // Drop function
-            migrationBuilder.Sql("DROP FUNCTION IF EXISTS public.handle_new_auth_user();");
-        }
     }
+
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+      // Drop trigger
+      migrationBuilder.Sql("DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;");
+
+      // Drop function
+      migrationBuilder.Sql("DROP FUNCTION IF EXISTS public.handle_new_auth_user();");
+    }
+  }
 }

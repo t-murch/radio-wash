@@ -8,6 +8,6 @@ namespace RadioWash.Api.Services.Interfaces;
 /// </summary>
 public interface ICleanPlaylistService
 {
-    Task<CleanPlaylistJobDto> CreateJobAsync(int userId, CreateCleanPlaylistJobDto jobDto);
-    Task<JobProgress> GetJobProgressAsync(int jobId);
+  Task<CleanPlaylistJobDto> CreateJobAsync(int userId, CreateCleanPlaylistJobDto jobDto);
+  Task<JobProgress> GetJobProgressAsync(int jobId);
 }

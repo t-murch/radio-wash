@@ -38,7 +38,7 @@ public class CleanPlaylistService : ICleanPlaylistService
 
       var sourcePlaylist = await ValidateAndGetPlaylistAsync(user.Id, jobDto.SourcePlaylistId);
       var job = CreateJob(userId, sourcePlaylist, jobDto.TargetPlaylistName);
-      
+
       await _unitOfWork.Jobs.CreateAsync(job);
       await _unitOfWork.SaveChangesAsync();
 
@@ -46,7 +46,7 @@ public class CleanPlaylistService : ICleanPlaylistService
       _logger.LogInformation("Created job {JobId} with Hangfire ID {HangfireId}", job.Id, hangfireJobId);
 
       await _unitOfWork.CommitTransactionAsync();
-      
+
       return MapToDto(job);
     }
     catch
@@ -73,7 +73,7 @@ public class CleanPlaylistService : ICleanPlaylistService
     var playlists = await _spotifyService.GetUserPlaylistsAsync(userId);
     var playlist = playlists.FirstOrDefault(p => p.Id == playlistId)
       ?? throw new KeyNotFoundException($"Playlist {playlistId} not found or user lacks access");
-    
+
     return playlist;
   }
 

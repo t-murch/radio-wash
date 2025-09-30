@@ -7,7 +7,7 @@ namespace RadioWash.Api.Services.Interfaces;
 /// </summary>
 public interface IPlaylistCleanerFactory
 {
-    IPlaylistCleaner CreateCleaner(string platform);
+  IPlaylistCleaner CreateCleaner(string platform);
 }
 
 /// <summary>
@@ -15,5 +15,5 @@ public interface IPlaylistCleanerFactory
 /// </summary>
 public interface IPlaylistCleaner
 {
-    Task<PlaylistCleaningResult> CleanPlaylistAsync(CleanPlaylistJob job, User user);
+  Task<PlaylistCleaningResult> CleanPlaylistAsync(CleanPlaylistJob job, User user);
 }

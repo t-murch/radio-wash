@@ -8,23 +8,23 @@ namespace RadioWash.Api.Services.Implementations;
 /// </summary>
 public class HangfireJobOrchestrator : IJobOrchestrator
 {
-    private readonly IBackgroundJobClient _backgroundJobClient;
+  private readonly IBackgroundJobClient _backgroundJobClient;
 
-    public HangfireJobOrchestrator(IBackgroundJobClient backgroundJobClient)
-    {
-        _backgroundJobClient = backgroundJobClient;
-    }
+  public HangfireJobOrchestrator(IBackgroundJobClient backgroundJobClient)
+  {
+    _backgroundJobClient = backgroundJobClient;
+  }
 
-    public Task<string> EnqueueJobAsync(int jobId)
-    {
-        var hangfireId = _backgroundJobClient.Enqueue<ICleanPlaylistJobProcessor>(
-            processor => processor.ProcessJobAsync(jobId));
-        return Task.FromResult(hangfireId);
-    }
+  public Task<string> EnqueueJobAsync(int jobId)
+  {
+    var hangfireId = _backgroundJobClient.Enqueue<ICleanPlaylistJobProcessor>(
+        processor => processor.ProcessJobAsync(jobId));
+    return Task.FromResult(hangfireId);
+  }
 
-    public Task CancelJobAsync(string hangfireJobId)
-    {
-        _backgroundJobClient.Delete(hangfireJobId);
-        return Task.CompletedTask;
-    }
+  public Task CancelJobAsync(string hangfireJobId)
+  {
+    _backgroundJobClient.Delete(hangfireJobId);
+    return Task.CompletedTask;
+  }
 }

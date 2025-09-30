@@ -10,5 +10,6 @@ public interface ISpotifyService
   Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId);
   Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null);
   Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris);
+  Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris);
   Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack);
 }

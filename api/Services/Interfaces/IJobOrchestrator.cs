@@ -5,6 +5,6 @@ namespace RadioWash.Api.Services.Interfaces;
 /// </summary>
 public interface IJobOrchestrator
 {
-    Task<string> EnqueueJobAsync(int jobId);
-    Task CancelJobAsync(string hangfireJobId);
+  Task<string> EnqueueJobAsync(int jobId);
+  Task CancelJobAsync(string hangfireJobId);
 }
