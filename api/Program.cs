@@ -58,7 +58,12 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IPlaylistSyncService, PlaylistSyncService>();
 builder.Services.AddScoped<IPlaylistDeltaCalculator, PlaylistDeltaCalculator>();
 builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
+builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
 builder.Services.AddScoped<IPaymentService, StripePaymentService>();
+
+// Metrics and monitoring services
+builder.Services.AddSingleton<RadioWash.Api.Infrastructure.Logging.SyncMetrics>();
+builder.Services.AddScoped<RadioWash.Api.Infrastructure.Monitoring.ISyncPerformanceMonitor, RadioWash.Api.Infrastructure.Monitoring.SyncPerformanceMonitor>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
