@@ -5,5 +5,5 @@ namespace RadioWash.Api.Services.Interfaces;
 /// </summary>
 public interface ICleanPlaylistJobProcessor
 {
-    Task ProcessJobAsync(int jobId);
+  Task ProcessJobAsync(int jobId);
 }

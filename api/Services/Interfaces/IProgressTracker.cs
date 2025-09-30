@@ -8,8 +8,8 @@ namespace RadioWash.Api.Services.Interfaces;
 /// </summary>
 public interface IProgressTracker
 {
-    void Initialize(int totalItems, BatchConfiguration config);
-    bool ShouldReportProgress(int currentItem);
-    bool ShouldPersistProgress(int currentItem);
-    ProgressUpdate CreateUpdate(int currentItem, string? currentItemName = null);
+  void Initialize(int totalItems, BatchConfiguration config);
+  bool ShouldReportProgress(int currentItem);
+  bool ShouldPersistProgress(int currentItem);
+  ProgressUpdate CreateUpdate(int currentItem, string? currentItemName = null);
 }

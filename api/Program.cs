@@ -40,12 +40,30 @@ builder.Services.AddScoped<IUserMusicTokenRepository, UserMusicTokenRepository>(
 builder.Services.AddScoped<ICleanPlaylistJobRepository, CleanPlaylistJobRepository>();
 builder.Services.AddScoped<ITrackMappingRepository, TrackMappingRepository>();
 
+// Subscription repositories
+builder.Services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanRepository>();
+builder.Services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
+builder.Services.AddScoped<IPlaylistSyncConfigRepository, PlaylistSyncConfigRepository>();
+builder.Services.AddScoped<IPlaylistSyncHistoryRepository, PlaylistSyncHistoryRepository>();
+
 // Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
+
+// Subscription services
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IPlaylistSyncService, PlaylistSyncService>();
+builder.Services.AddScoped<IPlaylistDeltaCalculator, PlaylistDeltaCalculator>();
+builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
+builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
+builder.Services.AddScoped<IPaymentService, StripePaymentService>();
+
+// Metrics and monitoring services
+builder.Services.AddSingleton<RadioWash.Api.Infrastructure.Logging.SyncMetrics>();
+builder.Services.AddScoped<RadioWash.Api.Infrastructure.Monitoring.ISyncPerformanceMonitor, RadioWash.Api.Infrastructure.Monitoring.SyncPerformanceMonitor>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
@@ -57,9 +75,9 @@ builder.Services.AddScoped<ITrackProcessor, SpotifyTrackProcessor>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {
-    var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
-        .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
-    return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
+  var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
+      .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
+  return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
 });
 
 // SignalR
@@ -265,6 +283,13 @@ var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); 
 if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
   app.UseHangfireDashboard();
+
+  // Initialize scheduled sync jobs
+  using (var scope = app.Services.CreateScope())
+  {
+    var syncScheduler = scope.ServiceProvider.GetRequiredService<ISyncSchedulerService>();
+    syncScheduler.InitializeScheduledJobs();
+  }
 }
 
 app.Run();
