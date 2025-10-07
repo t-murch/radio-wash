@@ -58,6 +58,7 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IPlaylistSyncService, PlaylistSyncService>();
 builder.Services.AddScoped<IPlaylistDeltaCalculator, PlaylistDeltaCalculator>();
 builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
+builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
 builder.Services.AddScoped<IPaymentService, StripePaymentService>();
 
 // SOLID Refactored Services

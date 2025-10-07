@@ -12,7 +12,7 @@ public class PlaylistSyncService : IPlaylistSyncService
   private readonly IPlaylistDeltaCalculator _deltaCalculator;
   private readonly ITrackProcessor _trackProcessor;
   private readonly ISubscriptionService _subscriptionService;
-  private readonly ISyncSchedulerService _syncSchedulerService;
+  private readonly ISyncTimeCalculator _syncTimeCalculator;
   private readonly ILogger<PlaylistSyncService> _logger;
 
   public PlaylistSyncService(
@@ -21,7 +21,7 @@ public class PlaylistSyncService : IPlaylistSyncService
       IPlaylistDeltaCalculator deltaCalculator,
       ITrackProcessor trackProcessor,
       ISubscriptionService subscriptionService,
-      ISyncSchedulerService syncSchedulerService,
+      ISyncTimeCalculator syncTimeCalculator,
       ILogger<PlaylistSyncService> logger)
   {
     _unitOfWork = unitOfWork;
@@ -29,7 +29,7 @@ public class PlaylistSyncService : IPlaylistSyncService
     _deltaCalculator = deltaCalculator;
     _trackProcessor = trackProcessor;
     _subscriptionService = subscriptionService;
-    _syncSchedulerService = syncSchedulerService;
+    _syncTimeCalculator = syncTimeCalculator;
     _logger = logger;
   }
 
@@ -109,7 +109,7 @@ public class PlaylistSyncService : IPlaylistSyncService
       );
 
       // Schedule next sync
-      var nextSync = _syncSchedulerService.CalculateNextSyncTime(config.SyncFrequency, DateTime.UtcNow);
+      var nextSync = _syncTimeCalculator.CalculateNextSyncTime(config.SyncFrequency, DateTime.UtcNow);
       await _unitOfWork.SyncConfigs.UpdateNextScheduledSyncAsync(config.Id, nextSync);
 
       _logger.LogInformation("Sync completed for config {ConfigId}. Added: {Added}, Removed: {Removed}, Time: {ElapsedMs}ms",
@@ -158,7 +158,7 @@ public class PlaylistSyncService : IPlaylistSyncService
       {
         existingConfig.IsActive = true;
         existingConfig.UpdatedAt = DateTime.UtcNow;
-        var nextSync = _syncSchedulerService.CalculateNextSyncTime(existingConfig.SyncFrequency);
+        var nextSync = _syncTimeCalculator.CalculateNextSyncTime(existingConfig.SyncFrequency);
         existingConfig.NextScheduledSync = nextSync;
         return await _unitOfWork.SyncConfigs.UpdateAsync(existingConfig);
       }
@@ -186,7 +186,7 @@ public class PlaylistSyncService : IPlaylistSyncService
       TargetPlaylistId = job.TargetPlaylistId!,
       IsActive = true,
       SyncFrequency = SyncFrequency.Daily,
-      NextScheduledSync = _syncSchedulerService.CalculateNextSyncTime(SyncFrequency.Daily),
+      NextScheduledSync = _syncTimeCalculator.CalculateNextSyncTime(SyncFrequency.Daily),
       CreatedAt = DateTime.UtcNow,
       UpdatedAt = DateTime.UtcNow
     };
@@ -222,7 +222,7 @@ public class PlaylistSyncService : IPlaylistSyncService
     }
 
     config.SyncFrequency = frequency;
-    config.NextScheduledSync = _syncSchedulerService.CalculateNextSyncTime(frequency, config.LastSyncedAt);
+    config.NextScheduledSync = _syncTimeCalculator.CalculateNextSyncTime(frequency, config.LastSyncedAt);
     config.UpdatedAt = DateTime.UtcNow;
 
     return await _unitOfWork.SyncConfigs.UpdateAsync(config);
