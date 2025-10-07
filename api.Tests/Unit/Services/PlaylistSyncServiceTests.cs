@@ -17,7 +17,7 @@ public class PlaylistSyncServiceTests
   private readonly Mock<IPlaylistDeltaCalculator> _mockDeltaCalculator;
   private readonly Mock<ITrackProcessor> _mockTrackProcessor;
   private readonly Mock<ISubscriptionService> _mockSubscriptionService;
-  private readonly Mock<ISyncSchedulerService> _mockSyncSchedulerService;
+  private readonly Mock<ISyncTimeCalculator> _mockSyncTimeCalculator;
   private readonly Mock<ILogger<PlaylistSyncService>> _mockLogger;
   private readonly PlaylistSyncService _syncService;
 
@@ -28,7 +28,7 @@ public class PlaylistSyncServiceTests
     _mockDeltaCalculator = new Mock<IPlaylistDeltaCalculator>();
     _mockTrackProcessor = new Mock<ITrackProcessor>();
     _mockSubscriptionService = new Mock<ISubscriptionService>();
-    _mockSyncSchedulerService = new Mock<ISyncSchedulerService>();
+    _mockSyncTimeCalculator = new Mock<ISyncTimeCalculator>();
     _mockLogger = new Mock<ILogger<PlaylistSyncService>>();
 
     _syncService = new PlaylistSyncService(
@@ -37,7 +37,7 @@ public class PlaylistSyncServiceTests
         _mockDeltaCalculator.Object,
         _mockTrackProcessor.Object,
         _mockSubscriptionService.Object,
-        _mockSyncSchedulerService.Object,
+        _mockSyncTimeCalculator.Object,
         _mockLogger.Object
     );
 
@@ -122,7 +122,7 @@ public class PlaylistSyncServiceTests
         It.IsAny<List<SpotifyTrack>>(),
         It.IsAny<List<TrackMapping>>()))
         .ReturnsAsync(delta);
-    _mockSyncSchedulerService.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
+    _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
@@ -174,7 +174,7 @@ public class PlaylistSyncServiceTests
         .ReturnsAsync(delta);
     _mockTrackProcessor.Setup(x => x.FindCleanVersionAsync(newTrack))
         .ReturnsAsync(cleanTrack);
-    _mockSyncSchedulerService.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
+    _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
@@ -220,7 +220,7 @@ public class PlaylistSyncServiceTests
         It.IsAny<List<SpotifyTrack>>(),
         It.IsAny<List<TrackMapping>>()))
         .ReturnsAsync(delta);
-    _mockSyncSchedulerService.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
+    _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
@@ -274,7 +274,7 @@ public class PlaylistSyncServiceTests
         .ReturnsAsync((PlaylistSyncConfig?)null);
     _mockUnitOfWork.Setup(x => x.Jobs.GetByIdAsync(jobId))
         .ReturnsAsync(job);
-    _mockSyncSchedulerService.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
+    _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
     _mockUnitOfWork.Setup(x => x.SyncConfigs.CreateAsync(It.IsAny<PlaylistSyncConfig>()))
         .ReturnsAsync((PlaylistSyncConfig config) => config);
