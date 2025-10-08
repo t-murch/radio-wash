@@ -3,10 +3,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getSubscriptionStatus, 
+  getCurrentSubscription,
   enableSyncForJob, 
   subscribeToSync,
   getSyncConfigs,
   type SubscriptionStatus,
+  type UserSubscriptionDto,
   type PlaylistSyncConfig 
 } from '../services/api';
 
@@ -14,6 +16,13 @@ export const useSubscriptionStatus = () => {
   return useQuery<SubscriptionStatus>({
     queryKey: ['subscription-status'],
     queryFn: getSubscriptionStatus,
+  });
+};
+
+export const useCurrentSubscription = () => {
+  return useQuery<UserSubscriptionDto | null>({
+    queryKey: ['current-subscription'],
+    queryFn: getCurrentSubscription,
   });
 };
 
@@ -33,11 +42,11 @@ export const useEnableSyncForJob = () => {
 export const useSubscribeToSync = () => {
   const queryClient = useQueryClient();
   
-  return useMutation<{ success: boolean; subscriptionId?: string }, Error>({
+  return useMutation<{ checkoutUrl: string }, Error>({
     mutationFn: subscribeToSync,
-    onSuccess: () => {
-      // Invalidate subscription status after successful subscription
-      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
+    onSuccess: (data) => {
+      // Redirect to Stripe checkout
+      window.location.href = data.checkoutUrl;
     },
   });
 };

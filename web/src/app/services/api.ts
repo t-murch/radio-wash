@@ -54,6 +54,25 @@ export interface SubscriptionStatus {
   currentPeriodEnd?: string;
 }
 
+export interface UserSubscriptionDto {
+  id: number;
+  status: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  canceledAt?: string;
+  plan: {
+    id: number;
+    name: string;
+    price: number;
+    billingPeriod: string;
+    maxPlaylists?: number;
+    maxTracksPerPlaylist?: number;
+    features: string[];
+    isActive: boolean;
+  };
+  createdAt: string;
+}
+
 export interface PlaylistSyncConfig {
   id: number;
   originalJobId: number;
@@ -262,51 +281,56 @@ export const getJobDetails = (userId: number, jobId: number): Promise<Job> => {
 
 // --- Subscription API Functions ---
 export const getSubscriptionStatus = (): Promise<SubscriptionStatus> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/status`);
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/status`);
 };
 
-export const subscribeToSync = (): Promise<{ success: boolean; subscriptionId?: string }> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/subscribe`, {
+export const getCurrentSubscription = (): Promise<UserSubscriptionDto | null> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
+};
+
+export const subscribeToSync = (): Promise<{ checkoutUrl: string }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
     method: 'POST',
+    body: JSON.stringify({ planPriceId: 'default' }), // We'll need to update this when we have real Stripe integration
   });
 };
 
 export const cancelSubscription = (): Promise<{ success: boolean }> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/cancel`, {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/cancel`, {
     method: 'POST',
   });
 };
 
 // --- Sync Management API Functions ---
 export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/enable`, {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/enable`, {
     method: 'POST',
     body: JSON.stringify({ jobId }),
   });
 };
 
 export const disableSync = (syncConfigId: number): Promise<{ success: boolean }> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}`, {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}`, {
     method: 'DELETE',
   });
 };
 
 export const getSyncConfigs = (): Promise<PlaylistSyncConfig[]> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync`);
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync`);
 };
 
 export const updateSyncFrequency = (
   syncConfigId: number,
   frequency: string
 ): Promise<PlaylistSyncConfig> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}/frequency`, {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`, {
     method: 'PATCH',
     body: JSON.stringify({ frequency }),
   });
 };
 
 export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}/sync`, {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/sync`, {
     method: 'POST',
   });
 };
@@ -316,6 +340,6 @@ export const getSyncHistory = (
   limit: number = 20
 ): Promise<SyncHistory[]> => {
   return fetchWithSupabaseAuth(
-    `${API_BASE_URL}/sync/${syncConfigId}/history?limit=${limit}`
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/history?limit=${limit}`
   );
 };
