@@ -1,5 +1,7 @@
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Stripe.Checkout;
 
@@ -10,17 +12,20 @@ public class StripePaymentService : IPaymentService
   private readonly IConfiguration _configuration;
   private readonly ISubscriptionService _subscriptionService;
   private readonly IEventUtility _eventUtility;
+  private readonly RadioWashDbContext _dbContext;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
       IConfiguration configuration,
       ISubscriptionService subscriptionService,
       IEventUtility eventUtility,
+      RadioWashDbContext dbContext,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
     _subscriptionService = subscriptionService;
     _eventUtility = eventUtility;
+    _dbContext = dbContext;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
@@ -80,14 +85,44 @@ public class StripePaymentService : IPaymentService
   public async Task HandleWebhookAsync(string payload, string signature)
   {
     var webhookSecret = _configuration["Stripe:WebhookSecret"];
+    
+    if (string.IsNullOrEmpty(webhookSecret))
+    {
+      _logger.LogError("Stripe webhook secret is not configured");
+      throw new InvalidOperationException("Stripe webhook secret is not configured");
+    }
 
     try
     {
       var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
 
-      _logger.LogInformation("Processing Stripe webhook event: {EventType}", stripeEvent.Type);
+      // Check if event has already been processed (idempotency)
+      var existingEvent = await _dbContext.ProcessedWebhookEvents
+          .AsNoTracking()
+          .FirstOrDefaultAsync(e => e.EventId == stripeEvent.Id);
 
-      switch (stripeEvent.Type)
+      if (existingEvent != null)
+      {
+        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed", 
+            stripeEvent.Id, stripeEvent.Type);
+        return;
+      }
+
+      _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
+          stripeEvent.Type, stripeEvent.Id);
+
+      // Mark event as being processed
+      var webhookEvent = new ProcessedWebhookEvent
+      {
+        EventId = stripeEvent.Id,
+        EventType = stripeEvent.Type,
+        ProcessedAt = DateTime.UtcNow,
+        IsSuccessful = false // Will update to true after successful processing
+      };
+
+      try
+      {
+        switch (stripeEvent.Type)
       {
         case "checkout.session.completed":
           await HandleCheckoutCompletedAsync(stripeEvent);
@@ -110,11 +145,32 @@ public class StripePaymentService : IPaymentService
         default:
           _logger.LogInformation("Unhandled webhook event type: {EventType}", stripeEvent.Type);
           break;
+        }
+
+        // Mark event as successfully processed
+        webhookEvent.IsSuccessful = true;
+        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
+            stripeEvent.Id, stripeEvent.Type);
+      }
+      catch (Exception processingEx)
+      {
+        // Mark event as failed
+        webhookEvent.IsSuccessful = false;
+        webhookEvent.ErrorMessage = processingEx.Message;
+        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}", 
+            stripeEvent.Id, stripeEvent.Type, processingEx.Message);
+        throw;
       }
     }
     catch (StripeException ex)
     {
-      _logger.LogError(ex, "Stripe webhook error: {Message}", ex.Message);
+      _logger.LogError(ex, "Stripe webhook signature verification failed: {Message}", ex.Message);
       throw;
     }
   }

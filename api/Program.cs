@@ -61,6 +61,7 @@ builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
 builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
 builder.Services.AddScoped<IPaymentService, StripePaymentService>();
 builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
+builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
@@ -249,6 +250,25 @@ if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
     {
       migrationLogger.LogError(ex, "Error applying database migrations");
       throw;
+    }
+
+    // Validate Stripe configuration
+    var stripeHealthCheck = scope.ServiceProvider.GetRequiredService<IStripeHealthCheckService>();
+    var stripeConfigValid = await stripeHealthCheck.ValidateConfigurationAsync();
+    if (!stripeConfigValid)
+    {
+      migrationLogger.LogError("Stripe configuration validation failed - application will not start");
+      throw new InvalidOperationException("Stripe configuration is invalid");
+    }
+    
+    // Test Stripe connectivity in non-test environments
+    if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test"))
+    {
+      var stripeConnectivityOk = await stripeHealthCheck.TestConnectivityAsync();
+      if (!stripeConnectivityOk)
+      {
+        migrationLogger.LogWarning("Stripe connectivity test failed - check network connectivity and API keys");
+      }
     }
   }
 }

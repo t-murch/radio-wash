@@ -1,20 +1,23 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using Stripe;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Infrastructure.Data;
 using Xunit;
 
 namespace RadioWash.Api.Tests.Unit.Services;
 
-public class StripePaymentServiceTests
+public class StripePaymentServiceTests : IDisposable
 {
   private readonly Mock<IConfiguration> _mockConfiguration;
   private readonly Mock<ISubscriptionService> _mockSubscriptionService;
   private readonly Mock<IEventUtility> _mockEventUtility;
   private readonly Mock<ILogger<StripePaymentService>> _mockLogger;
+  private readonly RadioWashDbContext _dbContext;
   private readonly StripePaymentService _stripePaymentService;
 
   public StripePaymentServiceTests()
@@ -23,6 +26,12 @@ public class StripePaymentServiceTests
     _mockSubscriptionService = new Mock<ISubscriptionService>();
     _mockEventUtility = new Mock<IEventUtility>();
     _mockLogger = new Mock<ILogger<StripePaymentService>>();
+
+    // Setup in-memory database
+    var options = new DbContextOptionsBuilder<RadioWashDbContext>()
+        .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+        .Options;
+    _dbContext = new RadioWashDbContext(options);
 
     // Setup configuration
     _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
@@ -33,6 +42,7 @@ public class StripePaymentServiceTests
         _mockConfiguration.Object,
         _mockSubscriptionService.Object,
         _mockEventUtility.Object,
+        _dbContext,
         _mockLogger.Object
     );
   }
@@ -287,7 +297,7 @@ public class StripePaymentServiceTests
   {
     // Arrange
     var eventType = "customer.created";
-    var mockEvent = new Event { Type = eventType };
+    var mockEvent = new Event { Id = "evt_test_" + Guid.NewGuid().ToString()[..8], Type = eventType };
     
     _mockEventUtility.Setup(x => x.ConstructEvent(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
         .Returns(mockEvent);
@@ -321,6 +331,7 @@ public class StripePaymentServiceTests
 
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
       Data = new EventData { Object = subscription }
     };
@@ -334,6 +345,7 @@ public class StripePaymentServiceTests
     var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active", Items = null };
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
       Data = new EventData { Object = subscription }
     };
@@ -360,6 +372,7 @@ public class StripePaymentServiceTests
 
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
       Data = new EventData { Object = invoice }
     };
@@ -395,6 +408,7 @@ public class StripePaymentServiceTests
 
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "customer.subscription.created",
       Data = new EventData { Object = subscription }
     };
@@ -414,6 +428,7 @@ public class StripePaymentServiceTests
 
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "customer.subscription.created",
       Data = new EventData { Object = subscription }
     };
@@ -435,6 +450,7 @@ public class StripePaymentServiceTests
 
     var mockEvent = new Event
     {
+      Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "checkout.session.completed",
       Data = new EventData { Object = session }
     };
@@ -474,4 +490,9 @@ public class StripePaymentServiceTests
   }
 
   #endregion
+
+  public void Dispose()
+  {
+    _dbContext.Dispose();
+  }
 }

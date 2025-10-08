@@ -21,6 +21,7 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
   public DbSet<UserSubscription> UserSubscriptions { get; set; } = null!;
   public DbSet<PlaylistSyncConfig> PlaylistSyncConfigs { get; set; } = null!;
   public DbSet<PlaylistSyncHistory> PlaylistSyncHistory { get; set; } = null!;
+  public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; } = null!;
 
   // Data Protection Keys
   public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
@@ -115,6 +116,14 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
 
     modelBuilder.Entity<PlaylistSyncHistory>()
         .HasIndex(psh => psh.StartedAt);
+
+    // Processed Webhook Event configuration
+    modelBuilder.Entity<ProcessedWebhookEvent>()
+        .HasIndex(pwe => pwe.EventId)
+        .IsUnique();
+
+    modelBuilder.Entity<ProcessedWebhookEvent>()
+        .HasIndex(pwe => pwe.ProcessedAt);
   }
 
 }
