@@ -9,15 +9,18 @@ public class StripePaymentService : IPaymentService
 {
   private readonly IConfiguration _configuration;
   private readonly ISubscriptionService _subscriptionService;
+  private readonly IEventUtility _eventUtility;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
       IConfiguration configuration,
       ISubscriptionService subscriptionService,
+      IEventUtility eventUtility,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
     _subscriptionService = subscriptionService;
+    _eventUtility = eventUtility;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
@@ -80,7 +83,7 @@ public class StripePaymentService : IPaymentService
 
     try
     {
-      var stripeEvent = EventUtility.ConstructEvent(payload, signature, webhookSecret);
+      var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
 
       _logger.LogInformation("Processing Stripe webhook event: {EventType}", stripeEvent.Type);
 

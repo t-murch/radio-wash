@@ -60,6 +60,7 @@ builder.Services.AddScoped<IPlaylistDeltaCalculator, PlaylistDeltaCalculator>();
 builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
 builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
 builder.Services.AddScoped<IPaymentService, StripePaymentService>();
+builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
