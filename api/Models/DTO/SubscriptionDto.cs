@@ -6,6 +6,7 @@ public class SubscriptionPlanDto
   public string Name { get; set; } = null!;
   public decimal Price { get; set; }
   public string BillingPeriod { get; set; } = null!;
+  public string? StripePriceId { get; set; }
   public int? MaxPlaylists { get; set; }
   public int? MaxTracksPerPlaylist { get; set; }
   public List<string> Features { get; set; } = new();

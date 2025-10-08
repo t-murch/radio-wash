@@ -245,10 +245,14 @@ if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
     {
       dbContext.Database.Migrate();
       migrationLogger.LogInformation("Database migrations applied successfully");
+
+      // Seed subscription plans
+      await RadioWash.Api.Infrastructure.Data.DatabaseSeeder.SeedSubscriptionPlansAsync(dbContext, app.Configuration);
+      migrationLogger.LogInformation("Database seeding completed successfully");
     }
     catch (Exception ex)
     {
-      migrationLogger.LogError(ex, "Error applying database migrations");
+      migrationLogger.LogError(ex, "Error applying database migrations or seeding");
       throw;
     }
 

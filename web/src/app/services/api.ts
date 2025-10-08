@@ -60,16 +60,7 @@ export interface UserSubscriptionDto {
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
   canceledAt?: string;
-  plan: {
-    id: number;
-    name: string;
-    price: number;
-    billingPeriod: string;
-    maxPlaylists?: number;
-    maxTracksPerPlaylist?: number;
-    features: string[];
-    isActive: boolean;
-  };
+  plan: SubscriptionPlanDto;
   createdAt: string;
 }
 
@@ -288,10 +279,34 @@ export const getCurrentSubscription = (): Promise<UserSubscriptionDto | null> =>
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
 };
 
-export const subscribeToSync = (): Promise<{ checkoutUrl: string }> => {
+export interface SubscriptionPlanDto {
+  id: number;
+  name: string;
+  price: number;
+  billingPeriod: string;
+  stripePriceId?: string;
+  maxPlaylists?: number;
+  maxTracksPerPlaylist?: number;
+  features: string[];
+  isActive: boolean;
+}
+
+export const getAvailablePlans = (): Promise<SubscriptionPlanDto[]> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+};
+
+export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
+  // Get available plans first
+  const plans = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+  if (!plans || plans.length === 0) {
+    throw new Error('No subscription plans available');
+  }
+  
+  // Use the first available plan's Stripe price ID
+  const defaultPlan = plans[0];
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
     method: 'POST',
-    body: JSON.stringify({ planPriceId: 'default' }), // We'll need to update this when we have real Stripe integration
+    body: JSON.stringify({ planPriceId: defaultPlan.stripePriceId }),
   });
 };
 
