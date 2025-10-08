@@ -6,6 +6,7 @@ public class SubscriptionPlan
   public string Name { get; set; } = null!;
   public int PriceInCents { get; set; }
   public string BillingPeriod { get; set; } = null!; // 'monthly', 'yearly'
+  public string? StripePriceId { get; set; } // Stripe price ID for webhook mapping
   public int? MaxPlaylists { get; set; } // NULL for unlimited
   public int? MaxTracksPerPlaylist { get; set; } // NULL for unlimited
   public string Features { get; set; } = "{}"; // JSON features

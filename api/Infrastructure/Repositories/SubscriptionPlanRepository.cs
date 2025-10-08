@@ -25,6 +25,12 @@ public class SubscriptionPlanRepository : ISubscriptionPlanRepository
         .FirstOrDefaultAsync(sp => sp.Name == name);
   }
 
+  public async Task<SubscriptionPlan?> GetByStripePriceIdAsync(string stripePriceId)
+  {
+    return await _dbContext.SubscriptionPlans
+        .FirstOrDefaultAsync(sp => sp.StripePriceId == stripePriceId);
+  }
+
   public async Task<IEnumerable<SubscriptionPlan>> GetActiveAsync()
   {
     return await _dbContext.SubscriptionPlans

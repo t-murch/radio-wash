@@ -12,5 +12,6 @@ public interface ISubscriptionService
   Task<UserSubscription> CancelSubscriptionAsync(int userId);
   Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();
   Task<SubscriptionPlan?> GetPlanByIdAsync(int planId);
+  Task<SubscriptionPlan?> GetPlanByStripePriceIdAsync(string stripePriceId);
   Task ValidateSubscriptionsAsync(); // For periodic validation
 }

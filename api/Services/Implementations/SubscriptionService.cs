@@ -112,6 +112,11 @@ public class SubscriptionService : ISubscriptionService
     return await _unitOfWork.SubscriptionPlans.GetByIdAsync(planId);
   }
 
+  public async Task<SubscriptionPlan?> GetPlanByStripePriceIdAsync(string stripePriceId)
+  {
+    return await _unitOfWork.SubscriptionPlans.GetByStripePriceIdAsync(stripePriceId);
+  }
+
   public async Task ValidateSubscriptionsAsync()
   {
     _logger.LogInformation("Starting subscription validation");

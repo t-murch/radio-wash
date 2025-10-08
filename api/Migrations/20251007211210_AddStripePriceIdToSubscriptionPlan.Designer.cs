@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RadioWash.Api.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RadioWash.Api.Infrastructure.Data;
 namespace RadioWash.Api.Migrations
 {
     [DbContext(typeof(RadioWashDbContext))]
-    partial class RadioWashDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251007211210_AddStripePriceIdToSubscriptionPlan")]
+    partial class AddStripePriceIdToSubscriptionPlan
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
