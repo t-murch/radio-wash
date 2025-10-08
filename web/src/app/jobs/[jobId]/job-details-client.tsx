@@ -78,9 +78,13 @@ export function JobDetailsClient({
   const handleSubscribeToSync = async () => {
     try {
       await subscribeToSyncMutation.mutateAsync();
-      toast.success('Subscription successful! You can now enable sync.');
+      // Note: The mutation will redirect to Stripe checkout on success
     } catch (error) {
-      toast.error('Subscription failed. Please try again.');
+      if (error instanceof Error && error.message.includes('404')) {
+        toast.error('Subscription service not yet configured. Please contact support.');
+      } else {
+        toast.error('Subscription failed. Please try again.');
+      }
       console.error('Subscribe error:', error);
     }
   };
