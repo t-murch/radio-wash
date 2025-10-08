@@ -46,6 +46,51 @@ export interface TrackMapping {
   hasCleanMatch: boolean;
 }
 
+export interface SubscriptionStatus {
+  hasActiveSubscription: boolean;
+  subscriptionId?: string;
+  planName?: string;
+  status?: string;
+  currentPeriodEnd?: string;
+}
+
+export interface PlaylistSyncConfig {
+  id: number;
+  originalJobId: number;
+  sourcePlaylistId: string;
+  sourcePlaylistName: string;
+  targetPlaylistId: string;
+  targetPlaylistName: string;
+  isActive: boolean;
+  syncFrequency: string;
+  lastSyncedAt?: string;
+  lastSyncStatus?: string;
+  lastSyncError?: string;
+  nextScheduledSync?: string;
+  createdAt: string;
+}
+
+export interface SyncResult {
+  success: boolean;
+  tracksAdded: number;
+  tracksRemoved: number;
+  tracksUnchanged: number;
+  errorMessage?: string;
+  executionTimeMs: number;
+}
+
+export interface SyncHistory {
+  id: number;
+  startedAt: string;
+  completedAt?: string;
+  status: string;
+  tracksAdded?: number;
+  tracksRemoved?: number;
+  tracksUnchanged?: number;
+  errorMessage?: string;
+  executionTimeMs?: number;
+}
+
 export const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
@@ -212,5 +257,65 @@ export const createCleanPlaylistJob = (
 export const getJobDetails = (userId: number, jobId: number): Promise<Job> => {
   return fetchWithSupabaseAuth(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`
+  );
+};
+
+// --- Subscription API Functions ---
+export const getSubscriptionStatus = (): Promise<SubscriptionStatus> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/status`);
+};
+
+export const subscribeToSync = (): Promise<{ success: boolean; subscriptionId?: string }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/subscribe`, {
+    method: 'POST',
+  });
+};
+
+export const cancelSubscription = (): Promise<{ success: boolean }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscriptions/cancel`, {
+    method: 'POST',
+  });
+};
+
+// --- Sync Management API Functions ---
+export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/enable`, {
+    method: 'POST',
+    body: JSON.stringify({ jobId }),
+  });
+};
+
+export const disableSync = (syncConfigId: number): Promise<{ success: boolean }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const getSyncConfigs = (): Promise<PlaylistSyncConfig[]> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync`);
+};
+
+export const updateSyncFrequency = (
+  syncConfigId: number,
+  frequency: string
+): Promise<PlaylistSyncConfig> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}/frequency`, {
+    method: 'PATCH',
+    body: JSON.stringify({ frequency }),
+  });
+};
+
+export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/sync/${syncConfigId}/sync`, {
+    method: 'POST',
+  });
+};
+
+export const getSyncHistory = (
+  syncConfigId: number,
+  limit: number = 20
+): Promise<SyncHistory[]> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/sync/${syncConfigId}/history?limit=${limit}`
   );
 };

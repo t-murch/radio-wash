@@ -5,6 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings';
 import { GlobalHeader } from '@/components/GlobalHeader';
+import { Button } from '@/components/ui/button';
+import { useSubscriptionStatus, useEnableSyncForJob, useSubscribeToSync, useSyncConfigs } from '@/hooks/useSubscriptionSync';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 // Helper functions for UI, can be moved to a utils file
 const getStatusBadgeClass = (status: string) => {
@@ -34,6 +38,7 @@ export function JobDetailsClient({
   jobId: number;
 }) {
   const router = useRouter();
+  const [isEnablingSync, setIsEnablingSync] = useState(false);
 
   // Use React Query to manage the job data, with initial data from the server
   const { data: job, isLoading } = useQuery<Job>({
@@ -42,6 +47,43 @@ export function JobDetailsClient({
     initialData: initialJob,
     enabled: !!initialMe,
   });
+
+  // Subscription and sync hooks
+  const { data: subscriptionStatus, isLoading: isLoadingSubscription } = useSubscriptionStatus();
+  const { data: syncConfigs } = useSyncConfigs();
+  const enableSyncMutation = useEnableSyncForJob();
+  const subscribeToSyncMutation = useSubscribeToSync();
+
+  // Check if sync is already enabled for this job
+  const existingSyncConfig = syncConfigs?.find(config => config.originalJobId === jobId);
+
+  const handleEnableSync = async () => {
+    if (!subscriptionStatus?.hasActiveSubscription) {
+      toast.error('Please subscribe to enable sync functionality');
+      return;
+    }
+
+    setIsEnablingSync(true);
+    try {
+      await enableSyncMutation.mutateAsync(jobId);
+      toast.success('Sync enabled successfully! Your playlist will be synchronized daily.');
+    } catch (error) {
+      toast.error('Failed to enable sync. Please try again.');
+      console.error('Enable sync error:', error);
+    } finally {
+      setIsEnablingSync(false);
+    }
+  };
+
+  const handleSubscribeToSync = async () => {
+    try {
+      await subscribeToSyncMutation.mutateAsync();
+      toast.success('Subscription successful! You can now enable sync.');
+    } catch (error) {
+      toast.error('Subscription failed. Please try again.');
+      console.error('Subscribe error:', error);
+    }
+  };
 
   if (isLoading || !job) {
     return <div>Loading job details...</div>;
@@ -103,7 +145,7 @@ export function JobDetailsClient({
           )}
 
           {job.status === 'Completed' && job.targetPlaylistId && (
-            <div className="mt-6">
+            <div className="mt-6 space-y-4">
               <a
                 href={`https://open.spotify.com/playlist/${job.targetPlaylistId}`}
                 target="_blank"
@@ -112,6 +154,71 @@ export function JobDetailsClient({
               >
                 Open Playlist in Spotify
               </a>
+
+              {/* Sync Management Section */}
+              <div className="border border-border rounded-lg p-4 bg-card">
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  Automatic Playlist Sync
+                </h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Keep your clean playlist automatically synchronized with the source playlist. 
+                  New tracks will be cleaned and added daily.
+                </p>
+
+                {isLoadingSubscription ? (
+                  <div className="text-sm text-muted-foreground">Loading subscription status...</div>
+                ) : existingSyncConfig ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium text-foreground">
+                        Sync Enabled
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Frequency: {existingSyncConfig.syncFrequency}
+                      {existingSyncConfig.lastSyncedAt && (
+                        <span className="block">
+                          Last synced: {formatDateTime(existingSyncConfig.lastSyncedAt)}
+                        </span>
+                      )}
+                      {existingSyncConfig.nextScheduledSync && (
+                        <span className="block">
+                          Next sync: {formatDateTime(existingSyncConfig.nextScheduledSync)}
+                        </span>
+                      )}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push('/dashboard/sync')}
+                    >
+                      Manage Sync Settings
+                    </Button>
+                  </div>
+                ) : subscriptionStatus?.hasActiveSubscription ? (
+                  <Button
+                    onClick={handleEnableSync}
+                    disabled={isEnablingSync || enableSyncMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {isEnablingSync || enableSyncMutation.isPending ? 'Enabling...' : 'Enable Sync'}
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-sm text-muted-foreground">
+                      Subscribe to enable automatic playlist synchronization
+                    </div>
+                    <Button
+                      onClick={handleSubscribeToSync}
+                      disabled={subscribeToSyncMutation.isPending}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      {subscribeToSyncMutation.isPending ? 'Subscribing...' : 'Subscribe to Sync'}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
