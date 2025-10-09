@@ -160,14 +160,58 @@ export function JobDetailsClient({
               </a>
 
               {/* Sync Management Section */}
-              <div className="border border-border rounded-lg p-4 bg-card">
-                <h3 className="text-lg font-medium text-foreground mb-2">
-                  Automatic Playlist Sync
-                </h3>
-                <p className="text-muted-foreground text-sm mb-4">
-                  Keep your clean playlist automatically synchronized with the source playlist. 
-                  New tracks will be cleaned and added daily.
-                </p>
+              <div className="border border-border rounded-lg p-6 bg-card">
+                <div className="mb-6">
+                  <h3 className="text-xl font-semibold text-foreground mb-3">
+                    🔄 Never Manually Sync Again
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    Your playlist just took time to process. What if your source playlist changes tomorrow? 
+                    With Auto-Sync, your clean playlist stays updated automatically - no more waiting or manual work.
+                  </p>
+                  
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                      <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">❌ Manual Way</h4>
+                      <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                        <li>• Check source playlist for changes</li>
+                        <li>• Create new cleaning job</li>
+                        <li>• Wait for processing</li>
+                        <li>• Replace old playlist</li>
+                        <li>• <strong>Repeat every time it changes</strong></li>
+                      </ul>
+                    </div>
+                    
+                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                      <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">✅ Auto-Sync Way</h4>
+                      <ul className="text-sm text-green-700 dark:text-green-300 space-y-1">
+                        <li>• Enable sync once</li>
+                        <li>• System checks daily at midnight</li>
+                        <li>• New tracks cleaned automatically</li>
+                        <li>• Your playlist stays current</li>
+                        <li>• <strong>Set it and forget it</strong></li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">$5</span>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                          $5/month • Up to 10 playlists • 200 tracks each
+                        </h4>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">
+                          Save hours of manual work. Your time is worth more than $5.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 {isLoadingSubscription ? (
                   <div className="text-sm text-muted-foreground">Loading subscription status...</div>
