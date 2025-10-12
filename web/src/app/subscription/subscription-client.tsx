@@ -124,12 +124,18 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 </div>
               </div>
 
-              <div className="flex space-x-4">
+              <div className="flex flex-wrap gap-3">
                 <Button
                   variant="outline"
                   onClick={() => router.push('/dashboard/sync')}
                 >
-                  Manage Sync Settings
+                  View Sync Dashboard
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push('/dashboard')}
+                >
+                  Back to Dashboard
                 </Button>
                 <Button
                   variant="destructive"

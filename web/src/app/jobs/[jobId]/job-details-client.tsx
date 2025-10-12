@@ -75,18 +75,9 @@ export function JobDetailsClient({
     }
   };
 
-  const handleSubscribeToSync = async () => {
-    try {
-      await subscribeToSyncMutation.mutateAsync();
-      // Note: The mutation will redirect to Stripe checkout on success
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('404')) {
-        toast.error('Subscription service not yet configured. Please contact support.');
-      } else {
-        toast.error('Subscription failed. Please try again.');
-      }
-      console.error('Subscribe error:', error);
-    }
+  const handleSubscribeToSync = () => {
+    // Navigate to subscription page to show full value proposition first
+    router.push('/subscription');
   };
 
   if (isLoading || !job) {
@@ -259,10 +250,9 @@ export function JobDetailsClient({
                     </div>
                     <Button
                       onClick={handleSubscribeToSync}
-                      disabled={subscribeToSyncMutation.isPending}
                       className="bg-purple-600 hover:bg-purple-700 text-white"
                     >
-                      {subscribeToSyncMutation.isPending ? 'Subscribing...' : 'Subscribe to Sync'}
+                      Learn More & Subscribe
                     </Button>
                   </div>
                 )}
