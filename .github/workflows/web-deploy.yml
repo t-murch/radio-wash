@@ -30,6 +30,31 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Check Azure costs before deployment
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Get current month's cost for the resource group
+            CURRENT_MONTH=$(date +%Y-%m)
+            COST=$(az consumption usage list \
+              --end-date $(date +%Y-%m-%d) \
+              --start-date ${CURRENT_MONTH}-01 \
+              --query "[?resourceGroup=='radio-wash_group'].pretaxCost" \
+              -o tsv | awk '{sum += $1} END {print (sum ? sum : 0)}')
+            
+            echo "Current month cost for radio-wash_group: \$${COST}"
+            
+            # Check if cost is approaching budget ($45 = 90% of $50 budget)
+            if (( $(echo "$COST > 45" | bc -l) )); then
+              echo "⚠️ WARNING: Monthly cost \$${COST} approaching \$50 budget limit!"
+              echo "Deployment blocked to prevent budget overrun."
+              exit 1
+            elif (( $(echo "$COST > 35" | bc -l) )); then
+              echo "⚠️ CAUTION: Monthly cost \$${COST} is high but within limits."
+            else
+              echo "✅ Cost check passed: \$${COST} is within budget."
+            fi
+
       - name: Log in to ACR
         uses: docker/login-action@v3
         with:
@@ -74,7 +99,7 @@ jobs:
                 --target-port 3000 \
                 --ingress 'external' \
                 --min-replicas 0 \
-                --max-replicas 10 \
+                --max-replicas 5 \
                 --cpu 0.25 \
                 --memory 0.5Gi \
                 --env-vars NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }} NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }} \
