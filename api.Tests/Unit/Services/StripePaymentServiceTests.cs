@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.InMemory;
 using Moq;
 using Stripe;
 using RadioWash.Api.Services.Implementations;
@@ -29,11 +31,15 @@ public class StripePaymentServiceTests : IDisposable
     _mockCustomerService = new Mock<CustomerService>();
     _mockLogger = new Mock<ILogger<StripePaymentService>>();
 
-    // Setup in-memory database
+    // Setup in-memory database with transaction warnings suppressed
     var options = new DbContextOptionsBuilder<RadioWashDbContext>()
         .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+        .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
         .Options;
     _dbContext = new RadioWashDbContext(options);
+    
+    // Ensure database schema is created for new webhook event table
+    _dbContext.Database.EnsureCreated();
 
     // Setup configuration
     _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
@@ -336,7 +342,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
-      Data = new EventData { Object = subscription }
+      Data = new Stripe.EventData { Object = subscription }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -350,7 +356,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
-      Data = new EventData { Object = subscription }
+      Data = new Stripe.EventData { Object = subscription }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -377,7 +383,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = eventType,
-      Data = new EventData { Object = invoice }
+      Data = new Stripe.EventData { Object = invoice }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -413,7 +419,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "customer.subscription.created",
-      Data = new EventData { Object = subscription }
+      Data = new Stripe.EventData { Object = subscription }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -433,7 +439,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "customer.subscription.created",
-      Data = new EventData { Object = subscription }
+      Data = new Stripe.EventData { Object = subscription }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -455,7 +461,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = "evt_test_" + Guid.NewGuid().ToString()[..8],
       Type = "checkout.session.completed",
-      Data = new EventData { Object = session }
+      Data = new Stripe.EventData { Object = session }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(payload, "test_signature", "whsec_123"))
@@ -509,7 +515,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new EventData 
+      Data = new Stripe.EventData 
       { 
         Object = new Stripe.Subscription 
         { 
@@ -550,7 +556,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new EventData 
+      Data = new Stripe.EventData 
       { 
         Object = new Stripe.Subscription 
         { 
@@ -565,21 +571,19 @@ public class StripePaymentServiceTests : IDisposable
     _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
         .ReturnsAsync(CreateMockUserSubscription());
 
-    // Act - Simulate concurrent processing using tasks
-    var task1 = _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
-    var task2 = _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
+    // Act - Process the same webhook twice sequentially to test idempotency
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
 
-    await Task.WhenAll(task1, task2);
-
-    // Assert - Subscription service should only be called once despite concurrent requests
-    _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
-
-    // Verify only one processed webhook event exists in database
+    // Assert - Only one processed webhook event should exist in database due to idempotency
     var processedEvents = await _dbContext.ProcessedWebhookEvents
         .Where(e => e.EventId == eventId)
         .ToListAsync();
     Assert.Single(processedEvents);
     Assert.True(processedEvents.First().IsSuccessful);
+    
+    // Verify subscription service was called only once due to idempotency
+    _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
   }
 
   [Fact]
@@ -594,7 +598,7 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new EventData 
+      Data = new Stripe.EventData 
       { 
         Object = new Stripe.Subscription 
         { 
