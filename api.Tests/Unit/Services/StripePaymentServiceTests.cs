@@ -494,6 +494,135 @@ public class StripePaymentServiceTests : IDisposable
 
   #endregion
 
+  #region Race Condition and Idempotency Tests
+
+  [Fact]
+  public async Task HandleWebhookAsync_WithDuplicateEventId_ShouldProcessOnlyOnce()
+  {
+    // Arrange
+    var eventId = "evt_test_duplicate";
+    var subscriptionId = "sub_123";
+    var webhookPayload = "test_payload";
+
+    // Setup the first event
+    var mockEvent = new Event
+    {
+      Id = eventId,
+      Type = "customer.subscription.updated",
+      Data = new EventData 
+      { 
+        Object = new Stripe.Subscription 
+        { 
+          Id = subscriptionId, 
+          Status = "active" 
+        } 
+      }
+    };
+
+    _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "test_signature", "whsec_123"))
+        .Returns(mockEvent);
+    _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
+        .ReturnsAsync(CreateMockUserSubscription());
+
+    // Act - Process the webhook twice
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "test_signature");
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "test_signature");
+
+    // Assert - Subscription service should only be called once
+    _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
+
+    // Verify that webhook event was recorded in database
+    var processedEvent = await _dbContext.ProcessedWebhookEvents
+        .FirstOrDefaultAsync(e => e.EventId == eventId);
+    Assert.NotNull(processedEvent);
+    Assert.True(processedEvent.IsSuccessful);
+  }
+
+  [Fact]
+  public async Task HandleWebhookAsync_ConcurrentRequests_ShouldHandleRaceConditionGracefully()
+  {
+    // Arrange
+    var eventId = "evt_test_concurrent";
+    var subscriptionId = "sub_concurrent";
+    var webhookPayload = "concurrent_payload";
+
+    var mockEvent = new Event
+    {
+      Id = eventId,
+      Type = "customer.subscription.updated",
+      Data = new EventData 
+      { 
+        Object = new Stripe.Subscription 
+        { 
+          Id = subscriptionId, 
+          Status = "active" 
+        } 
+      }
+    };
+
+    _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "concurrent_signature", "whsec_123"))
+        .Returns(mockEvent);
+    _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
+        .ReturnsAsync(CreateMockUserSubscription());
+
+    // Act - Simulate concurrent processing using tasks
+    var task1 = _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
+    var task2 = _stripePaymentService.HandleWebhookAsync(webhookPayload, "concurrent_signature");
+
+    await Task.WhenAll(task1, task2);
+
+    // Assert - Subscription service should only be called once despite concurrent requests
+    _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
+
+    // Verify only one processed webhook event exists in database
+    var processedEvents = await _dbContext.ProcessedWebhookEvents
+        .Where(e => e.EventId == eventId)
+        .ToListAsync();
+    Assert.Single(processedEvents);
+    Assert.True(processedEvents.First().IsSuccessful);
+  }
+
+  [Fact]
+  public async Task HandleWebhookAsync_ProcessingFails_ShouldMarkEventAsFailed()
+  {
+    // Arrange
+    var eventId = "evt_test_failed";
+    var subscriptionId = "sub_failed";
+    var webhookPayload = "failed_payload";
+
+    var mockEvent = new Event
+    {
+      Id = eventId,
+      Type = "customer.subscription.updated",
+      Data = new EventData 
+      { 
+        Object = new Stripe.Subscription 
+        { 
+          Id = subscriptionId, 
+          Status = "active" 
+        } 
+      }
+    };
+
+    _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "failed_signature", "whsec_123"))
+        .Returns(mockEvent);
+    _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
+        .ThrowsAsync(new InvalidOperationException("Database error"));
+
+    // Act & Assert
+    await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _stripePaymentService.HandleWebhookAsync(webhookPayload, "failed_signature"));
+
+    // Verify that failed webhook event was recorded in database
+    var processedEvent = await _dbContext.ProcessedWebhookEvents
+        .FirstOrDefaultAsync(e => e.EventId == eventId);
+    Assert.NotNull(processedEvent);
+    Assert.False(processedEvent.IsSuccessful);
+    Assert.Equal("Database error", processedEvent.ErrorMessage);
+  }
+
+  #endregion
+
   public void Dispose()
   {
     _dbContext.Dispose();
