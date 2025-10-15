@@ -395,19 +395,37 @@ public class StripePaymentService : IPaymentService
         return;
       }
 
-      // Create the subscription record
-      await _subscriptionService.CreateSubscriptionAsync(
-          userId.Value, 
-          plan.Id, 
-          subscription.Id, 
-          subscription.CustomerId);
+      // Use transaction only for the database write operation to ensure atomicity
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      
+      try
+      {
+        // Create the subscription record within the transaction
+        await _subscriptionService.CreateSubscriptionAsync(
+            userId.Value, 
+            plan.Id, 
+            subscription.Id, 
+            subscription.CustomerId);
 
-      _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
-          userId, subscription.Id);
+        // Commit the transaction if subscription creation succeeded
+        await transaction.CommitAsync();
+        
+        _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
+            userId, subscription.Id);
+      }
+      catch (Exception dbEx)
+      {
+        // Rollback the transaction on database operation failure
+        await transaction.RollbackAsync();
+        _logger.LogError(dbEx, "Failed to create subscription record for user {UserId}, subscription {SubscriptionId}. Transaction rolled back.", 
+            userId, subscription.Id);
+        throw;
+      }
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error processing subscription created event for subscription {SubscriptionId}", subscription.Id);
+      throw;
     }
   }
 
