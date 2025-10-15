@@ -13,6 +13,7 @@ public class StripePaymentService : IPaymentService
   private readonly ISubscriptionService _subscriptionService;
   private readonly IEventUtility _eventUtility;
   private readonly RadioWashDbContext _dbContext;
+  private readonly CustomerService _customerService;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
@@ -20,12 +21,14 @@ public class StripePaymentService : IPaymentService
       ISubscriptionService subscriptionService,
       IEventUtility eventUtility,
       RadioWashDbContext dbContext,
+      CustomerService customerService,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
     _subscriptionService = subscriptionService;
     _eventUtility = eventUtility;
     _dbContext = dbContext;
+    _customerService = customerService;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
@@ -370,8 +373,7 @@ public class StripePaymentService : IPaymentService
         else
         {
           // Fallback: try customer metadata (for existing subscriptions)
-          var customerService = new CustomerService();
-          var customer = await customerService.GetAsync(subscription.CustomerId);
+          var customer = await _customerService.GetAsync(subscription.CustomerId);
           
           if (customer?.Metadata?.TryGetValue("userId", out userIdStr) == true && 
               int.TryParse(userIdStr, out parsedUserId))

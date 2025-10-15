@@ -63,6 +63,9 @@ builder.Services.AddScoped<IPaymentService, StripePaymentService>();
 builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
 builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
 
+// Stripe services
+builder.Services.AddScoped<Stripe.CustomerService>();
+
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
