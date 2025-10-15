@@ -373,8 +373,7 @@ public class StripePaymentService : IPaymentService
         else
         {
           // Fallback: try customer metadata (for existing subscriptions)
-          var customerService = new CustomerService();
-          var customer = await customerService.GetAsync(subscription.CustomerId);
+          var customer = await _customerService.GetAsync(subscription.CustomerId);
           
           if (customer?.Metadata?.TryGetValue("userId", out userIdStr) == true && 
               int.TryParse(userIdStr, out parsedUserId))
