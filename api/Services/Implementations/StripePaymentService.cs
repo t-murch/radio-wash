@@ -99,22 +99,10 @@ public class StripePaymentService : IPaymentService
     {
       var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
 
-      // Check if event has already been processed (idempotency)
-      var existingEvent = await _dbContext.ProcessedWebhookEvents
-          .AsNoTracking()
-          .FirstOrDefaultAsync(e => e.EventId == stripeEvent.Id);
-
-      if (existingEvent != null)
-      {
-        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed", 
-            stripeEvent.Id, stripeEvent.Type);
-        return;
-      }
-
       _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
           stripeEvent.Type, stripeEvent.Id);
 
-      // Mark event as being processed
+      // Create webhook event record to ensure idempotency using database unique constraint
       var webhookEvent = new ProcessedWebhookEvent
       {
         EventId = stripeEvent.Id,
@@ -122,6 +110,20 @@ public class StripePaymentService : IPaymentService
         ProcessedAt = DateTime.UtcNow,
         IsSuccessful = false // Will update to true after successful processing
       };
+
+      try
+      {
+        // Add the webhook event record first to leverage unique constraint for race condition protection
+        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
+        await _dbContext.SaveChangesAsync();
+      }
+      catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+      {
+        // Event has already been processed by another concurrent request
+        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed (race condition avoided)", 
+            stripeEvent.Id, stripeEvent.Type);
+        return;
+      }
 
       try
       {
@@ -152,7 +154,7 @@ public class StripePaymentService : IPaymentService
 
         // Mark event as successfully processed
         webhookEvent.IsSuccessful = true;
-        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
+        _dbContext.ProcessedWebhookEvents.Update(webhookEvent);
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
@@ -163,7 +165,7 @@ public class StripePaymentService : IPaymentService
         // Mark event as failed
         webhookEvent.IsSuccessful = false;
         webhookEvent.ErrorMessage = processingEx.Message;
-        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
+        _dbContext.ProcessedWebhookEvents.Update(webhookEvent);
         await _dbContext.SaveChangesAsync();
 
         _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}", 
@@ -458,5 +460,30 @@ public class StripePaymentService : IPaymentService
     }
 
     await Task.CompletedTask;
+  }
+
+  private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+  {
+    // Check for SQL Server unique constraint violation
+    if (ex.InnerException?.Message?.Contains("duplicate key") == true ||
+        ex.InnerException?.Message?.Contains("UNIQUE constraint") == true ||
+        ex.InnerException?.Message?.Contains("unique constraint") == true)
+    {
+      return true;
+    }
+
+    // Check for SQLite unique constraint violation
+    if (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
+    {
+      return true;
+    }
+
+    // Check for PostgreSQL unique constraint violation
+    if (ex.InnerException?.Message?.Contains("duplicate key value violates unique constraint") == true)
+    {
+      return true;
+    }
+
+    return false;
   }
 }
