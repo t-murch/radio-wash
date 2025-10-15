@@ -229,9 +229,25 @@ public class SpotifyService : ISpotifyService
     var jsonResponse = await response.Content.ReadAsStringAsync();
     var searchResponse = JsonSerializer.Deserialize<SpotifySearchResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-    // Find the best non-explicit match
-    return searchResponse?.Tracks?.Items?.FirstOrDefault(
-        t => !t.Explicit && t.Name.Equals(explicitTrack.Name, StringComparison.OrdinalIgnoreCase)
+    // Find the best non-explicit match with same artist(s)
+    return searchResponse?.Tracks?.Items?.FirstOrDefault(t => 
+        !t.Explicit && 
+        t.Name.Equals(explicitTrack.Name, StringComparison.OrdinalIgnoreCase) &&
+        HasMatchingArtist(explicitTrack.Artists, t.Artists)
+    );
+  }
+
+  /// <summary>
+  /// Checks if two artist arrays have at least one matching artist name (case-insensitive)
+  /// </summary>
+  private static bool HasMatchingArtist(SpotifyArtist[] sourceArtists, SpotifyArtist[] targetArtists)
+  {
+    if (sourceArtists == null || targetArtists == null) return false;
+    
+    return sourceArtists.Any(sourceArtist => 
+      targetArtists.Any(targetArtist => 
+        string.Equals(sourceArtist.Name, targetArtist.Name, StringComparison.OrdinalIgnoreCase)
+      )
     );
   }
 }

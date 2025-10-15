@@ -15,7 +15,6 @@ public class PlaylistSyncServiceTests
   private readonly Mock<IUnitOfWork> _mockUnitOfWork;
   private readonly Mock<ISpotifyService> _mockSpotifyService;
   private readonly Mock<IPlaylistDeltaCalculator> _mockDeltaCalculator;
-  private readonly Mock<ITrackProcessor> _mockTrackProcessor;
   private readonly Mock<ISubscriptionService> _mockSubscriptionService;
   private readonly Mock<ISyncTimeCalculator> _mockSyncTimeCalculator;
   private readonly Mock<ILogger<PlaylistSyncService>> _mockLogger;
@@ -26,7 +25,6 @@ public class PlaylistSyncServiceTests
     _mockUnitOfWork = new Mock<IUnitOfWork>();
     _mockSpotifyService = new Mock<ISpotifyService>();
     _mockDeltaCalculator = new Mock<IPlaylistDeltaCalculator>();
-    _mockTrackProcessor = new Mock<ITrackProcessor>();
     _mockSubscriptionService = new Mock<ISubscriptionService>();
     _mockSyncTimeCalculator = new Mock<ISyncTimeCalculator>();
     _mockLogger = new Mock<ILogger<PlaylistSyncService>>();
@@ -35,7 +33,6 @@ public class PlaylistSyncServiceTests
         _mockUnitOfWork.Object,
         _mockSpotifyService.Object,
         _mockDeltaCalculator.Object,
-        _mockTrackProcessor.Object,
         _mockSubscriptionService.Object,
         _mockSyncTimeCalculator.Object,
         _mockLogger.Object
@@ -80,11 +77,13 @@ public class PlaylistSyncServiceTests
   {
     // Arrange
     var config = CreateSyncConfig();
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByIdAsync(config.Id))
+        .ReturnsAsync(config);
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(config.UserId))
         .ReturnsAsync(false);
 
     // Act
-    var result = await _syncService.SyncPlaylistAsync(config);
+    var result = await _syncService.SyncPlaylistAsync(config.Id);
 
     // Assert
     Assert.False(result.Success);
@@ -98,6 +97,8 @@ public class PlaylistSyncServiceTests
   {
     // Arrange
     var config = CreateSyncConfig();
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByIdAsync(config.Id))
+        .ReturnsAsync(config);
     var sourceTracks = new List<SpotifyTrack> { CreateSpotifyTrack("1", "Track 1") };
     var targetTracks = new List<SpotifyTrack> { CreateSpotifyTrack("clean-1", "Clean Track 1") };
     var mappings = new List<TrackMapping> { CreateTrackMapping("1", "clean-1") };
@@ -126,7 +127,7 @@ public class PlaylistSyncServiceTests
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
-    var result = await _syncService.SyncPlaylistAsync(config);
+    var result = await _syncService.SyncPlaylistAsync(config.Id);
 
     // Assert
     Assert.True(result.Success);
@@ -146,6 +147,8 @@ public class PlaylistSyncServiceTests
   {
     // Arrange
     var config = CreateSyncConfig();
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByIdAsync(config.Id))
+        .ReturnsAsync(config);
     var newTrack = CreateSpotifyTrack("2", "New Track");
     var cleanTrack = CreateSpotifyTrack("clean-2", "Clean New Track");
     var sourceTracks = new List<SpotifyTrack> { newTrack };
@@ -172,23 +175,23 @@ public class PlaylistSyncServiceTests
         It.IsAny<List<SpotifyTrack>>(),
         It.IsAny<List<TrackMapping>>()))
         .ReturnsAsync(delta);
-    _mockTrackProcessor.Setup(x => x.FindCleanVersionAsync(newTrack))
+    _mockSpotifyService.Setup(x => x.FindCleanVersionAsync(config.UserId, newTrack))
         .ReturnsAsync(cleanTrack);
     _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
-    var result = await _syncService.SyncPlaylistAsync(config);
+    var result = await _syncService.SyncPlaylistAsync(config.Id);
 
     // Assert
     Assert.True(result.Success);
     Assert.Equal(1, result.TracksAdded);
 
-    _mockTrackProcessor.Verify(x => x.FindCleanVersionAsync(newTrack), Times.Once);
+    _mockSpotifyService.Verify(x => x.FindCleanVersionAsync(config.UserId, newTrack), Times.Once);
     _mockSpotifyService.Verify(x => x.AddTracksToPlaylistAsync(
         config.UserId,
         config.TargetPlaylistId,
-        It.Is<IEnumerable<string>>(tracks => tracks.Contains(cleanTrack.Id))), Times.Once);
+        It.Is<IEnumerable<string>>(tracks => tracks.Contains($"spotify:track:{cleanTrack.Id}"))), Times.Once);
   }
 
   [Fact]
@@ -196,6 +199,8 @@ public class PlaylistSyncServiceTests
   {
     // Arrange
     var config = CreateSyncConfig();
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByIdAsync(config.Id))
+        .ReturnsAsync(config);
     var sourceTracks = new List<SpotifyTrack>();
     var targetTracks = new List<SpotifyTrack> { CreateSpotifyTrack("clean-1", "Clean Track 1") };
     var mappings = new List<TrackMapping>();
@@ -224,7 +229,7 @@ public class PlaylistSyncServiceTests
         .Returns(DateTime.UtcNow.AddDays(1));
 
     // Act
-    var result = await _syncService.SyncPlaylistAsync(config);
+    var result = await _syncService.SyncPlaylistAsync(config.Id);
 
     // Assert
     Assert.True(result.Success);
@@ -233,7 +238,7 @@ public class PlaylistSyncServiceTests
     _mockSpotifyService.Verify(x => x.RemoveTracksFromPlaylistAsync(
         config.UserId,
         config.TargetPlaylistId,
-        It.Is<IEnumerable<string>>(tracks => tracks.Contains("clean-1"))), Times.Once);
+        It.Is<IEnumerable<string>>(tracks => tracks.Contains("spotify:track:clean-1"))), Times.Once);
   }
 
   [Fact]

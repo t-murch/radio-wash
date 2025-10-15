@@ -14,7 +14,7 @@ public class PlaylistSyncResult
 
 public interface IPlaylistSyncService
 {
-  Task<PlaylistSyncResult> SyncPlaylistAsync(PlaylistSyncConfig config);
+  Task<PlaylistSyncResult> SyncPlaylistAsync(int configId);
   Task<PlaylistSyncConfig?> EnableSyncForJobAsync(int jobId, int userId);
   Task<bool> DisableSyncAsync(int syncConfigId, int userId);
   Task<IEnumerable<PlaylistSyncConfig>> GetUserSyncConfigsAsync(int userId);

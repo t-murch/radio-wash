@@ -11,7 +11,6 @@ namespace RadioWash.Api.Services.Implementations;
 public class SpotifyPlaylistCleaner : IPlaylistCleaner
 {
   private readonly ISpotifyService _spotifyService;
-  private readonly ITrackProcessor _trackProcessor;
   private readonly IProgressTracker _progressTracker;
   private readonly IProgressBroadcastService _progressService;
   private readonly IUnitOfWork _unitOfWork;
@@ -20,7 +19,6 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
 
   public SpotifyPlaylistCleaner(
       ISpotifyService spotifyService,
-      ITrackProcessor trackProcessor,
       IProgressTracker progressTracker,
       IProgressBroadcastService progressService,
       IUnitOfWork unitOfWork,
@@ -28,7 +26,6 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
       BatchConfiguration? batchConfig = null)
   {
     _spotifyService = spotifyService;
-    _trackProcessor = trackProcessor;
     _progressTracker = progressTracker;
     _progressService = progressService;
     _unitOfWork = unitOfWork;
@@ -73,7 +70,23 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
         continue;
       }
 
-      var mapping = await _trackProcessor.ProcessTrackAsync(user.Id, job.Id, track);
+      // Find clean version using SpotifyService directly
+      var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
+      
+      var mapping = new TrackMapping
+      {
+        JobId = job.Id,
+        SourceTrackId = track.Id,
+        SourceTrackName = track.Name ?? "Unknown",
+        SourceArtistName = track.Artists?.Length > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
+        IsExplicit = track.Explicit,
+        HasCleanMatch = cleanVersion != null,
+        TargetTrackId = cleanVersion?.Id,
+        TargetTrackName = cleanVersion?.Name,
+        TargetArtistName = cleanVersion?.Artists?.Length > 0 ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null,
+        CreatedAt = DateTime.UtcNow
+      };
+      
       mappingBatch.Add(mapping);
 
       if (mapping.HasCleanMatch)
