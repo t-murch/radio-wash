@@ -31,6 +31,14 @@ public class SubscriptionService : ISubscriptionService
   {
     _logger.LogInformation("Creating subscription for user {UserId} with plan {PlanId}", userId, planId);
 
+    // Validate that user doesn't already have an active subscription
+    var hasActiveSubscription = await HasActiveSubscriptionAsync(userId);
+    if (hasActiveSubscription)
+    {
+      _logger.LogError("Cannot create subscription for user {UserId}: user already has an active subscription", userId);
+      throw new InvalidOperationException($"User {userId} already has an active subscription");
+    }
+
     var subscription = new UserSubscription
     {
       UserId = userId,
