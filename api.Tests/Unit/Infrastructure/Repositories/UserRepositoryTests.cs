@@ -29,7 +29,7 @@ public class UserRepositoryTests : RepositoryTestBase
     await SeedAsync(providerData);
 
     // Act
-    var result = await _userRepository.GetBySupabaseIdAsync("sb_test_123");
+    var result = await _userRepository.GetBySupabaseIdWithProvidersAsync("sb_test_123");
 
     // Assert
     Assert.NotNull(result);
@@ -65,7 +65,7 @@ public class UserRepositoryTests : RepositoryTestBase
     await SeedAsync(providerData);
 
     // Act
-    var result = await _userRepository.GetByIdAsync(user.Id);
+    var result = await _userRepository.GetByIdWithProvidersAsync(user.Id);
 
     // Assert
     Assert.NotNull(result);
@@ -100,7 +100,7 @@ public class UserRepositoryTests : RepositoryTestBase
     await SeedAsync(providerData);
 
     // Act
-    var result = await _userRepository.GetByEmailAsync("unique@example.com");
+    var result = await _userRepository.GetByEmailWithProvidersAsync("unique@example.com");
 
     // Assert
     Assert.NotNull(result);

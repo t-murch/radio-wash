@@ -16,6 +16,13 @@ public class CleanPlaylistJobRepository : ICleanPlaylistJobRepository
   public async Task<CleanPlaylistJob?> GetByIdAsync(int jobId)
   {
     return await _dbContext.CleanPlaylistJobs
+        .AsNoTracking()
+        .FirstOrDefaultAsync(j => j.Id == jobId);
+  }
+
+  public async Task<CleanPlaylistJob?> GetByIdWithDetailsAsync(int jobId)
+  {
+    return await _dbContext.CleanPlaylistJobs
         .Include(j => j.User)
         .Include(j => j.TrackMappings)
         .FirstOrDefaultAsync(j => j.Id == jobId);
