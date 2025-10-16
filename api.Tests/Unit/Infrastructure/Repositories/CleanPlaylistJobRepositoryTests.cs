@@ -32,7 +32,7 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
     await SeedAsync(trackMapping);
 
     // Act
-    var result = await _jobRepository.GetByIdAsync(job.Id);
+    var result = await _jobRepository.GetByIdWithDetailsAsync(job.Id);
 
     // Assert
     Assert.NotNull(result);
@@ -362,7 +362,7 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
     await SeedAsync(mapping1, mapping2, mapping3);
 
     // Act
-    var result = await _jobRepository.GetByIdAsync(job.Id);
+    var result = await _jobRepository.GetByIdWithDetailsAsync(job.Id);
 
     // Assert
     Assert.NotNull(result);

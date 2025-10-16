@@ -38,7 +38,7 @@ public class UserServiceTests
     var user = CreateTestUser();
     user.SupabaseId = supabaseId.ToString();
 
-    _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId.ToString()))
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId.ToString()))
         .ReturnsAsync(user);
 
     // Act
@@ -58,7 +58,7 @@ public class UserServiceTests
     // Arrange
     var supabaseId = Guid.NewGuid();
 
-    _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId.ToString()))
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId.ToString()))
         .ReturnsAsync((User?)null);
 
     // Act
@@ -83,7 +83,7 @@ public class UserServiceTests
     var supabaseId = Guid.NewGuid();
     var exception = new Exception("Database error");
 
-    _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId.ToString()))
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId.ToString()))
         .ThrowsAsync(exception);
 
     // Act & Assert
@@ -109,7 +109,7 @@ public class UserServiceTests
     var user = CreateTestUser();
     user.Email = email;
 
-    _mockUserRepository.Setup(x => x.GetByEmailAsync(email))
+    _mockUserRepository.Setup(x => x.GetByEmailWithProvidersAsync(email))
         .ReturnsAsync(user);
 
     // Act
@@ -126,7 +126,7 @@ public class UserServiceTests
     // Arrange
     var email = "nonexistent@example.com";
 
-    _mockUserRepository.Setup(x => x.GetByEmailAsync(email))
+    _mockUserRepository.Setup(x => x.GetByEmailWithProvidersAsync(email))
         .ReturnsAsync((User?)null);
 
     // Act
@@ -213,7 +213,7 @@ public class UserServiceTests
     updatedUser.DisplayName = newDisplayName;
     updatedUser.Email = newEmail;
 
-    _mockUserRepository.Setup(x => x.GetByIdAsync(userId))
+    _mockUserRepository.Setup(x => x.GetByIdWithProvidersAsync(userId))
         .ReturnsAsync(existingUser);
     _mockUserRepository.Setup(x => x.UpdateAsync(It.IsAny<User>()))
         .ReturnsAsync(updatedUser);
@@ -238,7 +238,7 @@ public class UserServiceTests
     // Arrange
     var userId = 999;
 
-    _mockUserRepository.Setup(x => x.GetByIdAsync(userId))
+    _mockUserRepository.Setup(x => x.GetByIdWithProvidersAsync(userId))
         .ReturnsAsync((User?)null);
 
     // Act & Assert
@@ -265,7 +265,7 @@ public class UserServiceTests
     updatedUser.DisplayName = newDisplayName;
     updatedUser.Email = originalEmail;
 
-    _mockUserRepository.Setup(x => x.GetByIdAsync(userId))
+    _mockUserRepository.Setup(x => x.GetByIdWithProvidersAsync(userId))
         .ReturnsAsync(existingUser);
     _mockUserRepository.Setup(x => x.UpdateAsync(It.IsAny<User>()))
         .ReturnsAsync(updatedUser);
@@ -296,6 +296,8 @@ public class UserServiceTests
     user.SupabaseId = supabaseId;
 
     _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+        .ReturnsAsync(user);
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
         .ReturnsAsync(user);
     _mockProviderDataRepository.Setup(x => x.GetByUserAndProviderAsync(user.Id, provider))
         .ReturnsAsync((UserProviderData?)null);
@@ -335,6 +337,8 @@ public class UserServiceTests
 
     _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
         .ReturnsAsync(user);
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
+        .ReturnsAsync(user);
     _mockProviderDataRepository.Setup(x => x.GetByUserAndProviderAsync(user.Id, provider))
         .ReturnsAsync(existingProviderData);
 
@@ -361,6 +365,8 @@ public class UserServiceTests
 
     _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
         .ReturnsAsync(user);
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
+        .ReturnsAsync(user);
     _mockProviderDataRepository.Setup(x => x.GetByUserAndProviderAsync(user.Id, provider))
         .ReturnsAsync((UserProviderData?)null);
 
@@ -381,7 +387,7 @@ public class UserServiceTests
     var provider = "spotify";
     var providerId = "spotify_123";
 
-    _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
         .ReturnsAsync((User?)null);
 
     // Act & Assert
@@ -407,6 +413,8 @@ public class UserServiceTests
     updatedUser.PrimaryProvider = provider;
 
     _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+        .ReturnsAsync(user);
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
         .ReturnsAsync(user);
     _mockUserRepository.Setup(x => x.HasProviderLinkedAsync(supabaseId, provider))
         .ReturnsAsync(true);
@@ -435,6 +443,8 @@ public class UserServiceTests
     user.SupabaseId = supabaseId;
 
     _mockUserRepository.Setup(x => x.GetBySupabaseIdAsync(supabaseId))
+        .ReturnsAsync(user);
+    _mockUserRepository.Setup(x => x.GetBySupabaseIdWithProvidersAsync(supabaseId))
         .ReturnsAsync(user);
     _mockUserRepository.Setup(x => x.HasProviderLinkedAsync(supabaseId, provider))
         .ReturnsAsync(false);

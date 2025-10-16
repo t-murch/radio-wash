@@ -26,7 +26,7 @@ public class UserService : IUserService
   {
     try
     {
-      var user = await _userRepository.GetBySupabaseIdAsync(supabaseId.ToString());
+      var user = await _userRepository.GetBySupabaseIdWithProvidersAsync(supabaseId.ToString());
 
       if (user == null)
       {
@@ -47,7 +47,7 @@ public class UserService : IUserService
   {
     try
     {
-      var user = await _userRepository.GetByEmailAsync(email);
+      var user = await _userRepository.GetByEmailWithProvidersAsync(email);
 
       if (user == null)
       {
@@ -117,7 +117,7 @@ public class UserService : IUserService
   {
     try
     {
-      var user = await _userRepository.GetByIdAsync(userId);
+      var user = await _userRepository.GetByIdWithProvidersAsync(userId);
 
       if (user == null)
       {
@@ -194,7 +194,7 @@ public class UserService : IUserService
       _logger.LogInformation("Linked provider {Provider} to user {SupabaseId}", provider, supabaseId);
 
       // Get the updated user with provider data
-      var updatedUser = await _userRepository.GetBySupabaseIdAsync(supabaseId);
+      var updatedUser = await _userRepository.GetBySupabaseIdWithProvidersAsync(supabaseId);
       return MapToDto(updatedUser!);
     }
     catch (Exception ex)
@@ -223,11 +223,13 @@ public class UserService : IUserService
       }
 
       user.PrimaryProvider = provider;
-      var updatedUser = await _userRepository.UpdateAsync(user);
+      await _userRepository.UpdateAsync(user);
 
       _logger.LogInformation("Set primary provider to {Provider} for user {SupabaseId}", provider, supabaseId);
 
-      return MapToDto(updatedUser);
+      // Get the updated user with provider data
+      var updatedUser = await _userRepository.GetBySupabaseIdWithProvidersAsync(supabaseId);
+      return MapToDto(updatedUser!);
     }
     catch (Exception ex)
     {
