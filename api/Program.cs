@@ -69,6 +69,13 @@ builder.Services.AddScoped<Stripe.CustomerService>();
 // Idempotency service for webhook race condition prevention
 builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
 
+// Webhook retry service for exponential backoff
+builder.Services.AddScoped<IWebhookRetryService, WebhookRetryService>();
+builder.Services.AddScoped<IWebhookProcessor, StripeWebhookProcessor>();
+
+// Background services
+builder.Services.AddHostedService<RadioWash.Api.Services.Background.WebhookRetryBackgroundService>();
+
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();

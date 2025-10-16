@@ -15,6 +15,8 @@ public class StripePaymentService : IPaymentService
   private readonly RadioWashDbContext _dbContext;
   private readonly CustomerService _customerService;
   private readonly IIdempotencyService _idempotencyService;
+  private readonly IWebhookRetryService _webhookRetryService;
+  private readonly IWebhookProcessor _webhookProcessor;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
@@ -24,6 +26,8 @@ public class StripePaymentService : IPaymentService
       RadioWashDbContext dbContext,
       CustomerService customerService,
       IIdempotencyService idempotencyService,
+      IWebhookRetryService webhookRetryService,
+      IWebhookProcessor webhookProcessor,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
@@ -32,6 +36,8 @@ public class StripePaymentService : IPaymentService
     _dbContext = dbContext;
     _customerService = customerService;
     _idempotencyService = idempotencyService;
+    _webhookRetryService = webhookRetryService;
+    _webhookProcessor = webhookProcessor;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
@@ -90,78 +96,78 @@ public class StripePaymentService : IPaymentService
 
   public async Task HandleWebhookAsync(string payload, string signature)
   {
-    var webhookSecret = _configuration["Stripe:WebhookSecret"];
-    
-    if (string.IsNullOrEmpty(webhookSecret))
-    {
-      _logger.LogError("Stripe webhook secret is not configured");
-      throw new InvalidOperationException("Stripe webhook secret is not configured");
-    }
-
     try
     {
-      var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
-
-      _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
-          stripeEvent.Type, stripeEvent.Id);
-
-      // Use idempotency service to ensure only one concurrent request processes this event
-      var shouldProcess = await _idempotencyService.TryProcessEventAsync(stripeEvent.Id, stripeEvent.Type);
-      
-      if (!shouldProcess)
-      {
-        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed or claimed by another request", 
-            stripeEvent.Id, stripeEvent.Type);
-        return;
-      }
-
-      try
-      {
-        switch (stripeEvent.Type)
-        {
-          case "checkout.session.completed":
-            await HandleCheckoutCompletedAsync(stripeEvent);
-            break;
-          case "customer.subscription.created":
-            await HandleSubscriptionCreatedAsync(stripeEvent);
-            break;
-          case "customer.subscription.updated":
-            await HandleSubscriptionUpdatedAsync(stripeEvent);
-            break;
-          case "customer.subscription.deleted":
-            await HandleSubscriptionDeletedAsync(stripeEvent);
-            break;
-          case "invoice.payment_failed":
-            await HandlePaymentFailedAsync(stripeEvent);
-            break;
-          case "invoice.payment_succeeded":
-            await HandlePaymentSucceededAsync(stripeEvent);
-            break;
-          default:
-            _logger.LogInformation("Unhandled webhook event type: {EventType}", stripeEvent.Type);
-            break;
-        }
-
-        // Mark event as successfully processed
-        await _idempotencyService.MarkEventSuccessfulAsync(stripeEvent.Id);
-
-        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
-            stripeEvent.Id, stripeEvent.Type);
-      }
-      catch (Exception processingEx)
-      {
-        // Mark event as failed
-        await _idempotencyService.MarkEventFailedAsync(stripeEvent.Id, processingEx.Message);
-
-        _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}", 
-            stripeEvent.Id, stripeEvent.Type, processingEx.Message);
-        throw;
-      }
+      // Delegate to the webhook processor for the actual processing
+      await _webhookProcessor.ProcessWebhookAsync(payload, signature);
     }
-    catch (StripeException ex)
+    catch (Exception processingEx)
     {
-      _logger.LogError(ex, "Stripe webhook signature verification failed: {Message}", ex.Message);
+      // Schedule retry if the error is retryable
+      if (_webhookRetryService.IsRetryableError(processingEx))
+      {
+        // Extract event ID for retry tracking
+        var eventId = await ExtractEventIdAsync(payload, signature);
+        var eventType = await ExtractEventTypeAsync(payload, signature);
+
+        if (!string.IsNullOrEmpty(eventId) && !string.IsNullOrEmpty(eventType))
+        {
+          await _webhookRetryService.ScheduleRetryAsync(
+              eventId, 
+              eventType, 
+              payload, 
+              signature, 
+              processingEx.Message, 
+              1); // First retry attempt
+
+          _logger.LogWarning(processingEx, "Webhook event {EventId} processing failed, retry scheduled: {ErrorMessage}", 
+              eventId, processingEx.Message);
+        }
+        else
+        {
+          _logger.LogError(processingEx, "Failed to extract event details for retry scheduling: {ErrorMessage}", 
+              processingEx.Message);
+        }
+      }
+      else
+      {
+        _logger.LogError(processingEx, "Webhook processing failed with non-retryable error: {ErrorMessage}", 
+            processingEx.Message);
+      }
+
       throw;
+    }
+  }
+
+  private async Task<string?> ExtractEventIdAsync(string payload, string signature)
+  {
+    try
+    {
+      var webhookSecret = _configuration["Stripe:WebhookSecret"];
+      if (string.IsNullOrEmpty(webhookSecret)) return null;
+
+      var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
+      return stripeEvent.Id;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private async Task<string?> ExtractEventTypeAsync(string payload, string signature)
+  {
+    try
+    {
+      var webhookSecret = _configuration["Stripe:WebhookSecret"];
+      if (string.IsNullOrEmpty(webhookSecret)) return null;
+
+      var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
+      return stripeEvent.Type;
+    }
+    catch
+    {
+      return null;
     }
   }
 
