@@ -315,13 +315,13 @@ export function DashboardClient({
                       when your source playlists change. Never run manual jobs again.
                     </p>
                     <div className="flex flex-wrap gap-2 mb-4">
-                      <span className="px-3 py-1 bg-white dark:bg-gray-800 text-sm rounded-full border">
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
                         ⏰ Daily automatic sync
                       </span>
-                      <span className="px-3 py-1 bg-white dark:bg-gray-800 text-sm rounded-full border">
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
                         💰 Only $5/month
                       </span>
-                      <span className="px-3 py-1 bg-white dark:bg-gray-800 text-sm rounded-full border">
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
                         🎯 Up to 10 playlists
                       </span>
                     </div>
