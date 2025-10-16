@@ -16,6 +16,9 @@ import {
   Playlist,
   User,
 } from '../services/api';
+import { useSubscriptionStatus } from '../hooks/useSubscriptionSync';
+import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
 
 export function DashboardClient({
   initialMe,
@@ -30,6 +33,7 @@ export function DashboardClient({
   initialJobs: Job[];
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [customName, setCustomName] = useState('');
@@ -62,6 +66,8 @@ export function DashboardClient({
     enabled: !!me,
     initialData: initialJobs,
   });
+
+  const { data: subscriptionStatus } = useSubscriptionStatus();
 
   const openSpotifyPlaylist = (playlistId: string) => {
     window.open(`https://open.spotify.com/playlist/${playlistId}`, '_blank');
@@ -290,7 +296,59 @@ export function DashboardClient({
               </div>
             )}
           </div>
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Sync Discovery Section */}
+            {jobs.some(job => job.status === 'Completed') && !subscriptionStatus?.hasActiveSubscription && (
+              <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-6">
+                <div className="flex items-start space-x-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                      <span className="text-2xl">🔄</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                      Tired of Manual Updates?
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      You have completed playlists! Enable Auto-Sync to keep them updated automatically 
+                      when your source playlists change. Never run manual jobs again.
+                    </p>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
+                        ⏰ Daily automatic sync
+                      </span>
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
+                        💰 Only $5/month
+                      </span>
+                      <span className="px-3 py-1 bg-card text-card-foreground text-sm rounded-full border border-border">
+                        🎯 Up to 10 playlists
+                      </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        onClick={() => router.push('/subscription')}
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        Learn More About Auto-Sync
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const completedJob = jobs.find(job => job.status === 'Completed');
+                          if (completedJob) {
+                            router.push(`/jobs/${completedJob.id}`);
+                          }
+                        }}
+                      >
+                        See Sync Options
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-card border rounded-lg p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-foreground mb-4">
                 Job Status

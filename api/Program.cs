@@ -40,6 +40,12 @@ builder.Services.AddScoped<IUserMusicTokenRepository, UserMusicTokenRepository>(
 builder.Services.AddScoped<ICleanPlaylistJobRepository, CleanPlaylistJobRepository>();
 builder.Services.AddScoped<ITrackMappingRepository, TrackMappingRepository>();
 
+// Subscription repositories
+builder.Services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanRepository>();
+builder.Services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
+builder.Services.AddScoped<IPlaylistSyncConfigRepository, PlaylistSyncConfigRepository>();
+builder.Services.AddScoped<IPlaylistSyncHistoryRepository, PlaylistSyncHistoryRepository>();
+
 // Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
@@ -47,19 +53,41 @@ builder.Services.AddScoped<ISpotifyService, SpotifyService>();
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
 
+// Subscription services
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IPlaylistSyncService, PlaylistSyncService>();
+builder.Services.AddScoped<IPlaylistDeltaCalculator, PlaylistDeltaCalculator>();
+builder.Services.AddScoped<ISyncSchedulerService, SyncSchedulerService>();
+builder.Services.AddScoped<ISyncTimeCalculator, SyncTimeCalculator>();
+builder.Services.AddScoped<IPaymentService, StripePaymentService>();
+builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
+builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
+
+// Stripe services
+builder.Services.AddScoped<Stripe.CustomerService>();
+
+// Idempotency service for webhook race condition prevention
+builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
+
+// Webhook retry service for exponential backoff
+builder.Services.AddScoped<IWebhookRetryService, WebhookRetryService>();
+builder.Services.AddScoped<IWebhookProcessor, StripeWebhookProcessor>();
+
+// Background services
+builder.Services.AddHostedService<RadioWash.Api.Services.Background.WebhookRetryBackgroundService>();
+
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
 builder.Services.AddScoped<IJobOrchestrator, HangfireJobOrchestrator>();
 builder.Services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
 builder.Services.AddScoped<SpotifyPlaylistCleaner>();
-builder.Services.AddScoped<ITrackProcessor, SpotifyTrackProcessor>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {
-    var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
-        .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
-    return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
+  var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
+      .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
+  return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
 });
 
 // SignalR
@@ -229,11 +257,34 @@ if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
     {
       dbContext.Database.Migrate();
       migrationLogger.LogInformation("Database migrations applied successfully");
+
+      // Seed subscription plans
+      await RadioWash.Api.Infrastructure.Data.DatabaseSeeder.SeedSubscriptionPlansAsync(dbContext, app.Configuration);
+      migrationLogger.LogInformation("Database seeding completed successfully");
     }
     catch (Exception ex)
     {
-      migrationLogger.LogError(ex, "Error applying database migrations");
+      migrationLogger.LogError(ex, "Error applying database migrations or seeding");
       throw;
+    }
+
+    // Validate Stripe configuration
+    var stripeHealthCheck = scope.ServiceProvider.GetRequiredService<IStripeHealthCheckService>();
+    var stripeConfigValid = await stripeHealthCheck.ValidateConfigurationAsync();
+    if (!stripeConfigValid)
+    {
+      migrationLogger.LogError("Stripe configuration validation failed - application will not start");
+      throw new InvalidOperationException("Stripe configuration is invalid");
+    }
+    
+    // Test Stripe connectivity in non-test environments
+    if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test"))
+    {
+      var stripeConnectivityOk = await stripeHealthCheck.TestConnectivityAsync();
+      if (!stripeConnectivityOk)
+      {
+        migrationLogger.LogWarning("Stripe connectivity test failed - check network connectivity and API keys");
+      }
     }
   }
 }
@@ -265,6 +316,13 @@ var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); 
 if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
   app.UseHangfireDashboard();
+
+  // Initialize scheduled sync jobs
+  using (var scope = app.Services.CreateScope())
+  {
+    var syncScheduler = scope.ServiceProvider.GetRequiredService<ISyncSchedulerService>();
+    syncScheduler.InitializeScheduledJobs();
+  }
 }
 
 app.Run();
