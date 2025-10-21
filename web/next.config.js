@@ -1,7 +1,7 @@
 //@ts-check
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { composePlugins, withNx } = require('@nx/next');
+const { withSentryConfig } = require('@sentry/nextjs');
 const path = require('path');
 
 /**
@@ -36,4 +36,15 @@ const plugins = [
   withNx,
 ];
 
-module.exports = composePlugins(...plugins)(nextConfig);
+// module.exports = composePlugins(...plugins)(nextConfig);
+module.exports = composePlugins(...plugins)(
+  withSentryConfig(nextConfig, {
+    org: 'radiowash',
+    project: 'javascript-nextjs',
+    // Only print logs for uploading source maps in CI
+    // Set to `true` to suppress logs
+    silent: !process.env.CI,
+    // Automatically tree-shake Sentry logger statements to reduce bundle size
+    disableLogger: true,
+  })
+);
