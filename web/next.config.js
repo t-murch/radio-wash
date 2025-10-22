@@ -36,7 +36,6 @@ const plugins = [
   withNx,
 ];
 
-// module.exports = composePlugins(...plugins)(nextConfig);
 module.exports = composePlugins(...plugins)(
   withSentryConfig(nextConfig, {
     org: 'radiowash',
