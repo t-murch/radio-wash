@@ -58,4 +58,5 @@ jobs:
             "Supabase__ServiceRoleKey=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             "Supabase__JwtSecret=${{ secrets.SUPABASE_JWT_SECRET }}" \
             "Supabase__JwtIssuer=${{ secrets.SUPABASE_JWT_ISSUER }}" \
-            "FrontendUrl=${{ secrets.WEB_URL }}"
+            "FrontendUrl=${{ secrets.WEB_URL }}" \
+            "Sentry__Dsn=${{ secrets.SENTRY_DSN }}"

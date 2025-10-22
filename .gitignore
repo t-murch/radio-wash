@@ -78,3 +78,6 @@ CLAUDE.md
 # NX generated files
 graph.html
 static/
+
+# Sentry Config File
+.env.sentry-build-plugin

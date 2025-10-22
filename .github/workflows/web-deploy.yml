@@ -49,6 +49,9 @@ jobs:
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }}
+            NEXT_PUBLIC_SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -63,7 +66,7 @@ jobs:
                 --name ${{ env.APP_NAME }} \
                 --resource-group ${{ env.RESOURCE_GROUP }} \
                 --image ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }} \
-                --set-env-vars NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }} NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }}
+                --set-env-vars NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }} NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }} NEXT_PUBLIC_SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }} SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             else
               echo "Creating new container app..."
               az containerapp create \

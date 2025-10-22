@@ -22,7 +22,10 @@ public class GlobalExceptionMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred");
+            if (!context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsProduction())
+            {
+                _logger.LogError(ex, "An unhandled exception occurred");
+            }
             await HandleExceptionAsync(context, ex);
         }
         finally
