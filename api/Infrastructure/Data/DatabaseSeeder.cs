@@ -14,7 +14,7 @@ public static class DatabaseSeeder
         }
 
         var stripePriceId = configuration["Stripe:PricePlanId"];
-        
+
         if (string.IsNullOrEmpty(stripePriceId))
         {
             return; // No Stripe configuration
@@ -23,7 +23,7 @@ public static class DatabaseSeeder
         var syncPlan = new SubscriptionPlan
         {
             Name = "Sync Plan",
-            PriceInCents = 500, // $5.00/month
+            PriceInCents = 299, // $5.00/month
             BillingPeriod = "monthly",
             StripePriceId = stripePriceId,
             MaxPlaylists = 10, // 10 playlists maximum
