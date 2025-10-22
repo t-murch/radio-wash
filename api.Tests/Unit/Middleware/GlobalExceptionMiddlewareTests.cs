@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -14,13 +15,15 @@ public class GlobalExceptionMiddlewareTests
 {
   private readonly Mock<ILogger<GlobalExceptionMiddleware>> _mockLogger;
   private readonly Mock<RequestDelegate> _mockNext;
+  private readonly Mock<IWebHostEnvironment> _mockEnvironment;
   private readonly GlobalExceptionMiddleware _middleware;
 
   public GlobalExceptionMiddlewareTests()
   {
     _mockLogger = new Mock<ILogger<GlobalExceptionMiddleware>>();
     _mockNext = new Mock<RequestDelegate>();
-    _middleware = new GlobalExceptionMiddleware(_mockNext.Object, _mockLogger.Object);
+    _mockEnvironment = new Mock<IWebHostEnvironment>();
+    _middleware = new GlobalExceptionMiddleware(_mockNext.Object, _mockLogger.Object, _mockEnvironment.Object);
   }
 
   [Fact]

@@ -72,7 +72,7 @@ public class SyncSchedulerService : ISyncSchedulerService
                 }
 
                 // Queue individual sync job
-                _backgroundJobClient.Enqueue<IPlaylistSyncService>(service => service.SyncPlaylistAsync(config));
+                _backgroundJobClient.Enqueue<IPlaylistSyncService>(service => service.SyncPlaylistAsync(config.Id));
 
                 _logger.LogDebug("Queued sync job for config {ConfigId}, user {UserId}", config.Id, config.UserId);
             }

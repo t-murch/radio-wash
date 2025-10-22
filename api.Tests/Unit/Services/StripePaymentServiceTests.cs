@@ -16,6 +16,7 @@ public class StripePaymentServiceTests : IDisposable
   private readonly Mock<IConfiguration> _mockConfiguration;
   private readonly Mock<ISubscriptionService> _mockSubscriptionService;
   private readonly Mock<IEventUtility> _mockEventUtility;
+  private readonly Mock<CustomerService> _mockCustomerService;
   private readonly Mock<ILogger<StripePaymentService>> _mockLogger;
   private readonly RadioWashDbContext _dbContext;
   private readonly StripePaymentService _stripePaymentService;
@@ -25,6 +26,7 @@ public class StripePaymentServiceTests : IDisposable
     _mockConfiguration = new Mock<IConfiguration>();
     _mockSubscriptionService = new Mock<ISubscriptionService>();
     _mockEventUtility = new Mock<IEventUtility>();
+    _mockCustomerService = new Mock<CustomerService>();
     _mockLogger = new Mock<ILogger<StripePaymentService>>();
 
     // Setup in-memory database
@@ -43,6 +45,7 @@ public class StripePaymentServiceTests : IDisposable
         _mockSubscriptionService.Object,
         _mockEventUtility.Object,
         _dbContext,
+        _mockCustomerService.Object,
         _mockLogger.Object
     );
   }

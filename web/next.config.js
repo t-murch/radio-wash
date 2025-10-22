@@ -2,6 +2,7 @@
 
 const { composePlugins, withNx } = require('@nx/next');
 const { withSentryConfig } = require('@sentry/nextjs');
+const { url } = require('inspector');
 const path = require('path');
 
 /**
@@ -22,11 +23,31 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    domains: [
-      'i.scdn.co',
-      'mosaic.scdn.co',
-      'image-cdn-ak.spotifycdn.com',
-      'image-cdn-fa.spotifycdn.com',
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'i.scdn.co',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'mosaic.scdn.co',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'image-cdn-ak.spotifycdn.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'image-cdn-fa.spotifycdn.com',
+        port: '',
+        pathname: '/**',
+      },
     ], // Spotify image domains
   },
 };
