@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { User } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -18,6 +19,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { createClient } from '@/lib/supabase/client';
 import type { User as ApiUser } from '@/services/api';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionSync';
+import { setSentryUser, clearSentryUser } from '@/lib/sentry-user-context';
+import { AttachToFeedbackButton } from './ux/ReportBug-Btn';
 
 interface GlobalHeaderProps {
   user?: ApiUser | null;
@@ -36,7 +39,13 @@ export function GlobalHeader({
   const supabase = createClient();
   const { data: subscriptionStatus } = useSubscriptionStatus();
 
+  // Set Sentry user context when user changes
+  React.useEffect(() => {
+    setSentryUser(user || null);
+  }, [user]);
+
   const handleSignOut = async () => {
+    clearSentryUser(); // Clear Sentry context before sign out
     await supabase.auth.signOut();
     router.push('/');
   };
@@ -118,6 +127,10 @@ export function GlobalHeader({
                       </span>
                     )}
                   </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <AttachToFeedbackButton />
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>

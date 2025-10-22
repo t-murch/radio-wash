@@ -22,8 +22,30 @@ public class GlobalExceptionMiddleware
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "An unhandled exception occurred");
-      await HandleExceptionAsync(context, ex);
+        try
+        {
+            await _next(context);
+        }
+        catch (Exception ex)
+        {
+            if (!context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsProduction())
+            {
+                _logger.LogError(ex, "An unhandled exception occurred");
+            }
+            await HandleExceptionAsync(context, ex);
+        }
+        finally
+        {
+            // Log all non-success responses
+            if (context.Response.StatusCode >= 400)
+            {
+                _logger.LogWarning(
+                    "Request {Method} {Path} returned {StatusCode}",
+                    context.Request.Method,
+                    context.Request.Path,
+                    context.Response.StatusCode);
+            }
+        }
     }
     finally
     {
