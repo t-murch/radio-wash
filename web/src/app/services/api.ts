@@ -46,6 +46,61 @@ export interface TrackMapping {
   hasCleanMatch: boolean;
 }
 
+export interface SubscriptionStatus {
+  hasActiveSubscription: boolean;
+  subscriptionId?: string;
+  planName?: string;
+  status?: string;
+  currentPeriodEnd?: string;
+}
+
+export interface UserSubscriptionDto {
+  id: number;
+  status: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  canceledAt?: string;
+  plan: SubscriptionPlanDto;
+  createdAt: string;
+}
+
+export interface PlaylistSyncConfig {
+  id: number;
+  originalJobId: number;
+  sourcePlaylistId: string;
+  sourcePlaylistName: string;
+  targetPlaylistId: string;
+  targetPlaylistName: string;
+  isActive: boolean;
+  syncFrequency: string;
+  lastSyncedAt?: string;
+  lastSyncStatus?: string;
+  lastSyncError?: string;
+  nextScheduledSync?: string;
+  createdAt: string;
+}
+
+export interface SyncResult {
+  success: boolean;
+  tracksAdded: number;
+  tracksRemoved: number;
+  tracksUnchanged: number;
+  errorMessage?: string;
+  executionTimeMs: number;
+}
+
+export interface SyncHistory {
+  id: number;
+  startedAt: string;
+  completedAt?: string;
+  status: string;
+  tracksAdded?: number;
+  tracksRemoved?: number;
+  tracksUnchanged?: number;
+  errorMessage?: string;
+  executionTimeMs?: number;
+}
+
 export const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
@@ -212,5 +267,94 @@ export const createCleanPlaylistJob = (
 export const getJobDetails = (userId: number, jobId: number): Promise<Job> => {
   return fetchWithSupabaseAuth(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job/${jobId}`
+  );
+};
+
+// --- Subscription API Functions ---
+export const getSubscriptionStatus = (): Promise<SubscriptionStatus> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/status`);
+};
+
+export const getCurrentSubscription = (): Promise<UserSubscriptionDto | null> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
+};
+
+export interface SubscriptionPlanDto {
+  id: number;
+  name: string;
+  price: number;
+  billingPeriod: string;
+  stripePriceId?: string;
+  maxPlaylists?: number;
+  maxTracksPerPlaylist?: number;
+  features: string[];
+  isActive: boolean;
+}
+
+export const getAvailablePlans = (): Promise<SubscriptionPlanDto[]> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+};
+
+export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
+  // Get available plans first
+  const plans = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+  if (!plans || plans.length === 0) {
+    throw new Error('No subscription plans available');
+  }
+  
+  // Use the first available plan's Stripe price ID
+  const defaultPlan = plans[0];
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ planPriceId: defaultPlan.stripePriceId }),
+  });
+};
+
+export const cancelSubscription = (): Promise<{ success: boolean }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/cancel`, {
+    method: 'POST',
+  });
+};
+
+// --- Sync Management API Functions ---
+export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/enable`, {
+    method: 'POST',
+    body: JSON.stringify({ jobId }),
+  });
+};
+
+export const disableSync = (syncConfigId: number): Promise<{ success: boolean }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const getSyncConfigs = (): Promise<PlaylistSyncConfig[]> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync`);
+};
+
+export const updateSyncFrequency = (
+  syncConfigId: number,
+  frequency: string
+): Promise<PlaylistSyncConfig> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`, {
+    method: 'PATCH',
+    body: JSON.stringify({ frequency }),
+  });
+};
+
+export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/sync`, {
+    method: 'POST',
+  });
+};
+
+export const getSyncHistory = (
+  syncConfigId: number,
+  limit: number = 20
+): Promise<SyncHistory[]> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/history?limit=${limit}`
   );
 };

@@ -18,6 +18,7 @@ import {
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { createClient } from '@/lib/supabase/client';
 import type { User as ApiUser } from '@/services/api';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionSync';
 import { setSentryUser, clearSentryUser } from '@/lib/sentry-user-context';
 import { AttachToFeedbackButton } from './ux/ReportBug-Btn';
 
@@ -36,6 +37,7 @@ export function GlobalHeader({
 }: GlobalHeaderProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { data: subscriptionStatus } = useSubscriptionStatus();
 
   // Set Sentry user context when user changes
   React.useEffect(() => {
@@ -103,6 +105,28 @@ export function GlobalHeader({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard">Dashboard</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/sync">Sync Management</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/subscription" className="flex items-center justify-between">
+                    <span>
+                      {subscriptionStatus?.hasActiveSubscription 
+                        ? 'Manage Subscription' 
+                        : 'Upgrade to Auto-Sync'}
+                    </span>
+                    {subscriptionStatus?.hasActiveSubscription ? (
+                      <span className="ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs rounded-full">
+                        Pro
+                      </span>
+                    ) : (
+                      <span className="ml-2 px-2 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-xs rounded-full">
+                        Free
+                      </span>
+                    )}
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
