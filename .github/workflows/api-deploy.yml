@@ -59,4 +59,8 @@ jobs:
             "Supabase__JwtSecret=${{ secrets.SUPABASE_JWT_SECRET }}" \
             "Supabase__JwtIssuer=${{ secrets.SUPABASE_JWT_ISSUER }}" \
             "FrontendUrl=${{ secrets.WEB_URL }}" \
-            "Sentry__Dsn=${{ secrets.SENTRY_DSN }}"
+            "Sentry__Dsn=${{ secrets.SENTRY_DSN }}" \
+            "Stripe__PricePlanId=${{ secrets.STRIPE_PRICE_PLAN_ID }}" \
+            "Stripe__PublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }}" \
+            "Stripe__SecretKey=${{ secrets.STRIPE_SECRET_KEY }}" \
+            "Stripe__WebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }}"
