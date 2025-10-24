@@ -81,3 +81,17 @@ static/
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Generated reports and test outputs
+*.report.html
+lighthouse-report*.html
+chromewebdata*.html
+*.lighthouse.html
+coverage-report*.html
+test-report*.html
+
+# Browser testing artifacts
+chrome-user-data/
+.chrome/
+playwright-report/
+test-results/
