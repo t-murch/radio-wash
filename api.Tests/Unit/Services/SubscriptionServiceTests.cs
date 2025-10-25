@@ -100,6 +100,9 @@ public class SubscriptionServiceTests
     var stripeSubscriptionId = "sub_123";
     var stripeCustomerId = "cus_123";
 
+    // Mock validation check - user doesn't have active subscription
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(false);
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => { s.Id = 1; return s; });
 
@@ -114,12 +117,61 @@ public class SubscriptionServiceTests
     Assert.Equal(stripeCustomerId, result.StripeCustomerId);
     Assert.Equal(SubscriptionStatus.Active, result.Status);
 
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId), Times.Once);
     _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
         s => s.UserId == userId &&
              s.PlanId == planId &&
              s.StripeSubscriptionId == stripeSubscriptionId &&
              s.StripeCustomerId == stripeCustomerId &&
              s.Status == SubscriptionStatus.Active)), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateSubscriptionAsync_WithExistingActiveSubscription_ShouldThrowException()
+  {
+    // Arrange
+    var userId = 1;
+    var planId = 1;
+    var stripeSubscriptionId = "sub_123";
+    var stripeCustomerId = "cus_123";
+
+    // Mock validation check - user already has active subscription
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(true);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.CreateSubscriptionAsync(userId, planId, stripeSubscriptionId, stripeCustomerId));
+
+    Assert.Equal($"User {userId} already has an active subscription", exception.Message);
+
+    // Verify that validation was called but creation was not
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task CreateSubscriptionAsync_ValidationCheckThrows_ShouldPropagateException()
+  {
+    // Arrange
+    var userId = 1;
+    var planId = 1;
+    var stripeSubscriptionId = "sub_123";
+    var stripeCustomerId = "cus_123";
+
+    // Mock validation check to throw exception (e.g., database error)
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ThrowsAsync(new InvalidOperationException("Database connection failed"));
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.CreateSubscriptionAsync(userId, planId, stripeSubscriptionId, stripeCustomerId));
+
+    Assert.Equal("Database connection failed", exception.Message);
+
+    // Verify that validation was called but creation was not
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
   [Fact]

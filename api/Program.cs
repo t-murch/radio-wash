@@ -66,6 +66,9 @@ builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>(
 // Stripe services
 builder.Services.AddScoped<Stripe.CustomerService>();
 
+// Idempotency service for webhook race condition prevention
+builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
+
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();

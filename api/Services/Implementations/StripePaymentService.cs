@@ -14,6 +14,7 @@ public class StripePaymentService : IPaymentService
   private readonly IEventUtility _eventUtility;
   private readonly RadioWashDbContext _dbContext;
   private readonly CustomerService _customerService;
+  private readonly IIdempotencyService _idempotencyService;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
@@ -22,6 +23,7 @@ public class StripePaymentService : IPaymentService
       IEventUtility eventUtility,
       RadioWashDbContext dbContext,
       CustomerService customerService,
+      IIdempotencyService idempotencyService,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
@@ -29,6 +31,7 @@ public class StripePaymentService : IPaymentService
     _eventUtility = eventUtility;
     _dbContext = dbContext;
     _customerService = customerService;
+    _idempotencyService = idempotencyService;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
@@ -99,61 +102,48 @@ public class StripePaymentService : IPaymentService
     {
       var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
 
-      // Check if event has already been processed (idempotency)
-      var existingEvent = await _dbContext.ProcessedWebhookEvents
-          .AsNoTracking()
-          .FirstOrDefaultAsync(e => e.EventId == stripeEvent.Id);
+      _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
+          stripeEvent.Type, stripeEvent.Id);
 
-      if (existingEvent != null)
+      // Use idempotency service to ensure only one concurrent request processes this event
+      var shouldProcess = await _idempotencyService.TryProcessEventAsync(stripeEvent.Id, stripeEvent.Type);
+      
+      if (!shouldProcess)
       {
-        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed", 
+        _logger.LogInformation("Webhook event {EventId} of type {EventType} has already been processed or claimed by another request", 
             stripeEvent.Id, stripeEvent.Type);
         return;
       }
 
-      _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
-          stripeEvent.Type, stripeEvent.Id);
-
-      // Mark event as being processed
-      var webhookEvent = new ProcessedWebhookEvent
-      {
-        EventId = stripeEvent.Id,
-        EventType = stripeEvent.Type,
-        ProcessedAt = DateTime.UtcNow,
-        IsSuccessful = false // Will update to true after successful processing
-      };
-
       try
       {
         switch (stripeEvent.Type)
-      {
-        case "checkout.session.completed":
-          await HandleCheckoutCompletedAsync(stripeEvent);
-          break;
-        case "customer.subscription.created":
-          await HandleSubscriptionCreatedAsync(stripeEvent);
-          break;
-        case "customer.subscription.updated":
-          await HandleSubscriptionUpdatedAsync(stripeEvent);
-          break;
-        case "customer.subscription.deleted":
-          await HandleSubscriptionDeletedAsync(stripeEvent);
-          break;
-        case "invoice.payment_failed":
-          await HandlePaymentFailedAsync(stripeEvent);
-          break;
-        case "invoice.payment_succeeded":
-          await HandlePaymentSucceededAsync(stripeEvent);
-          break;
-        default:
-          _logger.LogInformation("Unhandled webhook event type: {EventType}", stripeEvent.Type);
-          break;
+        {
+          case "checkout.session.completed":
+            await HandleCheckoutCompletedAsync(stripeEvent);
+            break;
+          case "customer.subscription.created":
+            await HandleSubscriptionCreatedAsync(stripeEvent);
+            break;
+          case "customer.subscription.updated":
+            await HandleSubscriptionUpdatedAsync(stripeEvent);
+            break;
+          case "customer.subscription.deleted":
+            await HandleSubscriptionDeletedAsync(stripeEvent);
+            break;
+          case "invoice.payment_failed":
+            await HandlePaymentFailedAsync(stripeEvent);
+            break;
+          case "invoice.payment_succeeded":
+            await HandlePaymentSucceededAsync(stripeEvent);
+            break;
+          default:
+            _logger.LogInformation("Unhandled webhook event type: {EventType}", stripeEvent.Type);
+            break;
         }
 
         // Mark event as successfully processed
-        webhookEvent.IsSuccessful = true;
-        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
-        await _dbContext.SaveChangesAsync();
+        await _idempotencyService.MarkEventSuccessfulAsync(stripeEvent.Id);
 
         _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
             stripeEvent.Id, stripeEvent.Type);
@@ -161,10 +151,7 @@ public class StripePaymentService : IPaymentService
       catch (Exception processingEx)
       {
         // Mark event as failed
-        webhookEvent.IsSuccessful = false;
-        webhookEvent.ErrorMessage = processingEx.Message;
-        _dbContext.ProcessedWebhookEvents.Add(webhookEvent);
-        await _dbContext.SaveChangesAsync();
+        await _idempotencyService.MarkEventFailedAsync(stripeEvent.Id, processingEx.Message);
 
         _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}", 
             stripeEvent.Id, stripeEvent.Type, processingEx.Message);
@@ -371,8 +358,7 @@ public class StripePaymentService : IPaymentService
         else
         {
           // Fallback: try customer metadata (for existing subscriptions)
-          var customerService = new CustomerService();
-          var customer = await customerService.GetAsync(subscription.CustomerId);
+          var customer = await _customerService.GetAsync(subscription.CustomerId);
           
           if (customer?.Metadata?.TryGetValue("userId", out userIdStr) == true && 
               int.TryParse(userIdStr, out parsedUserId))
@@ -394,19 +380,37 @@ public class StripePaymentService : IPaymentService
         return;
       }
 
-      // Create the subscription record
-      await _subscriptionService.CreateSubscriptionAsync(
-          userId.Value, 
-          plan.Id, 
-          subscription.Id, 
-          subscription.CustomerId);
+      // Use transaction only for the database write operation to ensure atomicity
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      
+      try
+      {
+        // Create the subscription record within the transaction
+        await _subscriptionService.CreateSubscriptionAsync(
+            userId.Value, 
+            plan.Id, 
+            subscription.Id, 
+            subscription.CustomerId);
 
-      _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
-          userId, subscription.Id);
+        // Commit the transaction if subscription creation succeeded
+        await transaction.CommitAsync();
+        
+        _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
+            userId, subscription.Id);
+      }
+      catch (Exception dbEx)
+      {
+        // Rollback the transaction on database operation failure
+        await transaction.RollbackAsync();
+        _logger.LogError(dbEx, "Failed to create subscription record for user {UserId}, subscription {SubscriptionId}. Transaction rolled back.", 
+            userId, subscription.Id);
+        throw;
+      }
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error processing subscription created event for subscription {SubscriptionId}", subscription.Id);
+      throw;
     }
   }
 
@@ -458,5 +462,30 @@ public class StripePaymentService : IPaymentService
     }
 
     await Task.CompletedTask;
+  }
+
+  private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+  {
+    // Check for SQL Server unique constraint violation
+    if (ex.InnerException?.Message?.Contains("duplicate key") == true ||
+        ex.InnerException?.Message?.Contains("UNIQUE constraint") == true ||
+        ex.InnerException?.Message?.Contains("unique constraint") == true)
+    {
+      return true;
+    }
+
+    // Check for SQLite unique constraint violation
+    if (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
+    {
+      return true;
+    }
+
+    // Check for PostgreSQL unique constraint violation
+    if (ex.InnerException?.Message?.Contains("duplicate key value violates unique constraint") == true)
+    {
+      return true;
+    }
+
+    return false;
   }
 }

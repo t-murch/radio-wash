@@ -71,7 +71,7 @@ public class SyncSchedulerService : ISyncSchedulerService
                     continue;
                 }
 
-                // Queue individual sync job
+                // Queue individual sync job - pass only config ID to avoid circular reference
                 _backgroundJobClient.Enqueue<IPlaylistSyncService>(service => service.SyncPlaylistAsync(config.Id));
 
                 _logger.LogDebug("Queued sync job for config {ConfigId}, user {UserId}", config.Id, config.UserId);

@@ -16,6 +16,13 @@ public class UserRepository : IUserRepository
   public async Task<User?> GetBySupabaseIdAsync(string supabaseId)
   {
     return await _dbContext.Users
+        .AsNoTracking()
+        .FirstOrDefaultAsync(u => u.SupabaseId == supabaseId);
+  }
+
+  public async Task<User?> GetBySupabaseIdWithProvidersAsync(string supabaseId)
+  {
+    return await _dbContext.Users
         .Include(u => u.ProviderData)
         .FirstOrDefaultAsync(u => u.SupabaseId == supabaseId);
   }
@@ -23,11 +30,25 @@ public class UserRepository : IUserRepository
   public async Task<User?> GetByIdAsync(int userId)
   {
     return await _dbContext.Users
+        .AsNoTracking()
+        .FirstOrDefaultAsync(u => u.Id == userId);
+  }
+
+  public async Task<User?> GetByIdWithProvidersAsync(int userId)
+  {
+    return await _dbContext.Users
         .Include(u => u.ProviderData)
         .FirstOrDefaultAsync(u => u.Id == userId);
   }
 
   public async Task<User?> GetByEmailAsync(string email)
+  {
+    return await _dbContext.Users
+        .AsNoTracking()
+        .FirstOrDefaultAsync(u => u.Email == email);
+  }
+
+  public async Task<User?> GetByEmailWithProvidersAsync(string email)
   {
     return await _dbContext.Users
         .Include(u => u.ProviderData)

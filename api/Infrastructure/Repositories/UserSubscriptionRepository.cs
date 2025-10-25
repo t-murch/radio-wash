@@ -16,6 +16,13 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   public async Task<UserSubscription?> GetByIdAsync(int subscriptionId)
   {
     return await _dbContext.UserSubscriptions
+        .AsNoTracking()
+        .FirstOrDefaultAsync(us => us.Id == subscriptionId);
+  }
+
+  public async Task<UserSubscription?> GetByIdWithDetailsAsync(int subscriptionId)
+  {
+    return await _dbContext.UserSubscriptions
         .Include(us => us.User)
         .Include(us => us.Plan)
         .FirstOrDefaultAsync(us => us.Id == subscriptionId);
@@ -33,12 +40,26 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   public async Task<UserSubscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId)
   {
     return await _dbContext.UserSubscriptions
+        .FirstOrDefaultAsync(us => us.StripeSubscriptionId == stripeSubscriptionId);
+  }
+
+  public async Task<UserSubscription?> GetByStripeSubscriptionIdWithDetailsAsync(string stripeSubscriptionId)
+  {
+    return await _dbContext.UserSubscriptions
         .Include(us => us.User)
         .Include(us => us.Plan)
         .FirstOrDefaultAsync(us => us.StripeSubscriptionId == stripeSubscriptionId);
   }
 
   public async Task<IEnumerable<UserSubscription>> GetActiveSubscriptionsAsync()
+  {
+    return await _dbContext.UserSubscriptions
+        .AsNoTracking()
+        .Where(us => us.Status == SubscriptionStatus.Active)
+        .ToListAsync();
+  }
+
+  public async Task<IEnumerable<UserSubscription>> GetActiveSubscriptionsWithDetailsAsync()
   {
     return await _dbContext.UserSubscriptions
         .Include(us => us.User)
@@ -48,6 +69,16 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   }
 
   public async Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsAsync(DateTime before)
+  {
+    return await _dbContext.UserSubscriptions
+        .AsNoTracking()
+        .Where(us => us.Status == SubscriptionStatus.Active &&
+                    us.CurrentPeriodEnd.HasValue &&
+                    us.CurrentPeriodEnd.Value <= before)
+        .ToListAsync();
+  }
+
+  public async Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsWithDetailsAsync(DateTime before)
   {
     return await _dbContext.UserSubscriptions
         .Include(us => us.User)
