@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RadioWash.Api.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RadioWash.Api.Infrastructure.Data;
 namespace RadioWash.Api.Migrations
 {
     [DbContext(typeof(RadioWashDbContext))]
-    partial class RadioWashDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025124206_AddWebhookRetryTable")]
+    partial class AddWebhookRetryTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -38,7 +41,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DataProtectionKeys", (string)null);
+                    b.ToTable("DataProtectionKeys");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
@@ -99,7 +102,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("CleanPlaylistJobs", (string)null);
+                    b.ToTable("CleanPlaylistJobs");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.PlaylistSyncConfig", b =>
@@ -163,7 +166,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("UserId", "OriginalJobId")
                         .IsUnique();
 
-                    b.ToTable("PlaylistSyncConfigs", (string)null);
+                    b.ToTable("PlaylistSyncConfigs");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.PlaylistSyncHistory", b =>
@@ -211,7 +214,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("SyncConfigId");
 
-                    b.ToTable("PlaylistSyncHistory", (string)null);
+                    b.ToTable("PlaylistSyncHistory");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.ProcessedWebhookEvent", b =>
@@ -246,7 +249,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("ProcessedAt");
 
-                    b.ToTable("ProcessedWebhookEvents", (string)null);
+                    b.ToTable("ProcessedWebhookEvents");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.SubscriptionPlan", b =>
@@ -295,7 +298,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("SubscriptionPlans", (string)null);
+                    b.ToTable("SubscriptionPlans");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.TrackMapping", b =>
@@ -343,7 +346,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("JobId");
 
-                    b.ToTable("TrackMappings", (string)null);
+                    b.ToTable("TrackMappings");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.User", b =>
@@ -380,7 +383,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("SupabaseId")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.UserMusicToken", b =>
@@ -437,7 +440,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("UserId", "Provider")
                         .IsUnique();
 
-                    b.ToTable("UserMusicTokens", (string)null);
+                    b.ToTable("UserMusicTokens");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.UserProviderData", b =>
@@ -475,7 +478,7 @@ namespace RadioWash.Api.Migrations
                     b.HasIndex("Provider", "ProviderId")
                         .IsUnique();
 
-                    b.ToTable("UserProviderData", (string)null);
+                    b.ToTable("UserProviderData");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.UserSubscription", b =>
@@ -529,7 +532,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("UserSubscriptions", (string)null);
+                    b.ToTable("UserSubscriptions");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.WebhookRetry", b =>
@@ -585,7 +588,7 @@ namespace RadioWash.Api.Migrations
 
                     b.HasIndex("Status", "NextRetryAt");
 
-                    b.ToTable("WebhookRetries", (string)null);
+                    b.ToTable("WebhookRetries");
                 });
 
             modelBuilder.Entity("RadioWash.Api.Models.Domain.CleanPlaylistJob", b =>
