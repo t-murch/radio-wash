@@ -14,6 +14,7 @@ using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Hubs;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Services.BackgroundServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,6 +69,15 @@ builder.Services.AddScoped<Stripe.CustomerService>();
 
 // Idempotency service for webhook race condition prevention
 builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
+
+// Webhook retry services
+builder.Services.AddScoped<IWebhookRetryService, WebhookRetryService>();
+builder.Services.AddScoped<IWebhookProcessor, StripeWebhookProcessor>();
+builder.Services.AddScoped<IErrorClassifier, ErrorClassifier>();
+
+// Time and random abstractions
+builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+builder.Services.AddSingleton<IRandomProvider, SystemRandomProvider>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
@@ -179,6 +189,9 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
         .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
     builder.Services.AddHangfireServer();
 }
+
+// Background services
+builder.Services.AddHostedService<WebhookRetryBackgroundService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

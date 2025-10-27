@@ -22,6 +22,7 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
   public DbSet<PlaylistSyncConfig> PlaylistSyncConfigs { get; set; } = null!;
   public DbSet<PlaylistSyncHistory> PlaylistSyncHistory { get; set; } = null!;
   public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; } = null!;
+  public DbSet<WebhookRetry> WebhookRetries { get; set; } = null!;
 
   // Data Protection Keys
   public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
@@ -124,6 +125,16 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
 
     modelBuilder.Entity<ProcessedWebhookEvent>()
         .HasIndex(pwe => pwe.ProcessedAt);
+
+    // Webhook Retry configuration
+    modelBuilder.Entity<WebhookRetry>()
+        .HasIndex(wr => wr.EventId);
+
+    modelBuilder.Entity<WebhookRetry>()
+        .HasIndex(wr => wr.NextRetryAt);
+
+    modelBuilder.Entity<WebhookRetry>()
+        .HasIndex(wr => new { wr.Status, wr.NextRetryAt });
   }
 
 }
