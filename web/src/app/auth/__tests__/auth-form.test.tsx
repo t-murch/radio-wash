@@ -44,7 +44,7 @@ describe('AuthForm', () => {
     const errorAlert = screen.getByRole('alert');
     expect(errorAlert).toBeInTheDocument();
     expect(errorAlert).toHaveTextContent(errorMessage);
-    expect(errorAlert).toHaveClass('text-red-700', 'bg-red-100');
+    expect(errorAlert).toHaveClass('text-error', 'bg-error-muted');
   });
 
   it('should not display error message when no error parameter', () => {
@@ -79,8 +79,8 @@ describe('AuthForm', () => {
     expect(signInButton).toHaveAttribute('type', 'submit');
     expect(signInButton).toHaveClass(
       'w-full',
-      'bg-green-600',
-      'hover:bg-green-700',
+      'bg-success',
+      'hover:bg-success-hover',
       'focus:ring-green-500'
     );
   });
