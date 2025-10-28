@@ -1,15 +1,8 @@
-'use client';
-import { Smile, User } from 'lucide-react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ThemeToggle } from '../ui/theme-toggle';
 
 export default function LandingPage() {
-  const router = useRouter();
-
-  const handleGetStarted = () => {
-    router.push('/auth');
-  };
 
   return (
     <div className="min-h-screen">
@@ -30,12 +23,12 @@ export default function LandingPage() {
             {/* <a href="#faq" className="text-muted-foreground hover:text-foreground"> */}
             {/*   FAQ */}
             {/* </a> */}
-            <button
-              onClick={handleGetStarted}
-              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base"
+            <Link
+              href="/auth"
+              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base inline-block"
             >
               Get Started
-            </button>
+            </Link>
             <ThemeToggle />
           </div>
         </div>
@@ -53,12 +46,12 @@ export default function LandingPage() {
             Spotify playlists. Perfect for family listening, work environments,
             or personal preference.
           </p>
-          <button
-            onClick={handleGetStarted}
-            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors"
+          <Link
+            href="/auth"
+            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors inline-block"
           >
             Connect with Spotify - It&apos;s Free
-          </button>
+          </Link>
           <p className="text-sm text-muted-foreground mt-4">
             No credit card required • 30 seconds to start
           </p>
@@ -357,12 +350,12 @@ export default function LandingPage() {
           <p className="text-xl mb-8 opacity-90">
             Join thousands of users who&apos;ve made their music family-friendly
           </p>
-          <button
-            onClick={handleGetStarted}
-            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
+          <Link
+            href="/auth"
+            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors inline-block"
           >
             Get Started for Free
-          </button>
+          </Link>
         </div>
       </section>
 
