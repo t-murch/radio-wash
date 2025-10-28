@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/nextjs';
 
 /**
  * Centralized logging utility for RadioWash frontend
- * 
+ *
  * Features:
  * - Environment-aware logging (debug only in development)
  * - Automatic Sentry integration for errors
@@ -40,11 +40,10 @@ class Logger {
    * Use for important application flow information
    */
   info(message: string, context?: LogContext): void {
-    if (!this.isTest) {
+    if (this.isDevelopment && !this.isTest) {
       console.info(this.formatMessage('INFO', message), context || '');
     }
   }
-
   /**
    * Warning logging - appears in all environments
    * Use for recoverable issues that need attention
@@ -53,7 +52,7 @@ class Logger {
     if (!this.isTest) {
       console.warn(this.formatMessage('WARN', message), context || '');
     }
-    
+
     // Send warnings to Sentry in production for monitoring
     if (!this.isDevelopment) {
       Sentry.addBreadcrumb({
@@ -70,7 +69,11 @@ class Logger {
    */
   error(message: string, error?: Error | unknown, context?: LogContext): void {
     if (!this.isTest) {
-      console.error(this.formatMessage('ERROR', message), error || '', context || '');
+      console.error(
+        this.formatMessage('ERROR', message),
+        error || '',
+        context || ''
+      );
     }
 
     // Always send errors to Sentry for tracking
@@ -78,7 +81,7 @@ class Logger {
       if (context) {
         scope.setContext('additional_info', this.sanitizeContext(context));
       }
-      
+
       if (error instanceof Error) {
         scope.setTag('source', 'frontend_logger');
         Sentry.captureException(error);
@@ -92,16 +95,16 @@ class Logger {
    * SignalR-specific logging helper with consistent formatting
    */
   signalR = {
-    debug: (message: string, context?: LogContext) => 
+    debug: (message: string, context?: LogContext) =>
       this.debug(`[SignalR] ${message}`, context),
-    
-    info: (message: string, context?: LogContext) => 
+
+    info: (message: string, context?: LogContext) =>
       this.info(`[SignalR] ${message}`, context),
-    
-    warn: (message: string, context?: LogContext) => 
+
+    warn: (message: string, context?: LogContext) =>
       this.warn(`[SignalR] ${message}`, context),
-    
-    error: (message: string, error?: Error | unknown, context?: LogContext) => 
+
+    error: (message: string, error?: Error | unknown, context?: LogContext) =>
       this.error(`[SignalR] ${message}`, error, context),
   };
 
@@ -109,16 +112,16 @@ class Logger {
    * API-specific logging helper
    */
   api = {
-    debug: (message: string, context?: LogContext) => 
+    debug: (message: string, context?: LogContext) =>
       this.debug(`[API] ${message}`, context),
-    
-    info: (message: string, context?: LogContext) => 
+
+    info: (message: string, context?: LogContext) =>
       this.info(`[API] ${message}`, context),
-    
-    warn: (message: string, context?: LogContext) => 
+
+    warn: (message: string, context?: LogContext) =>
       this.warn(`[API] ${message}`, context),
-    
-    error: (message: string, error?: Error | unknown, context?: LogContext) => 
+
+    error: (message: string, error?: Error | unknown, context?: LogContext) =>
       this.error(`[API] ${message}`, error, context),
   };
 
@@ -126,16 +129,16 @@ class Logger {
    * Auth-specific logging helper
    */
   auth = {
-    debug: (message: string, context?: LogContext) => 
+    debug: (message: string, context?: LogContext) =>
       this.debug(`[Auth] ${message}`, context),
-    
-    info: (message: string, context?: LogContext) => 
+
+    info: (message: string, context?: LogContext) =>
       this.info(`[Auth] ${message}`, context),
-    
-    warn: (message: string, context?: LogContext) => 
+
+    warn: (message: string, context?: LogContext) =>
       this.warn(`[Auth] ${message}`, context),
-    
-    error: (message: string, error?: Error | unknown, context?: LogContext) => 
+
+    error: (message: string, error?: Error | unknown, context?: LogContext) =>
       this.error(`[Auth] ${message}`, error, context),
   };
 
@@ -154,7 +157,7 @@ class Logger {
     if (!context) return {};
 
     const sanitized: LogContext = {};
-    
+
     for (const [key, value] of Object.entries(context)) {
       // Sanitize sensitive keys
       if (this.isSensitiveKey(key)) {
@@ -167,7 +170,7 @@ class Logger {
         sanitized[key] = value;
       }
     }
-    
+
     return sanitized;
   }
 
@@ -176,12 +179,22 @@ class Logger {
    */
   private isSensitiveKey(key: string): boolean {
     const sensitiveKeys = [
-      'token', 'accesstoken', 'refreshtoken', 'authorization',
-      'password', 'secret', 'key', 'auth', 'bearer',
-      'email', 'userid', 'user_id', 'connectionid'
+      'token',
+      'accesstoken',
+      'refreshtoken',
+      'authorization',
+      'password',
+      'secret',
+      'key',
+      'auth',
+      'bearer',
+      'email',
+      'userid',
+      'user_id',
+      'connectionid',
     ];
-    
-    return sensitiveKeys.some(sensitiveKey => 
+
+    return sensitiveKeys.some((sensitiveKey) =>
       key.toLowerCase().includes(sensitiveKey)
     );
   }
@@ -193,7 +206,7 @@ class Logger {
     if (value.length <= 8) {
       return '[REDACTED]';
     }
-    
+
     // For longer strings, show first 4 and last 4 characters
     return `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
   }
@@ -204,3 +217,4 @@ export const logger = new Logger();
 
 // Export default for convenience
 export default logger;
+
