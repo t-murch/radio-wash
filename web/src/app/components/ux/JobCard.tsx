@@ -27,13 +27,26 @@ export function JobCard({ job }: { job: Job }) {
   const getStatusStyles = () => {
     switch (job.status) {
       case 'Completed':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return 'bg-success-muted text-success border-success/30';
       case 'Processing':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
+        return 'bg-info-muted text-info border-info/30';
       case 'Failed':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return 'bg-error-muted text-error border-error/30';
       default:
         return 'bg-muted text-muted-foreground border';
+    }
+  };
+
+  const getStatusText = () => {
+    switch (job.status) {
+      case 'Completed':
+        return 'Done';
+      case 'Processing':
+        return 'Active';
+      case 'Failed':
+        return 'Error';
+      default:
+        return job.status;
     }
   };
 
@@ -62,10 +75,10 @@ export function JobCard({ job }: { job: Job }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="block bg-card border border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
+      className="block bg-card border border-border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className="flex justify-between items-start mb-2">
-        <div className="w-4/5">
+      <div className="flex justify-between items-start mb-2 gap-3">
+        <div className="flex-1 min-w-0">
           <h3
             className="font-bold text-foreground truncate"
             title={job.targetPlaylistName}
@@ -80,9 +93,10 @@ export function JobCard({ job }: { job: Job }) {
           </p>
         </div>
         <span
-          className={`text-xs font-semibold px-2 py-1 rounded-full border ${getStatusStyles()}`}
+          className={`text-xs font-medium px-2.5 py-1 rounded-full border flex-shrink-0 ${getStatusStyles()}`}
+          title={job.status}
         >
-          {job.status}
+          {getStatusText()}
         </span>
       </div>
       {job.status === 'Processing' && (
@@ -94,7 +108,7 @@ export function JobCard({ job }: { job: Job }) {
             <div className="flex items-center space-x-2">
               {!isConnected && job.status === 'Processing' && (
                 <span
-                  className="text-xs text-yellow-500"
+                  className="text-xs text-warning"
                   title="Real-time updates unavailable"
                 >
                   ⚠️
@@ -118,7 +132,7 @@ export function JobCard({ job }: { job: Job }) {
           <div className="w-full bg-muted rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-500 ease-out ${
-                useRealtimeProgress ? 'bg-green-500' : 'bg-blue-500'
+                useRealtimeProgress ? 'bg-success' : 'bg-info'
               }`}
               style={{ width: `${displayProgress}%` }}
             ></div>
@@ -129,7 +143,7 @@ export function JobCard({ job }: { job: Job }) {
               {displayProcessedTracks} of {displayTotalTracks} tracks
             </span>
             {progressState.estimatedTimeRemaining && useRealtimeProgress && (
-              <span className="text-green-600">
+              <span className="text-success">
                 ~{progressState.estimatedTimeRemaining} remaining
               </span>
             )}
@@ -137,7 +151,7 @@ export function JobCard({ job }: { job: Job }) {
 
           {connectionError && (
             <div
-              className="text-xs text-red-500 truncate"
+              className="text-xs text-error truncate"
               title={connectionError}
             >
               Connection error: {connectionError}

@@ -9,16 +9,17 @@ import { Button } from '@/components/ui/button';
 import { useSubscriptionStatus, useEnableSyncForJob, useSubscribeToSync, useSyncConfigs } from '@/hooks/useSubscriptionSync';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CURRENT_PLAN } from '@/lib/constants/pricing';
 
 // Helper functions for UI, can be moved to a utils file
 const getStatusBadgeClass = (status: string) => {
   switch (status) {
     case 'Completed':
-      return 'bg-green-100 text-green-800';
+      return 'bg-success-muted text-success';
     case 'Failed':
-      return 'bg-red-100 text-red-800';
+      return 'bg-error-muted text-error';
     case 'Processing':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-info-muted text-info';
     default:
       return 'bg-muted text-muted-foreground';
   }
@@ -123,7 +124,7 @@ export function JobDetailsClient({
               </h3>
               <div className="bg-muted rounded-full h-4">
                 <div
-                  className="bg-blue-600 h-4 rounded-full transition-all duration-500"
+                  className="bg-info h-4 rounded-full transition-all duration-500"
                   style={{
                     width: `${
                       job.totalTracks > 0
@@ -145,7 +146,7 @@ export function JobDetailsClient({
                 href={`https://open.spotify.com/playlist/${job.targetPlaylistId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-green-600 hover:bg-green-700"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-success-foreground bg-success hover:bg-success-hover"
               >
                 Open Playlist in Spotify
               </a>
@@ -162,9 +163,9 @@ export function JobDetailsClient({
                   </p>
                   
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
-                    <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                      <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">❌ Manual Way</h4>
-                      <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                    <div className="bg-error-muted border border-error/30 rounded-lg p-4">
+                      <h4 className="font-medium text-error mb-2">❌ Manual Way</h4>
+                      <ul className="text-sm text-error/80 space-y-1">
                         <li>• Check source playlist for changes</li>
                         <li>• Create new cleaning job</li>
                         <li>• Wait for processing</li>
@@ -173,9 +174,9 @@ export function JobDetailsClient({
                       </ul>
                     </div>
                     
-                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                      <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">✅ Auto-Sync Way</h4>
-                      <ul className="text-sm text-green-700 dark:text-green-300 space-y-1">
+                    <div className="bg-success-muted border border-success/30 rounded-lg p-4">
+                      <h4 className="font-medium text-success mb-2">✅ Auto-Sync Way</h4>
+                      <ul className="text-sm text-success/80 space-y-1">
                         <li>• Enable sync once</li>
                         <li>• System checks daily at midnight</li>
                         <li>• New tracks cleaned automatically</li>
@@ -185,19 +186,19 @@ export function JobDetailsClient({
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="bg-info-muted border border-info/30 rounded-lg p-4">
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
-                        <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">$5</span>
+                        <div className="w-8 h-8 bg-info/20 rounded-full flex items-center justify-center">
+                          <span className="text-info text-sm font-bold">{CURRENT_PLAN.MARKETING_PRICE}</span>
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
-                          $5/month • Up to 10 playlists • 200 tracks each
+                        <h4 className="font-medium text-info mb-1">
+                          {CURRENT_PLAN.MARKETING_PRICE}/month • Up to {CURRENT_PLAN.FEATURES.MAX_PLAYLISTS} playlists • 200 tracks each
                         </h4>
-                        <p className="text-sm text-blue-700 dark:text-blue-300">
-                          Save hours of manual work. Your time is worth more than $5.
+                        <p className="text-sm text-info/80">
+                          Save hours of manual work. Your time is worth more than {CURRENT_PLAN.MARKETING_PRICE}.
                         </p>
                       </div>
                     </div>
@@ -209,7 +210,7 @@ export function JobDetailsClient({
                 ) : existingSyncConfig ? (
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <div className="w-2 h-2 bg-success rounded-full"></div>
                       <span className="text-sm font-medium text-foreground">
                         Sync Enabled
                       </span>
@@ -239,7 +240,7 @@ export function JobDetailsClient({
                   <Button
                     onClick={handleEnableSync}
                     disabled={isEnablingSync || enableSyncMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    className="bg-info hover:bg-info-hover text-info-foreground"
                   >
                     {isEnablingSync || enableSyncMutation.isPending ? 'Enabling...' : 'Enable Sync'}
                   </Button>
@@ -250,7 +251,7 @@ export function JobDetailsClient({
                     </div>
                     <Button
                       onClick={handleSubscribeToSync}
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      className="bg-brand hover:bg-brand-hover text-brand-foreground"
                     >
                       Learn More & Subscribe
                     </Button>

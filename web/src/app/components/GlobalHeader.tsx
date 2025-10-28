@@ -118,11 +118,11 @@ export function GlobalHeader({
                         : 'Upgrade to Auto-Sync'}
                     </span>
                     {subscriptionStatus?.hasActiveSubscription ? (
-                      <span className="ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs rounded-full">
+                      <span className="ml-2 px-2 py-0.5 bg-success-muted text-success text-xs rounded-full">
                         Pro
                       </span>
                     ) : (
-                      <span className="ml-2 px-2 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-xs rounded-full">
+                      <span className="ml-2 px-2 py-0.5 bg-brand/20 text-brand text-xs rounded-full">
                         Free
                       </span>
                     )}

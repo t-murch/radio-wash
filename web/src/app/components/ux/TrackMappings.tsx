@@ -77,7 +77,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
 
   if (error) {
     return (
-      <div className="p-4 text-red-600 bg-red-100 rounded-lg">{error}</div>
+      <div className="p-4 text-error bg-error-muted rounded-lg">{error}</div>
     );
   }
 
@@ -97,7 +97,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
               onClick={() => setFilter(f)}
               className={`px-3 py-1 text-sm rounded-full ${
                 filter === f
-                  ? 'bg-blue-600 text-primary-foreground'
+                  ? 'bg-info text-info-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >

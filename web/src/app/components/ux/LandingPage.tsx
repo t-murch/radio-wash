@@ -2,6 +2,7 @@
 import { Smile, User } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { ThemeToggle } from '../ui/theme-toggle';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -15,8 +16,8 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="bg-card shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="text-2xl font-bold text-green-600">RadioWash</div>
-          <div className="space-x-6">
+          <div className="text-2xl font-bold text-success">RadioWash</div>
+          <div className="flex items-center space-x-3 sm:space-x-6">
             {/* <a */}
             {/*   href="#how-it-works" */}
             {/*   className="text-muted-foreground hover:text-foreground" */}
@@ -31,20 +32,21 @@ export default function LandingPage() {
             {/* </a> */}
             <button
               onClick={handleGetStarted}
-              className="bg-green-600 text-primary-foreground px-4 py-2 rounded-lg hover:bg-green-700"
+              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base"
             >
               Get Started
             </button>
+            <ThemeToggle />
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-green-50/20 to-blue-50/20 dark:from-green-950/20 dark:to-blue-950/20 py-20">
+      <section className="bg-gradient-to-br from-success/10 to-info/10 py-20">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Explicit Playlists into
-            <span className="text-green-600"> Clean Versions</span>
+            <span className="text-success"> Clean Versions</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Automatically find clean alternatives for explicit tracks in your
@@ -53,7 +55,7 @@ export default function LandingPage() {
           </p>
           <button
             onClick={handleGetStarted}
-            className="bg-green-600 text-primary-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-green-700 transition-colors"
+            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors"
           >
             Connect with Spotify - It&apos;s Free
           </button>
@@ -104,22 +106,22 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-red-600 dark:text-red-400">
+              <h3 className="text-xl font-semibold mb-4 text-error">
                 Before: Original Playlist
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-error-muted rounded">
                     <span>Track with explicit lyrics</span>
-                    <span className="text-red-600 dark:text-red-400 text-sm">🚫 Explicit</span>
+                    <span className="text-error text-sm">🚫 Explicit</span>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <span>Clean track</span>
-                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-error-muted rounded">
                     <span>Another explicit track</span>
-                    <span className="text-red-600 dark:text-red-400 text-sm">🚫 Explicit</span>
+                    <span className="text-error text-sm">🚫 Explicit</span>
                   </div>
                 </div>
               </div>
@@ -129,22 +131,22 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-green-600 dark:text-green-400">
+              <h3 className="text-xl font-semibold mb-4 text-success">
                 After: Clean Version
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Clean alternative found</span>
-                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Same clean track</span>
-                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/50 rounded">
+                  <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Clean version found</span>
-                    <span className="text-green-600 dark:text-green-400 text-sm">✓ Clean</span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
                 </div>
               </div>
@@ -248,7 +250,9 @@ export default function LandingPage() {
               >
                 <div className="text-3xl mb-4">{feature.icon}</div>
                 <h3 className="font-semibold mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground text-sm">{feature.description}</p>
+                <p className="text-muted-foreground text-sm">
+                  {feature.description}
+                </p>
               </div>
             ))}
           </div>
@@ -256,7 +260,7 @@ export default function LandingPage() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-green-50/30 dark:bg-green-950/20">
+      <section className="py-16 bg-success/10">
         <div className="max-w-4xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">
             What Users Are Saying
@@ -296,7 +300,9 @@ export default function LandingPage() {
                 />
                 <div>
                   <p className="font-semibold">Mike T.</p>
-                  <p className="text-sm text-muted-foreground">Office Manager</p>
+                  <p className="text-sm text-muted-foreground">
+                    Office Manager
+                  </p>
                 </div>
               </div>
             </div>
@@ -343,7 +349,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 bg-gradient-to-r from-green-600 to-blue-600 text-primary-foreground">
+      <section className="py-16 bg-gradient-to-r from-success to-info text-primary-foreground">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">
             Ready to Clean Your Playlists?
@@ -353,7 +359,7 @@ export default function LandingPage() {
           </p>
           <button
             onClick={handleGetStarted}
-            className="bg-card text-green-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
+            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
           >
             Get Started for Free
           </button>
@@ -364,7 +370,7 @@ export default function LandingPage() {
       <footer className="bg-card border-t py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <div className="mb-4">
-            <span className="text-xl font-bold text-green-600">RadioWash</span>
+            <span className="text-xl font-bold text-success">RadioWash</span>
           </div>
           <p className="text-muted-foreground mb-4">
             Making music safe for everyone, everywhere.

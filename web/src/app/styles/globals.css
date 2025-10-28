@@ -2,7 +2,7 @@
 
 /* Spotify Theme - ShadCN Variables */
 :root {
-  /* Core Backgrounds - Flip to light */
+  /* Core Backgrounds - Light Mode */
   --background: #ffffff; /* Pure white main background */
   --foreground: #000000; /* Black text */
 
@@ -12,7 +12,7 @@
   --popover: #ffffff; /* White popups */
   --popover-foreground: #000000; /* Black popup text */
 
-  /* Keep Spotify Green (works on both themes) */
+  /* Primary Colors (Spotify Green) */
   --primary: #1db954; /* Spotify's actual green (slightly darker) */
   --primary-foreground: #ffffff; /* White text on green */
 
@@ -28,17 +28,46 @@
   --accent: #1db954; /* Same green */
   --accent-foreground: #ffffff; /* White text on green */
 
-  /* Borders - Very subtle */
-  --border: rgba(0, 0, 0, 0.08); /* Subtle dark borders */
+  /* Destructive Colors */
+  --destructive: #dc2626; /* red-600 for light mode */
+  --destructive-foreground: #ffffff;
+
+  /* Borders - Improved contrast for light mode */
+  --border: rgba(0, 0, 0, 0.15); /* Increased from 0.08 to 0.15 for better visibility */
   --input: #ffffff; /* White input backgrounds */
   --ring: #1db954; /* Green focus rings */
+
+  /* RadioWash Semantic Colors - Light Mode (Higher Contrast) */
+  --brand: #7c3aed; /* purple-700 - better contrast on light backgrounds */
+  --brand-foreground: #ffffff;
+  --brand-hover: #6d28d9; /* purple-800 */
+  
+  --success: #16a34a; /* green-600 - better contrast for light mode */
+  --success-foreground: #ffffff;
+  --success-hover: #15803d; /* green-700 */
+  --success-muted: #dcfce7; /* green-100 - more visible on light */
+  
+  --warning: #d97706; /* yellow-600 - better contrast */
+  --warning-foreground: #ffffff;
+  --warning-hover: #b45309; /* yellow-700 */
+  --warning-muted: #fef3c7; /* yellow-100 - more visible */
+  
+  --error: #dc2626; /* red-600 - better contrast for light mode */
+  --error-foreground: #ffffff;
+  --error-hover: #b91c1c; /* red-700 */
+  --error-muted: #fee2e2; /* red-100 - more visible on light */
+  
+  --info: #2563eb; /* blue-600 - better contrast for light mode */
+  --info-foreground: #ffffff;
+  --info-hover: #1d4ed8; /* blue-700 */
+  --info-muted: #dbeafe; /* blue-100 - more visible on light */
 
   /* Utility */
   --radius: 0.5rem; /* Spotify uses subtle rounded corners */
 }
 
 .dark {
-  /* Core Backgrounds */
+  /* Core Backgrounds - Dark Mode */
   --background: #121212; /* Spotify's actual dark gray (not pure black) */
   --foreground: #ffffff; /* white - primary text */
 
@@ -64,36 +93,40 @@
   --accent: #1ed760; /* malachite - same as primary for consistency */
   --accent-foreground: #000000; /* black - text on accent */
 
-  /* Interactive States */
-  --destructive: #ff4444; /* You'll need to add a red for delete actions */
+  /* Destructive Colors */
+  --destructive: #ff4444; /* red for delete actions in dark mode */
   --destructive-foreground: #ffffff;
 
   /* Borders and Inputs */
   --border: rgba(255, 255, 255, 0.08); /* Very subtle white border */
   --input: #2a2a2a; /* Slightly lighter than cards */
   --ring: #1ed760; /* malachite - focus rings */
-}
 
-/* Dark mode (same values since this is already a dark theme) */
-/* .dark { */
-/*   --background: #000000; */
-/*   --foreground: #ffffff; */
-/*   --card: #181818; */
-/*   --card-foreground: #ffffff; */
-/*   --popover: #181818; */
-/*   --popover-foreground: #ffffff; */
-/*   --primary: #1ed760; */
-/*   --primary-foreground: #000000; */
-/*   --secondary: #535353; */
-/*   --secondary-foreground: #ffffff; */
-/*   --muted: #181818; */
-/*   --muted-foreground: #b3b3b3; */
-/*   --accent: #1ed760; */
-/*   --accent-foreground: #000000; */
-/*   --border: #535353; */
-/*   --input: #181818; */
-/*   --ring: #1ed760; */
-/* } */
+  /* RadioWash Semantic Colors - Dark Mode */
+  --brand: #9333ea; /* purple-600 - consistent across themes */
+  --brand-foreground: #ffffff;
+  --brand-hover: #a855f7; /* purple-500 - lighter on dark */
+  
+  --success: #22c55e; /* green-500 */
+  --success-foreground: #ffffff;
+  --success-hover: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.1); /* green-500/10 */
+  
+  --warning: #f59e0b; /* yellow-500 */
+  --warning-foreground: #000000; /* black for contrast */
+  --warning-hover: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.1); /* yellow-500/10 */
+  
+  --error: #ef4444; /* red-500 */
+  --error-foreground: #ffffff;
+  --error-hover: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.1); /* red-500/10 */
+  
+  --info: #3b82f6; /* blue-500 */
+  --info-foreground: #ffffff;
+  --info-hover: #3b82f6;
+  --info-muted: rgba(59, 130, 246, 0.1); /* blue-500/10 */
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -132,6 +165,31 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* RadioWash Semantic Color Utilities */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-hover: var(--brand-hover);
+  
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-hover: var(--success-hover);
+  --color-success-muted: var(--success-muted);
+  
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-hover: var(--warning-hover);
+  --color-warning-muted: var(--warning-muted);
+  
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-hover: var(--error-hover);
+  --color-error-muted: var(--error-muted);
+  
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-hover: var(--info-hover);
+  --color-info-muted: var(--info-muted);
 }
 
 @layer base {

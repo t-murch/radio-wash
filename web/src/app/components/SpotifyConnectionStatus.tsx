@@ -110,7 +110,7 @@ export function SpotifyConnectionStatus({
     return (
       <div className="bg-card rounded-lg shadow p-6">
         <div className="flex items-center space-x-3">
-          <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+          <div className="w-5 h-5 rounded-full bg-error-muted flex items-center justify-center">
             <svg
               className="w-3 h-3 text-red-500"
               fill="none"
@@ -137,7 +137,7 @@ export function SpotifyConnectionStatus({
         <div className="flex items-center space-x-3">
           <div
             className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              status.connected ? 'bg-green-100' : 'bg-muted'
+              status.connected ? 'bg-success-muted' : 'bg-muted'
             }`}
           >
             <svg
@@ -169,7 +169,7 @@ export function SpotifyConnectionStatus({
         {!status.connected && (
           <button
             onClick={handleConnect}
-            className="px-4 py-2 bg-green-600 text-primary-foreground rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 text-sm font-medium"
+            className="px-4 py-2 bg-success text-success-foreground rounded-md hover:bg-success-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-success text-sm font-medium"
           >
             Connect Spotify
           </button>
