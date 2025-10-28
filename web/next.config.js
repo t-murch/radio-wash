@@ -18,6 +18,14 @@ const nextConfig = {
   output: 'standalone',
   // Include monorepo root for proper file tracing
   outputFileTracingRoot: path.join(__dirname, '../../'),
+  // Build-time optimization for production
+  compiler: {
+    // Remove console statements in production builds
+    // Preserves console.error and console.warn for essential logging
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn']
+    } : false,
+  },
   // Optional: Enable if you need image optimization
   images: {
     dangerouslyAllowSVG: true,

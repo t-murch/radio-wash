@@ -2,12 +2,20 @@ import { Job } from '@/services/api';
 import Link from 'next/link';
 import { usePlaylistProgressRealtime } from '@/hooks/usePlaylistProgressRealtime';
 import { useAuthToken } from '@/hooks/useAuthToken';
+import { logger } from '@/lib/logger';
 
 export function JobCard({ job }: { job: Job }) {
   const { authToken } = useAuthToken();
 
-  // Debug logging
+  // Debug logging for SignalR connection decisions
   const shouldConnect = job.status === 'Processing';
+  
+  logger.debug('[JobCard] Component rendered', {
+    jobId: job.id,
+    jobStatus: job.status,
+    shouldConnect,
+    hasAuthToken: !!authToken,
+  });
 
   const { progressState, isConnected, connectionError } =
     usePlaylistProgressRealtime(
@@ -15,14 +23,25 @@ export function JobCard({ job }: { job: Job }) {
       authToken || undefined
     );
 
-  shouldConnect &&
-    console.debug('[JobCard Debug] SignalR state:', {
-      progressState: progressState.status,
+  // Debug logging for real-time progress state
+  if (shouldConnect) {
+    logger.debug('[JobCard] SignalR state', {
+      jobId: job.id,
+      progressStatus: progressState.status,
       isConnected,
-      connectionError,
-      useRealtimeProgress:
-        job.status === 'Processing' && progressState.status !== 'idle',
+      hasConnectionError: !!connectionError,
+      useRealtimeProgress: job.status === 'Processing' && progressState.status !== 'idle',
     });
+
+    // Log connection errors for monitoring
+    if (connectionError) {
+      logger.warn('[JobCard] SignalR connection error displayed to user', {
+        jobId: job.id,
+        connectionError,
+        isConnected
+      });
+    }
+  }
 
   const getStatusStyles = () => {
     switch (job.status) {
