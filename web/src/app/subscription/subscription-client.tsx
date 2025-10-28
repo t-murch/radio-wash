@@ -220,7 +220,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
               </div>
 
               {/* Pricing Card */}
-              <div className="bg-gradient-to-br from-brand/5 to-info/5 border border-brand/30 rounded-xl p-8 max-w-md mx-auto">
+              <div className="bg-gradient-to-br from-brand/10 to-info/10 border border-brand/50 rounded-xl p-8 max-w-md mx-auto">
                 <div className="text-center">
                   <div className="flex items-center justify-center mb-4">
                     <span className="text-4xl font-bold text-foreground">

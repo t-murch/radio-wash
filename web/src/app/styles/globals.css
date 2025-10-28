@@ -2,7 +2,7 @@
 
 /* Spotify Theme - ShadCN Variables */
 :root {
-  /* Core Backgrounds - Flip to light */
+  /* Core Backgrounds - Light Mode */
   --background: #ffffff; /* Pure white main background */
   --foreground: #000000; /* Black text */
 
@@ -12,7 +12,7 @@
   --popover: #ffffff; /* White popups */
   --popover-foreground: #000000; /* Black popup text */
 
-  /* Keep Spotify Green (works on both themes) */
+  /* Primary Colors (Spotify Green) */
   --primary: #1db954; /* Spotify's actual green (slightly darker) */
   --primary-foreground: #ffffff; /* White text on green */
 
@@ -28,45 +28,14 @@
   --accent: #1db954; /* Same green */
   --accent-foreground: #ffffff; /* White text on green */
 
-  /* Borders - Very subtle */
-  --border: rgba(0, 0, 0, 0.08); /* Subtle dark borders */
+  /* Destructive Colors */
+  --destructive: #dc2626; /* red-600 for light mode */
+  --destructive-foreground: #ffffff;
+
+  /* Borders - Improved contrast for light mode */
+  --border: rgba(0, 0, 0, 0.15); /* Increased from 0.08 to 0.15 for better visibility */
   --input: #ffffff; /* White input backgrounds */
   --ring: #1db954; /* Green focus rings */
-
-  /* Utility */
-  --radius: 0.5rem; /* Spotify uses subtle rounded corners */
-}
-
-.dark {
-  /* Core Backgrounds */
-  --background: #121212; /* Spotify's actual dark gray (not pure black) */
-  --foreground: #ffffff; /* white - primary text */
-
-  /* Card/Surface Colors */
-  --card: #181818; /* eerie-black - cards, panels */
-  --card-foreground: #ffffff; /* white - text on cards */
-  --popover: #181818; /* eerie-black - dropdowns, tooltips */
-  --popover-foreground: #ffffff; /* white - popover text */
-
-  /* Brand/Action Colors */
-  --primary: #1ed760; /* malachite - Spotify green */
-  --primary-foreground: #000000; /* black - text on green buttons */
-
-  /* Secondary Elements */
-  --secondary: #535353; /* davys-gray - secondary buttons */
-  --secondary-foreground: #ffffff; /* white - text on secondary */
-
-  /* Muted/Subtle Elements */
-  --muted: #181818; /* eerie-black - subtle backgrounds */
-  --muted-foreground: #b3b3b3; /* silver - subtle text, descriptions */
-
-  /* Accent/Highlight */
-  --accent: #1ed760; /* malachite - same as primary for consistency */
-  --accent-foreground: #000000; /* black - text on accent */
-
-  /* Interactive States */
-  --destructive: #ff4444; /* You'll need to add a red for delete actions */
-  --destructive-foreground: #ffffff;
 
   /* RadioWash Semantic Colors - Light Mode (Higher Contrast) */
   --brand: #7c3aed; /* purple-700 - better contrast on light backgrounds */
@@ -92,9 +61,47 @@
   --info-foreground: #ffffff;
   --info-hover: #1d4ed8; /* blue-700 */
   --info-muted: #dbeafe; /* blue-100 - more visible on light */
+
+  /* Utility */
+  --radius: 0.5rem; /* Spotify uses subtle rounded corners */
 }
 
 .dark {
+  /* Core Backgrounds - Dark Mode */
+  --background: #121212; /* Spotify's actual dark gray (not pure black) */
+  --foreground: #ffffff; /* white - primary text */
+
+  /* Card/Surface Colors */
+  --card: #181818; /* eerie-black - cards, panels */
+  --card-foreground: #ffffff; /* white - text on cards */
+  --popover: #181818; /* eerie-black - dropdowns, tooltips */
+  --popover-foreground: #ffffff; /* white - popover text */
+
+  /* Brand/Action Colors */
+  --primary: #1ed760; /* malachite - Spotify green */
+  --primary-foreground: #000000; /* black - text on green buttons */
+
+  /* Secondary Elements */
+  --secondary: #535353; /* davys-gray - secondary buttons */
+  --secondary-foreground: #ffffff; /* white - text on secondary */
+
+  /* Muted/Subtle Elements */
+  --muted: #181818; /* eerie-black - subtle backgrounds */
+  --muted-foreground: #b3b3b3; /* silver - subtle text, descriptions */
+
+  /* Accent/Highlight */
+  --accent: #1ed760; /* malachite - same as primary for consistency */
+  --accent-foreground: #000000; /* black - text on accent */
+
+  /* Destructive Colors */
+  --destructive: #ff4444; /* red for delete actions in dark mode */
+  --destructive-foreground: #ffffff;
+
+  /* Borders and Inputs */
+  --border: rgba(255, 255, 255, 0.08); /* Very subtle white border */
+  --input: #2a2a2a; /* Slightly lighter than cards */
+  --ring: #1ed760; /* malachite - focus rings */
+
   /* RadioWash Semantic Colors - Dark Mode */
   --brand: #9333ea; /* purple-600 - consistent across themes */
   --brand-foreground: #ffffff;
@@ -119,33 +126,7 @@
   --info-foreground: #ffffff;
   --info-hover: #3b82f6;
   --info-muted: rgba(59, 130, 246, 0.1); /* blue-500/10 */
-
-  /* Borders and Inputs */
-  --border: rgba(255, 255, 255, 0.08); /* Very subtle white border */
-  --input: #2a2a2a; /* Slightly lighter than cards */
-  --ring: #1ed760; /* malachite - focus rings */
 }
-
-/* Dark mode (same values since this is already a dark theme) */
-/* .dark { */
-/*   --background: #000000; */
-/*   --foreground: #ffffff; */
-/*   --card: #181818; */
-/*   --card-foreground: #ffffff; */
-/*   --popover: #181818; */
-/*   --popover-foreground: #ffffff; */
-/*   --primary: #1ed760; */
-/*   --primary-foreground: #000000; */
-/*   --secondary: #535353; */
-/*   --secondary-foreground: #ffffff; */
-/*   --muted: #181818; */
-/*   --muted-foreground: #b3b3b3; */
-/*   --accent: #1ed760; */
-/*   --accent-foreground: #000000; */
-/*   --border: #535353; */
-/*   --input: #181818; */
-/*   --ring: #1ed760; */
-/* } */
 
 @theme inline {
   --color-background: var(--background);

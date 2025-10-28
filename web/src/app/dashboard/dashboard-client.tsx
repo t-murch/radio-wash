@@ -307,7 +307,7 @@ export function DashboardClient({
             {/* Sync Discovery Section */}
             {jobs.some((job) => job.status === 'Completed') &&
               !subscriptionStatus?.hasActiveSubscription && (
-                <div className="bg-gradient-to-r from-brand/5 to-info/5 border border-brand/30 rounded-lg p-4 sm:p-6 overflow-hidden">
+                <div className="bg-gradient-to-r from-brand/10 to-info/10 border border-brand/50 rounded-lg p-4 sm:p-6 overflow-hidden">
                   <div className="flex items-start space-x-3 sm:space-x-4">
                     <div className="flex-shrink-0">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand/20 rounded-full flex items-center justify-center">

@@ -17,7 +17,7 @@ export default function LandingPage() {
       <nav className="bg-card shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="text-2xl font-bold text-success">RadioWash</div>
-          <div className="space-x-6">
+          <div className="flex items-center space-x-3 sm:space-x-6">
             {/* <a */}
             {/*   href="#how-it-works" */}
             {/*   className="text-muted-foreground hover:text-foreground" */}
@@ -32,7 +32,7 @@ export default function LandingPage() {
             {/* </a> */}
             <button
               onClick={handleGetStarted}
-              className="bg-success text-success-foreground px-4 py-2 rounded-lg hover:bg-success-hover"
+              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base"
             >
               Get Started
             </button>
@@ -42,7 +42,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-success/5 to-info/5 py-20">
+      <section className="bg-gradient-to-br from-success/10 to-info/10 py-20">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Explicit Playlists into
