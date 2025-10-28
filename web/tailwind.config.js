@@ -70,6 +70,41 @@ module.exports = {
           border: 'var(--sidebar-border)',
           ring: 'var(--sidebar-ring)',
         },
+        // RadioWash semantic colors
+        brand: {
+          DEFAULT: 'var(--brand)',
+          foreground: 'var(--brand-foreground)',
+          hover: 'var(--brand-hover)',
+        },
+        success: {
+          DEFAULT: 'var(--success)',
+          foreground: 'var(--success-foreground)',
+          hover: 'var(--success-hover)',
+          muted: 'var(--success-muted)',
+        },
+        warning: {
+          DEFAULT: 'var(--warning)',
+          foreground: 'var(--warning-foreground)',
+          hover: 'var(--warning-hover)',
+          muted: 'var(--warning-muted)',
+        },
+        error: {
+          DEFAULT: 'var(--error)',
+          foreground: 'var(--error-foreground)',
+          hover: 'var(--error-hover)',
+          muted: 'var(--error-muted)',
+        },
+        info: {
+          DEFAULT: 'var(--info)',
+          foreground: 'var(--info-foreground)',
+          hover: 'var(--info-hover)',
+          muted: 'var(--info-muted)',
+        },
+        feature: {
+          DEFAULT: 'var(--feature)',
+          foreground: 'var(--feature-foreground)',
+          muted: 'var(--feature-muted)',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

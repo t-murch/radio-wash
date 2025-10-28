@@ -68,6 +68,56 @@
   --destructive: #ff4444; /* You'll need to add a red for delete actions */
   --destructive-foreground: #ffffff;
 
+  /* RadioWash Semantic Colors */
+  --brand: #9333ea; /* purple-600 - primary brand color */
+  --brand-foreground: #ffffff;
+  --brand-hover: #7c3aed; /* purple-700 */
+  
+  --success: #22c55e; /* green-500 - completed states */
+  --success-foreground: #ffffff;
+  --success-hover: #16a34a; /* green-600 */
+  --success-muted: #f0fdf4; /* green-50 */
+  
+  --warning: #f59e0b; /* yellow-500 - pending/caution states */
+  --warning-foreground: #ffffff;
+  --warning-hover: #d97706; /* yellow-600 */
+  --warning-muted: #fffbeb; /* yellow-50 */
+  
+  --error: #ef4444; /* red-500 - failed states */
+  --error-foreground: #ffffff;
+  --error-hover: #dc2626; /* red-600 */
+  --error-muted: #fef2f2; /* red-50 */
+  
+  --info: #3b82f6; /* blue-500 - processing/info states */
+  --info-foreground: #ffffff;
+  --info-hover: #2563eb; /* blue-600 */
+  --info-muted: #eff6ff; /* blue-50 */
+
+  /* RadioWash Semantic Colors - Dark Mode */
+  --brand: #9333ea; /* purple-600 - consistent across themes */
+  --brand-foreground: #ffffff;
+  --brand-hover: #a855f7; /* purple-500 - lighter on dark */
+  
+  --success: #22c55e; /* green-500 */
+  --success-foreground: #ffffff;
+  --success-hover: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.1); /* green-500/10 */
+  
+  --warning: #f59e0b; /* yellow-500 */
+  --warning-foreground: #000000; /* black for contrast */
+  --warning-hover: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.1); /* yellow-500/10 */
+  
+  --error: #ef4444; /* red-500 */
+  --error-foreground: #ffffff;
+  --error-hover: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.1); /* red-500/10 */
+  
+  --info: #3b82f6; /* blue-500 */
+  --info-foreground: #ffffff;
+  --info-hover: #3b82f6;
+  --info-muted: rgba(59, 130, 246, 0.1); /* blue-500/10 */
+
   /* Borders and Inputs */
   --border: rgba(255, 255, 255, 0.08); /* Very subtle white border */
   --input: #2a2a2a; /* Slightly lighter than cards */
@@ -132,6 +182,31 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* RadioWash Semantic Color Utilities */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-hover: var(--brand-hover);
+  
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-hover: var(--success-hover);
+  --color-success-muted: var(--success-muted);
+  
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-hover: var(--warning-hover);
+  --color-warning-muted: var(--warning-muted);
+  
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-hover: var(--error-hover);
+  --color-error-muted: var(--error-muted);
+  
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-hover: var(--info-hover);
+  --color-info-muted: var(--info-muted);
 }
 
 @layer base {
