@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useSubscriptionStatus, useEnableSyncForJob, useSubscribeToSync, useSyncConfigs } from '@/hooks/useSubscriptionSync';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CURRENT_PLAN } from '@/lib/constants/pricing';
 
 // Helper functions for UI, can be moved to a utils file
 const getStatusBadgeClass = (status: string) => {
@@ -189,15 +190,15 @@ export function JobDetailsClient({
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
                         <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">$5</span>
+                          <span className="text-blue-600 dark:text-blue-400 text-sm font-bold">{CURRENT_PLAN.MARKETING_PRICE}</span>
                         </div>
                       </div>
                       <div>
                         <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
-                          $5/month • Up to 10 playlists • 200 tracks each
+                          {CURRENT_PLAN.MARKETING_PRICE}/month • Up to {CURRENT_PLAN.FEATURES.MAX_PLAYLISTS} playlists • 200 tracks each
                         </h4>
                         <p className="text-sm text-blue-700 dark:text-blue-300">
-                          Save hours of manual work. Your time is worth more than $5.
+                          Save hours of manual work. Your time is worth more than {CURRENT_PLAN.MARKETING_PRICE}.
                         </p>
                       </div>
                     </div>

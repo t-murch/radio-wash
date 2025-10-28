@@ -2,11 +2,15 @@
 
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { Button } from '@/components/ui/button';
-import { useSubscriptionStatus, useSubscribeToSync } from '@/hooks/useSubscriptionSync';
+import {
+  useSubscriptionStatus,
+  useSubscribeToSync,
+} from '@/hooks/useSubscriptionSync';
 import { cancelSubscription, type User } from '../services/api';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { CURRENT_PLAN } from '@/lib/constants/pricing';
 
 const formatDateTime = (dateString: string) => {
   return new Date(dateString).toLocaleString();
@@ -38,7 +42,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
       // Note: The mutation will redirect to Stripe checkout on success
     } catch (error) {
       if (error instanceof Error && error.message.includes('404')) {
-        toast.error('Subscription service not yet configured. Please contact support.');
+        toast.error(
+          'Subscription service not yet configured. Please contact support.'
+        );
       } else {
         toast.error('Subscription failed. Please try again.');
       }
@@ -47,7 +53,11 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   };
 
   const handleCancelSubscription = async () => {
-    if (confirm('Are you sure you want to cancel your subscription? This will disable all active sync configurations.')) {
+    if (
+      confirm(
+        'Are you sure you want to cancel your subscription? This will disable all active sync configurations.'
+      )
+    ) {
       await cancelSubscriptionMutation.mutateAsync();
     }
   };
@@ -78,7 +88,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
       />
       <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground">Subscription Management</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            Subscription Management
+          </h1>
           <p className="text-muted-foreground mt-2">
             Manage your RadioWash sync subscription
           </p>
@@ -89,7 +101,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
             <div className="space-y-6">
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <h2 className="text-xl font-semibold text-foreground">Active Subscription</h2>
+                <h2 className="text-xl font-semibold text-foreground">
+                  Active Subscription
+                </h2>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -98,16 +112,24 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   <div className="text-sm space-y-1">
                     <div>
                       <span className="text-muted-foreground">Plan:</span>
-                      <span className="ml-2 font-medium">{subscriptionStatus.planName || 'Sync Plan'}</span>
+                      <span className="ml-2 font-medium">
+                        {subscriptionStatus.planName || 'Sync Plan'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Status:</span>
-                      <span className="ml-2 font-medium text-green-600">{subscriptionStatus.status || 'Active'}</span>
+                      <span className="ml-2 font-medium text-green-600">
+                        {subscriptionStatus.status || 'Active'}
+                      </span>
                     </div>
                     {subscriptionStatus.currentPeriodEnd && (
                       <div>
-                        <span className="text-muted-foreground">Next billing:</span>
-                        <span className="ml-2 font-medium">{formatDateTime(subscriptionStatus.currentPeriodEnd)}</span>
+                        <span className="text-muted-foreground">
+                          Next billing:
+                        </span>
+                        <span className="ml-2 font-medium">
+                          {formatDateTime(subscriptionStatus.currentPeriodEnd)}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -142,7 +164,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   onClick={handleCancelSubscription}
                   disabled={cancelSubscriptionMutation.isPending}
                 >
-                  {cancelSubscriptionMutation.isPending ? 'Cancelling...' : 'Cancel Subscription'}
+                  {cancelSubscriptionMutation.isPending
+                    ? 'Cancelling...'
+                    : 'Cancel Subscription'}
                 </Button>
               </div>
             </div>
@@ -153,7 +177,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   Never Manually Update Playlists Again
                 </h2>
                 <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                  Your source playlists change. Your clean playlists should too. 
+                  Your source playlists change. Your clean playlists should too.
                   Auto-Sync keeps everything updated automatically.
                 </p>
               </div>
@@ -164,7 +188,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">⏰</span>
                   </div>
-                  <h3 className="font-semibold text-foreground mb-2">Save Time</h3>
+                  <h3 className="font-semibold text-foreground mb-2">
+                    Save Time
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     No more checking for changes or running new jobs manually
                   </p>
@@ -173,7 +199,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">🎯</span>
                   </div>
-                  <h3 className="font-semibold text-foreground mb-2">Stay Updated</h3>
+                  <h3 className="font-semibold text-foreground mb-2">
+                    Stay Updated
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     Your clean playlists automatically reflect source changes
                   </p>
@@ -182,7 +210,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">🔄</span>
                   </div>
-                  <h3 className="font-semibold text-foreground mb-2">Set & Forget</h3>
+                  <h3 className="font-semibold text-foreground mb-2">
+                    Set & Forget
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     Enable once, works forever in the background
                   </p>
@@ -193,27 +223,43 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
               <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-xl p-8 max-w-md mx-auto">
                 <div className="text-center">
                   <div className="flex items-center justify-center mb-4">
-                    <span className="text-4xl font-bold text-foreground">$5</span>
+                    <span className="text-4xl font-bold text-foreground">
+                      {CURRENT_PLAN.MARKETING_PRICE}
+                    </span>
                     <span className="text-muted-foreground ml-1">/month</span>
                   </div>
-                  <h3 className="text-xl font-semibold text-foreground mb-4">Sync Plan</h3>
-                  
+                  <h3 className="text-xl font-semibold text-foreground mb-4">
+                    Sync Plan
+                  </h3>
+
                   <div className="space-y-3 text-left mb-6">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Playlists</span>
-                      <span className="font-medium text-foreground">Up to 10</span>
+                      <span className="font-medium text-foreground">
+                        Up to 10
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Tracks per playlist</span>
-                      <span className="font-medium text-foreground">Up to 200</span>
+                      <span className="text-muted-foreground">
+                        Tracks per playlist
+                      </span>
+                      <span className="font-medium text-foreground">
+                        Up to 200
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Sync frequency</span>
+                      <span className="text-muted-foreground">
+                        Sync frequency
+                      </span>
                       <span className="font-medium text-foreground">Daily</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Manual triggering</span>
-                      <span className="font-medium text-foreground">✓ Included</span>
+                      <span className="text-muted-foreground">
+                        Manual triggering
+                      </span>
+                      <span className="font-medium text-foreground">
+                        ✓ Included
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -221,7 +267,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
 
               {/* Features List */}
               <div className="bg-card border border-border rounded-lg p-6 max-w-2xl mx-auto">
-                <h3 className="text-lg font-semibold text-foreground mb-4 text-center">Everything Included</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4 text-center">
+                  Everything Included
+                </h3>
                 <div className="grid md:grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center">
                     <span className="text-green-600 mr-2">✓</span>
@@ -256,7 +304,9 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 size="lg"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
               >
-                {subscribeToSyncMutation.isPending ? 'Subscribing...' : 'Subscribe to Sync'}
+                {subscribeToSyncMutation.isPending
+                  ? 'Subscribing...'
+                  : 'Subscribe to Sync'}
               </Button>
 
               <p className="text-xs text-muted-foreground">
@@ -269,3 +319,4 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     </div>
   );
 }
+
