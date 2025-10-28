@@ -2,11 +2,23 @@ import { Job } from '@/services/api';
 import Link from 'next/link';
 import { usePlaylistProgressRealtime } from '@/hooks/usePlaylistProgressRealtime';
 import { useAuthToken } from '@/hooks/useAuthToken';
+import { logger } from '@/lib/logger';
+import { useEffect, useRef } from 'react';
 
 export function JobCard({ job }: { job: Job }) {
   const { authToken } = useAuthToken();
+  const prevStateRef = useRef<{
+    jobStatus: string;
+    isConnected: boolean;
+    connectionError?: string;
+    progressStatus: string;
+  }>({
+    jobStatus: job.status,
+    isConnected: false,
+    connectionError: undefined,
+    progressStatus: 'idle',
+  });
 
-  // Debug logging
   const shouldConnect = job.status === 'Processing';
 
   const { progressState, isConnected, connectionError } =
@@ -15,14 +27,73 @@ export function JobCard({ job }: { job: Job }) {
       authToken || undefined
     );
 
-  shouldConnect &&
-    console.debug('[JobCard Debug] SignalR state:', {
-      progressState: progressState.status,
+  // Only log meaningful state changes to prevent spam
+  useEffect(() => {
+    if (!shouldConnect) return;
+
+    const prevState = prevStateRef.current;
+    const currentState = {
+      jobStatus: job.status,
       isConnected,
       connectionError,
-      useRealtimeProgress:
-        job.status === 'Processing' && progressState.status !== 'idle',
-    });
+      progressStatus: progressState.status,
+    };
+
+    // Log job status changes
+    if (prevState.jobStatus !== currentState.jobStatus) {
+      logger.debug('[JobCard] Job status changed', {
+        jobId: job.id,
+        from: prevState.jobStatus,
+        to: currentState.jobStatus,
+        shouldConnect,
+      });
+    }
+
+    // Log SignalR connection state changes (only for processing jobs)
+    if (shouldConnect && prevState.isConnected !== currentState.isConnected) {
+      logger.debug('[JobCard] SignalR connection state changed', {
+        jobId: job.id,
+        connected: currentState.isConnected,
+        progressStatus: currentState.progressStatus,
+      });
+    }
+
+    // Log connection errors when they first appear
+    if (
+      shouldConnect &&
+      !prevState.connectionError &&
+      currentState.connectionError
+    ) {
+      logger.warn('[JobCard] SignalR connection error occurred', {
+        jobId: job.id,
+        connectionError: currentState.connectionError,
+        isConnected: currentState.isConnected,
+      });
+    }
+
+    // Log progress status changes (connecting -> connected -> processing)
+    if (
+      shouldConnect &&
+      prevState.progressStatus !== currentState.progressStatus
+    ) {
+      logger.debug('[JobCard] Progress status changed', {
+        jobId: job.id,
+        from: prevState.progressStatus,
+        to: currentState.progressStatus,
+        isConnected: currentState.isConnected,
+      });
+    }
+
+    // Update previous state reference
+    prevStateRef.current = currentState;
+  }, [
+    job.id,
+    job.status,
+    shouldConnect,
+    isConnected,
+    connectionError,
+    progressState.status,
+  ]);
 
   const getStatusStyles = () => {
     switch (job.status) {
