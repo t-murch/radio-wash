@@ -132,7 +132,7 @@ export function JobCard({ job }: { job: Job }) {
           <div className="w-full bg-muted rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-500 ease-out ${
-                useRealtimeProgress ? 'bg-green-500' : 'bg-blue-500'
+                useRealtimeProgress ? 'bg-success' : 'bg-info'
               }`}
               style={{ width: `${displayProgress}%` }}
             ></div>
