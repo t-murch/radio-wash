@@ -68,30 +68,30 @@
   --destructive: #ff4444; /* You'll need to add a red for delete actions */
   --destructive-foreground: #ffffff;
 
-  /* RadioWash Semantic Colors */
-  --brand: #9333ea; /* purple-600 - primary brand color */
+  /* RadioWash Semantic Colors - Light Mode (Higher Contrast) */
+  --brand: #7c3aed; /* purple-700 - better contrast on light backgrounds */
   --brand-foreground: #ffffff;
-  --brand-hover: #7c3aed; /* purple-700 */
+  --brand-hover: #6d28d9; /* purple-800 */
   
-  --success: #22c55e; /* green-500 - completed states */
+  --success: #16a34a; /* green-600 - better contrast for light mode */
   --success-foreground: #ffffff;
-  --success-hover: #16a34a; /* green-600 */
-  --success-muted: #f0fdf4; /* green-50 */
+  --success-hover: #15803d; /* green-700 */
+  --success-muted: #dcfce7; /* green-100 - more visible on light */
   
-  --warning: #f59e0b; /* yellow-500 - pending/caution states */
+  --warning: #d97706; /* yellow-600 - better contrast */
   --warning-foreground: #ffffff;
-  --warning-hover: #d97706; /* yellow-600 */
-  --warning-muted: #fffbeb; /* yellow-50 */
+  --warning-hover: #b45309; /* yellow-700 */
+  --warning-muted: #fef3c7; /* yellow-100 - more visible */
   
-  --error: #ef4444; /* red-500 - failed states */
+  --error: #dc2626; /* red-600 - better contrast for light mode */
   --error-foreground: #ffffff;
-  --error-hover: #dc2626; /* red-600 */
-  --error-muted: #fef2f2; /* red-50 */
+  --error-hover: #b91c1c; /* red-700 */
+  --error-muted: #fee2e2; /* red-100 - more visible on light */
   
-  --info: #3b82f6; /* blue-500 - processing/info states */
+  --info: #2563eb; /* blue-600 - better contrast for light mode */
   --info-foreground: #ffffff;
-  --info-hover: #2563eb; /* blue-600 */
-  --info-muted: #eff6ff; /* blue-50 */
+  --info-hover: #1d4ed8; /* blue-700 */
+  --info-muted: #dbeafe; /* blue-100 - more visible on light */
 
   /* RadioWash Semantic Colors - Dark Mode */
   --brand: #9333ea; /* purple-600 - consistent across themes */

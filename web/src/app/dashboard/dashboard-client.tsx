@@ -307,7 +307,7 @@ export function DashboardClient({
             {/* Sync Discovery Section */}
             {jobs.some((job) => job.status === 'Completed') &&
               !subscriptionStatus?.hasActiveSubscription && (
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4 sm:p-6 overflow-hidden">
+                <div className="bg-gradient-to-r from-brand/5 to-info/5 border border-brand/30 rounded-lg p-4 sm:p-6 overflow-hidden">
                   <div className="flex items-start space-x-3 sm:space-x-4">
                     <div className="flex-shrink-0">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand/20 rounded-full flex items-center justify-center">
@@ -324,10 +324,10 @@ export function DashboardClient({
                         change. Never run manual jobs again.
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 mb-3 sm:mb-4">
-                        <span className="px-2 sm:px-3 py-1 bg-white dark:bg-gray-800 text-xs sm:text-sm rounded-full border text-center">
+                        <span className="px-2 sm:px-3 py-1 bg-card text-xs sm:text-sm rounded-full border text-center">
                           ⏰ Daily automatic sync
                         </span>
-                        <span className="px-2 sm:px-3 py-1 bg-white dark:bg-gray-800 text-xs sm:text-sm rounded-full border text-center">
+                        <span className="px-2 sm:px-3 py-1 bg-card text-xs sm:text-sm rounded-full border text-center">
                           {FEATURE_DESCRIPTIONS.MONTHLY_PRICE(CURRENT_PLAN.MARKETING_PRICE)}
                         </span>
                         <span className="px-2 sm:px-3 py-1 bg-white dark:bg-gray-800 text-xs sm:text-sm rounded-full border text-center sm:col-span-2 lg:col-span-1 xl:col-span-2">

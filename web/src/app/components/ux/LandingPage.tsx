@@ -42,11 +42,11 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-success/5 to-info/5 py-20"
+      <section className="bg-gradient-to-br from-success/5 to-info/5 py-20">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Explicit Playlists into
-            <span className="text-green-600"> Clean Versions</span>
+            <span className="text-success"> Clean Versions</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Automatically find clean alternatives for explicit tracks in your
@@ -106,28 +106,22 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-error"
+              <h3 className="text-xl font-semibold mb-4 text-error">
                 Before: Original Playlist
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2 bg-error-muted rounded">
                     <span>Track with explicit lyrics</span>
-                    <span className="text-error text-sm">
-                      🚫 Explicit
-                    </span>
+                    <span className="text-error text-sm">🚫 Explicit</span>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <span>Clean track</span>
-                    <span className="text-success text-sm">
-                      ✓ Clean
-                    </span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-error-muted rounded">
                     <span>Another explicit track</span>
-                    <span className="text-error text-sm">
-                      🚫 Explicit
-                    </span>
+                    <span className="text-error text-sm">🚫 Explicit</span>
                   </div>
                 </div>
               </div>
@@ -137,28 +131,22 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold mb-4 text-success"
+              <h3 className="text-xl font-semibold mb-4 text-success">
                 After: Clean Version
               </h3>
               <div className="border rounded-lg overflow-hidden shadow-lg bg-card p-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Clean alternative found</span>
-                    <span className="text-success text-sm">
-                      ✓ Clean
-                    </span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Same clean track</span>
-                    <span className="text-success text-sm">
-                      ✓ Clean
-                    </span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
                   <div className="flex items-center justify-between p-2 bg-success-muted rounded">
                     <span>Clean version found</span>
-                    <span className="text-success text-sm">
-                      ✓ Clean
-                    </span>
+                    <span className="text-success text-sm">✓ Clean</span>
                   </div>
                 </div>
               </div>
