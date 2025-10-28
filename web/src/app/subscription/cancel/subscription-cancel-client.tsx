@@ -18,9 +18,9 @@ export function SubscriptionCancelClient({ initialUser }: { initialUser: User })
       />
       <main className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <div className="text-center">
-          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-warning-muted mb-4">
             <svg
-              className="h-6 w-6 text-yellow-600"
+              className="h-6 w-6 text-warning"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -54,7 +54,7 @@ export function SubscriptionCancelClient({ initialUser }: { initialUser: User })
             <Button
               onClick={() => router.push('/subscription')}
               size="lg"
-              className="bg-purple-600 hover:bg-purple-700 text-white"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground"
             >
               Try Again
             </Button>

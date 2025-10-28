@@ -100,7 +100,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
           {subscriptionStatus?.hasActiveSubscription ? (
             <div className="space-y-6">
               <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-success rounded-full"></div>
                 <h2 className="text-xl font-semibold text-foreground">
                   Active Subscription
                 </h2>
@@ -118,7 +118,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Status:</span>
-                      <span className="ml-2 font-medium text-green-600">
+                      <span className="ml-2 font-medium text-success">
                         {subscriptionStatus.status || 'Active'}
                       </span>
                     </div>
@@ -185,7 +185,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
               {/* Value Proposition */}
               <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
                 <div className="text-center">
-                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <div className="w-12 h-12 bg-info-muted rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">⏰</span>
                   </div>
                   <h3 className="font-semibold text-foreground mb-2">
@@ -196,7 +196,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   </p>
                 </div>
                 <div className="text-center">
-                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <div className="w-12 h-12 bg-success-muted rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">🎯</span>
                   </div>
                   <h3 className="font-semibold text-foreground mb-2">
@@ -207,7 +207,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   </p>
                 </div>
                 <div className="text-center">
-                  <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <div className="w-12 h-12 bg-brand/20 rounded-full flex items-center justify-center mx-auto mb-3">
                     <span className="text-2xl">🔄</span>
                   </div>
                   <h3 className="font-semibold text-foreground mb-2">
@@ -220,7 +220,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
               </div>
 
               {/* Pricing Card */}
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-xl p-8 max-w-md mx-auto">
+              <div className="bg-gradient-to-br from-brand/5 to-info/5 border border-brand/30 rounded-xl p-8 max-w-md mx-auto">
                 <div className="text-center">
                   <div className="flex items-center justify-center mb-4">
                     <span className="text-4xl font-bold text-foreground">
@@ -272,27 +272,27 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 </h3>
                 <div className="grid md:grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Daily automatic synchronization</span>
                   </div>
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Smart track matching & cleaning</span>
                   </div>
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Manual sync triggering</span>
                   </div>
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Sync history & status tracking</span>
                   </div>
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Enable/disable anytime</span>
                   </div>
                   <div className="flex items-center">
-                    <span className="text-green-600 mr-2">✓</span>
+                    <span className="text-success mr-2">✓</span>
                     <span>Cancel anytime</span>
                   </div>
                 </div>
@@ -302,7 +302,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 onClick={handleSubscribe}
                 disabled={subscribeToSyncMutation.isPending}
                 size="lg"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+                className="bg-brand hover:bg-brand-hover text-brand-foreground"
               >
                 {subscribeToSyncMutation.isPending
                   ? 'Subscribing...'

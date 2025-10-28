@@ -27,9 +27,9 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
       />
       <main className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <div className="text-center">
-          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-success-muted mb-4">
             <svg
-              className="h-6 w-6 text-green-600"
+              className="h-6 w-6 text-success"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -55,19 +55,19 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
             <h2 className="text-lg font-semibold text-foreground mb-4">What's Next?</h2>
             <ul className="space-y-2 text-sm text-muted-foreground text-left">
               <li className="flex items-center">
-                <span className="text-green-600 mr-2">✓</span>
+                <span className="text-success mr-2">✓</span>
                 Complete a playlist cleaning job
               </li>
               <li className="flex items-center">
-                <span className="text-green-600 mr-2">✓</span>
+                <span className="text-success mr-2">✓</span>
                 Enable sync from the job details page
               </li>
               <li className="flex items-center">
-                <span className="text-green-600 mr-2">✓</span>
+                <span className="text-success mr-2">✓</span>
                 Manage your sync configurations
               </li>
               <li className="flex items-center">
-                <span className="text-green-600 mr-2">✓</span>
+                <span className="text-success mr-2">✓</span>
                 Enjoy automatic daily synchronization
               </li>
             </ul>
@@ -77,7 +77,7 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
             <Button
               onClick={() => router.push('/dashboard')}
               size="lg"
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-info hover:bg-info-hover text-info-foreground"
             >
               Go to Dashboard
             </Button>

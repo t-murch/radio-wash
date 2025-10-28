@@ -153,7 +153,7 @@ export function DashboardClient({
                     disabled={
                       !selectedPlaylistId || createJobMutation.isPending
                     }
-                    className="w-full bg-green-600 text-primary-foreground py-3 rounded-md hover:bg-green-700 disabled:opacity-50"
+                    className="w-full bg-success text-success-foreground py-3 rounded-md hover:bg-success-hover disabled:opacity-50"
                   >
                     {createJobMutation.isPending
                       ? 'Working on it...'
@@ -212,7 +212,7 @@ export function DashboardClient({
                                 e.stopPropagation();
                                 setSelectedPlaylistId(playlist.id);
                               }}
-                              className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md hover:bg-green-200 flex-1 sm:flex-none"
+                              className="text-xs bg-success-muted text-success px-2 py-1 rounded-md hover:bg-success/20 flex-1 sm:flex-none"
                             >
                               Make Clean
                             </button>
@@ -279,7 +279,7 @@ export function DashboardClient({
                                     e.stopPropagation();
                                     setSelectedPlaylistId(playlist.id);
                                   }}
-                                  className="px-3 py-2 bg-green-600 text-primary-foreground text-sm font-medium rounded-lg hover:bg-green-700 transition-colors flex-1 xs:flex-none"
+                                  className="px-3 py-2 bg-success text-success-foreground text-sm font-medium rounded-lg hover:bg-success-hover transition-colors flex-1 xs:flex-none"
                                 >
                                   Make Clean
                                 </button>
@@ -310,7 +310,7 @@ export function DashboardClient({
                 <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4 sm:p-6 overflow-hidden">
                   <div className="flex items-start space-x-3 sm:space-x-4">
                     <div className="flex-shrink-0">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand/20 rounded-full flex items-center justify-center">
                         <span className="text-xl sm:text-2xl">🔄</span>
                       </div>
                     </div>

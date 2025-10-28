@@ -28,11 +28,11 @@ const formatDateTime = (dateString: string) => {
 const getStatusIndicator = (status?: string) => {
   switch (status) {
     case 'completed':
-      return <div className="w-2 h-2 bg-green-500 rounded-full" />;
+      return <div className="w-2 h-2 bg-success rounded-full" />;
     case 'failed':
-      return <div className="w-2 h-2 bg-red-500 rounded-full" />;
+      return <div className="w-2 h-2 bg-error rounded-full" />;
     case 'running':
-      return <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />;
+      return <div className="w-2 h-2 bg-info rounded-full animate-pulse" />;
     default:
       return <div className="w-2 h-2 bg-muted rounded-full" />;
   }
@@ -92,7 +92,7 @@ function SyncConfigCard({
           <p className="font-medium">
             {config.lastSyncStatus || 'Pending'}
             {config.lastSyncError && (
-              <span className="text-red-500 block text-xs truncate" title={config.lastSyncError}>
+              <span className="text-error block text-xs truncate" title={config.lastSyncError}>
                 Error: {config.lastSyncError}
               </span>
             )}
@@ -233,7 +233,7 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
             </p>
             <Button
               onClick={handleSubscribeToSync}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground"
             >
               Learn More & Subscribe
             </Button>
