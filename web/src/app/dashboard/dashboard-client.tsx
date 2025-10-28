@@ -330,7 +330,7 @@ export function DashboardClient({
                         <span className="px-2 sm:px-3 py-1 bg-card text-xs sm:text-sm rounded-full border text-center">
                           {FEATURE_DESCRIPTIONS.MONTHLY_PRICE(CURRENT_PLAN.MARKETING_PRICE)}
                         </span>
-                        <span className="px-2 sm:px-3 py-1 bg-white dark:bg-gray-800 text-xs sm:text-sm rounded-full border text-center sm:col-span-2 lg:col-span-1 xl:col-span-2">
+                        <span className="px-2 sm:px-3 py-1 bg-card text-xs sm:text-sm rounded-full border text-center sm:col-span-2 lg:col-span-1 xl:col-span-2">
                           🎯 Up to 10 playlists
                         </span>
                       </div>

@@ -92,7 +92,9 @@
   --info-foreground: #ffffff;
   --info-hover: #1d4ed8; /* blue-700 */
   --info-muted: #dbeafe; /* blue-100 - more visible on light */
+}
 
+.dark {
   /* RadioWash Semantic Colors - Dark Mode */
   --brand: #9333ea; /* purple-600 - consistent across themes */
   --brand-foreground: #ffffff;

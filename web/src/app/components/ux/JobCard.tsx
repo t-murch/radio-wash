@@ -108,7 +108,7 @@ export function JobCard({ job }: { job: Job }) {
             <div className="flex items-center space-x-2">
               {!isConnected && job.status === 'Processing' && (
                 <span
-                  className="text-xs text-yellow-500"
+                  className="text-xs text-warning"
                   title="Real-time updates unavailable"
                 >
                   ⚠️
@@ -143,7 +143,7 @@ export function JobCard({ job }: { job: Job }) {
               {displayProcessedTracks} of {displayTotalTracks} tracks
             </span>
             {progressState.estimatedTimeRemaining && useRealtimeProgress && (
-              <span className="text-green-600">
+              <span className="text-success">
                 ~{progressState.estimatedTimeRemaining} remaining
               </span>
             )}
@@ -151,7 +151,7 @@ export function JobCard({ job }: { job: Job }) {
 
           {connectionError && (
             <div
-              className="text-xs text-red-500 truncate"
+              className="text-xs text-error truncate"
               title={connectionError}
             >
               Connection error: {connectionError}

@@ -16,7 +16,7 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="bg-card shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="text-2xl font-bold text-green-600">RadioWash</div>
+          <div className="text-2xl font-bold text-success">RadioWash</div>
           <div className="space-x-6">
             {/* <a */}
             {/*   href="#how-it-works" */}
@@ -349,7 +349,7 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 bg-gradient-to-r from-green-600 to-blue-600 text-primary-foreground">
+      <section className="py-16 bg-gradient-to-r from-success to-info text-primary-foreground">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">
             Ready to Clean Your Playlists?
@@ -359,7 +359,7 @@ export default function LandingPage() {
           </p>
           <button
             onClick={handleGetStarted}
-            className="bg-card text-green-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
+            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
           >
             Get Started for Free
           </button>
@@ -370,7 +370,7 @@ export default function LandingPage() {
       <footer className="bg-card border-t py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <div className="mb-4">
-            <span className="text-xl font-bold text-green-600">RadioWash</span>
+            <span className="text-xl font-bold text-success">RadioWash</span>
           </div>
           <p className="text-muted-foreground mb-4">
             Making music safe for everyone, everywhere.
