@@ -1,15 +1,8 @@
-'use client';
-import { Smile, User } from 'lucide-react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ThemeToggle } from '../ui/theme-toggle';
 
 export default function LandingPage() {
-  const router = useRouter();
-
-  const handleGetStarted = () => {
-    router.push('/auth');
-  };
 
   return (
     <div className="min-h-screen">
@@ -18,24 +11,12 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="text-2xl font-bold text-success">RadioWash</div>
           <div className="flex items-center space-x-3 sm:space-x-6">
-            {/* <a */}
-            {/*   href="#how-it-works" */}
-            {/*   className="text-muted-foreground hover:text-foreground" */}
-            {/* > */}
-            {/*   How It Works */}
-            {/* </a> */}
-            {/* <a href="#features" className="text-muted-foreground hover:text-foreground"> */}
-            {/*   Features */}
-            {/* </a> */}
-            {/* <a href="#faq" className="text-muted-foreground hover:text-foreground"> */}
-            {/*   FAQ */}
-            {/* </a> */}
-            <button
-              onClick={handleGetStarted}
-              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base"
+            <Link
+              href="/auth"
+              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base inline-block"
             >
               Get Started
-            </button>
+            </Link>
             <ThemeToggle />
           </div>
         </div>
@@ -53,12 +34,12 @@ export default function LandingPage() {
             Spotify playlists. Perfect for family listening, work environments,
             or personal preference.
           </p>
-          <button
-            onClick={handleGetStarted}
-            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors"
+          <Link
+            href="/auth"
+            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors inline-block"
           >
             Connect with Spotify - It&apos;s Free
-          </button>
+          </Link>
           <p className="text-sm text-muted-foreground mt-4">
             No credit card required • 30 seconds to start
           </p>
@@ -158,50 +139,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works */}
-      {/* <section id="how-it-works" className="py-16 bg-card"> */}
-      {/*   <div className="max-w-6xl mx-auto px-4"> */}
-      {/*     <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2> */}
-      {/**/}
-      {/*     <div className="grid md:grid-cols-3 gap-8"> */}
-      {/*       {[ */}
-      {/*         { */}
-      {/*           step: 1, */}
-      {/*           title: 'Connect Your Spotify', */}
-      {/*           url: '/screenshots/test-signup.png', */}
-      {/*           description: */}
-      {/*             'Securely connect your Spotify account with one click', */}
-      {/*         }, */}
-      {/*         { */}
-      {/*           step: 2, */}
-      {/*           title: 'Select Playlist', */}
-      {/*           url: '/screenshots/test01.png', */}
-      {/*           description: */}
-      {/*             'Choose any playlist you want to clean from your library', */}
-      {/*         }, */}
-      {/*         { */}
-      {/*           step: 3, */}
-      {/*           title: 'Get Clean Version', */}
-      {/*           url: '/screenshots/test02.png', */}
-      {/*           description: */}
-      {/*             'We create a new playlist with clean alternatives automatically', */}
-      {/*         }, */}
-      {/*       ].map((item) => ( */}
-      {/*         <div key={item.step} className="text-center"> */}
-      {/*           <div className="bg-green-100 text-green-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-4 text-xl font-bold"> */}
-      {/*             {item.step} */}
-      {/*           </div> */}
-      {/*           <h3 className="text-xl font-semibold mb-3">{item.title}</h3> */}
-      {/*           <div className="border rounded-lg overflow-hidden shadow-md mb-4 bg-muted h-40 flex items-center justify-center"> */}
-      {/*             <Image src={item.url} alt={''} width={352} height={160} /> */}
-      {/*           </div> */}
-      {/*           <p className="text-muted-foreground">{item.description}</p> */}
-      {/*         </div> */}
-      {/*       ))} */}
-      {/*     </div> */}
-      {/*   </div> */}
-      {/* </section> */}
-
       {/* Features */}
       <section id="features" className="py-16 bg-background">
         <div className="max-w-6xl mx-auto px-4">
@@ -274,7 +211,7 @@ export default function LandingPage() {
               <div className="flex items-center">
                 <Image
                   src={'/user.svg'}
-                  alt="user"
+                  alt="Sarah M. - Parent testimonial avatar"
                   height={20}
                   width={20}
                   className="w-10 h-10 bg-muted rounded-full mr-3"
@@ -293,7 +230,7 @@ export default function LandingPage() {
               <div className="flex items-center">
                 <Image
                   src={'/user.svg'}
-                  alt="user"
+                  alt="Mike T. - Office Manager testimonial avatar"
                   height={20}
                   width={20}
                   className="w-10 h-10 bg-muted rounded-full mr-3"
@@ -357,12 +294,12 @@ export default function LandingPage() {
           <p className="text-xl mb-8 opacity-90">
             Join thousands of users who&apos;ve made their music family-friendly
           </p>
-          <button
-            onClick={handleGetStarted}
-            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors"
+          <Link
+            href="/auth"
+            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors inline-block"
           >
             Get Started for Free
-          </button>
+          </Link>
         </div>
       </section>
 
@@ -375,17 +312,6 @@ export default function LandingPage() {
           <p className="text-muted-foreground mb-4">
             Making music safe for everyone, everywhere.
           </p>
-          {/* <div className="space-x-6 text-sm"> */}
-          {/*   <a href="/privacy" className="hover:text-gray-300"> */}
-          {/*     Privacy Policy */}
-          {/*   </a> */}
-          {/*   <a href="/terms" className="hover:text-gray-300"> */}
-          {/*     Terms of Service */}
-          {/*   </a> */}
-          {/*   <a href="/contact" className="hover:text-gray-300"> */}
-          {/*     Contact */}
-          {/*   </a> */}
-          {/* </div> */}
         </div>
       </footer>
     </div>
