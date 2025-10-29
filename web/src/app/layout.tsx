@@ -4,7 +4,7 @@ import { ThemeProvider } from './providers/ThemeProvider';
 import { Toaster } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
 import { Metadata, Viewport } from 'next';
-import Script from 'next/script';
+import PlausibleProvider from 'next-plausible';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -81,20 +81,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'radiowash.com';
-  const enableAnalytics = process.env.NEXT_PUBLIC_ENABLE_ANALYTICS === 'true';
-
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <PlausibleProvider domain="radiowash.com" />
+      </head>
       <body>
-        {enableAnalytics && (
-          <Script
-            defer
-            data-domain={plausibleDomain}
-            src="https://plausible.io/js/script.js"
-            strategy="afterInteractive"
-          />
-        )}
         <ThemeProvider
           attribute="class"
           // defaultTheme="system"
