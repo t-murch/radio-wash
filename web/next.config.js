@@ -58,6 +58,22 @@ const nextConfig = {
       },
     ], // Spotify image domains
   },
+  // SEO: Redirect www to apex domain
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'www.radiowash.com',
+          },
+        ],
+        destination: 'https://radiowash.com/:path*',
+        permanent: true, // 301 redirect for SEO
+      },
+    ];
+  },
 };
 
 const plugins = [
