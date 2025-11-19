@@ -46,10 +46,20 @@ public class SpotifyService : ISpotifyService
       {
         var response = await _httpClient.SendAsync(request);
 
-        // If unauthorized, try to refresh token and retry once more
-        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && attempt == 1)
+        // If unauthorized or forbidden, try to refresh token and retry once more
+        // Spotify sometimes returns 403 instead of 401 for expired/revoked tokens
+        if ((response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+             response.StatusCode == System.Net.HttpStatusCode.Forbidden) && attempt == 1)
         {
-          _logger.LogWarning("Spotify API returned 401, attempting token refresh for user {UserId}", userId);
+          _logger.LogWarning("Spotify API returned {StatusCode}, attempting token refresh for user {UserId}",
+            (int)response.StatusCode, userId);
+
+          // Log response body for 403 errors to capture Spotify's error details
+          if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+          {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Spotify 403 response body: {ErrorBody}", errorBody);
+          }
 
           var refreshed = await _musicTokenService.RefreshTokensAsync(userId, "spotify");
           if (refreshed)
@@ -69,7 +79,12 @@ public class SpotifyService : ISpotifyService
             }
 
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+            _logger.LogInformation("Token refreshed successfully, retrying request for user {UserId}", userId);
             continue; // Retry with new token
+          }
+          else
+          {
+            _logger.LogError("Token refresh failed for user {UserId}. User may need to re-authenticate with Spotify", userId);
           }
         }
 

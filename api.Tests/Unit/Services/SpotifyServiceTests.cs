@@ -131,6 +131,215 @@ public class SpotifyServiceTests
   }
 
   [Fact]
+  public async Task GetUserProfileAsync_WithForbiddenResponse_RefreshesTokenAndRetries()
+  {
+    // Arrange
+    var userId = 1;
+    var oldToken = "expired_token";
+    var newToken = "refreshed_token";
+    var expectedProfile = new SpotifyUserProfile
+    {
+      Id = "spotify_user_123",
+      DisplayName = "Test User",
+      Email = "test@example.com"
+    };
+
+    _mockMusicTokenService.SetupSequence(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync(oldToken)
+        .ReturnsAsync(newToken);
+
+    _mockMusicTokenService.Setup(x => x.RefreshTokensAsync(userId, "spotify"))
+        .ReturnsAsync(true);
+
+    var jsonResponse = JsonSerializer.Serialize(expectedProfile);
+    var forbiddenResponse = new
+    {
+      error = new
+      {
+        status = 403,
+        message = "The access token expired"
+      }
+    };
+
+    // First request returns 403, second request with refreshed token succeeds
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+          Content = new StringContent(JsonSerializer.Serialize(forbiddenResponse), Encoding.UTF8, "application/json")
+        })
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(jsonResponse, Encoding.UTF8, "application/json")
+        });
+
+    // Act
+    var result = await _spotifyService.GetUserProfileAsync(userId);
+
+    // Assert
+    Assert.NotNull(result);
+    Assert.Equal(expectedProfile.Id, result.Id);
+
+    _mockMusicTokenService.Verify(x => x.RefreshTokensAsync(userId, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.GetValidAccessTokenAsync(userId, "spotify"), Times.Exactly(2));
+  }
+
+  [Fact]
+  public async Task GetUserPlaylistsAsync_WithForbiddenResponse_RefreshesTokenAndRetries()
+  {
+    // Arrange
+    var userId = 1;
+    var oldToken = "expired_token";
+    var newToken = "refreshed_token";
+    var playlist = CreateTestSpotifyPlaylist("playlist1", "Test Playlist");
+
+    var playlistsResponse = new SpotifyPlaylistsResponse
+    {
+      Items = new[] { playlist },
+      Next = null,
+      Total = 1,
+      Limit = 50,
+      Offset = 0
+    };
+
+    _mockMusicTokenService.SetupSequence(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync(oldToken)
+        .ReturnsAsync(newToken);
+
+    _mockMusicTokenService.Setup(x => x.RefreshTokensAsync(userId, "spotify"))
+        .ReturnsAsync(true);
+
+    var forbiddenResponse = new
+    {
+      error = new
+      {
+        status = 403,
+        message = "Insufficient client scope"
+      }
+    };
+
+    // First request returns 403, second request with refreshed token succeeds
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+          Content = new StringContent(JsonSerializer.Serialize(forbiddenResponse), Encoding.UTF8, "application/json")
+        })
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(JsonSerializer.Serialize(playlistsResponse), Encoding.UTF8, "application/json")
+        });
+
+    // Act
+    var result = await _spotifyService.GetUserPlaylistsAsync(userId);
+
+    // Assert
+    var playlists = result.ToList();
+    Assert.Single(playlists);
+    Assert.Equal("playlist1", playlists[0].Id);
+
+    _mockMusicTokenService.Verify(x => x.RefreshTokensAsync(userId, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.GetValidAccessTokenAsync(userId, "spotify"), Times.Exactly(2));
+  }
+
+  [Fact]
+  public async Task GetUserPlaylistsAsync_WithForbiddenAndRefreshFails_ThrowsException()
+  {
+    // Arrange
+    var userId = 1;
+    var oldToken = "expired_token";
+
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync(oldToken);
+
+    _mockMusicTokenService.Setup(x => x.RefreshTokensAsync(userId, "spotify"))
+        .ReturnsAsync(false);
+
+    var forbiddenResponse = new
+    {
+      error = new
+      {
+        status = 403,
+        message = "User revoked access"
+      }
+    };
+
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+          Content = new StringContent(JsonSerializer.Serialize(forbiddenResponse), Encoding.UTF8, "application/json")
+        });
+
+    // Act & Assert
+    await Assert.ThrowsAsync<HttpRequestException>(
+        async () => await _spotifyService.GetUserPlaylistsAsync(userId));
+
+    _mockMusicTokenService.Verify(x => x.RefreshTokensAsync(userId, "spotify"), Times.Once);
+  }
+
+  [Fact]
+  public async Task GetPlaylistTracksAsync_WithForbiddenResponse_RefreshesTokenAndRetries()
+  {
+    // Arrange
+    var userId = 1;
+    var playlistId = "test_playlist";
+    var oldToken = "expired_token";
+    var newToken = "refreshed_token";
+
+    var track = CreateTestSpotifyTrack("track1", "Song One", false);
+    var tracksResponse = new SpotifyPlaylistTracksResponse
+    {
+      Items = new[]
+      {
+        new SpotifyPlaylistTrack { Track = track, AddedAt = "2023-01-01T00:00:00Z" }
+      },
+      Next = null,
+      Total = 1,
+      Limit = 100,
+      Offset = 0
+    };
+
+    _mockMusicTokenService.SetupSequence(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync(oldToken)
+        .ReturnsAsync(newToken);
+
+    _mockMusicTokenService.Setup(x => x.RefreshTokensAsync(userId, "spotify"))
+        .ReturnsAsync(true);
+
+    // First request returns 403, second request with refreshed token succeeds
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.Forbidden))
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(JsonSerializer.Serialize(tracksResponse), Encoding.UTF8, "application/json")
+        });
+
+    // Act
+    var result = await _spotifyService.GetPlaylistTracksAsync(userId, playlistId);
+
+    // Assert
+    var tracks = result.ToList();
+    Assert.Single(tracks);
+    Assert.Equal("track1", tracks[0].Id);
+
+    _mockMusicTokenService.Verify(x => x.RefreshTokensAsync(userId, "spotify"), Times.Once);
+  }
+
+  [Fact]
   public async Task GetUserPlaylistsAsync_WithPaginatedResponse_ReturnsAllPlaylists()
   {
     // Arrange
