@@ -4,6 +4,7 @@ import { usePlaylistProgressRealtime } from '@/hooks/usePlaylistProgressRealtime
 import { useAuthToken } from '@/hooks/useAuthToken';
 import { logger } from '@/lib/logger';
 import { useEffect, useRef } from 'react';
+import { ClientDate } from '@/components/ui/ClientDate';
 
 export function JobCard({ job }: { job: Job }) {
   const { authToken } = useAuthToken();
@@ -231,7 +232,7 @@ export function JobCard({ job }: { job: Job }) {
         </div>
       )}
       <p className="text-xs text-muted-foreground mt-2 text-right">
-        Updated: {new Date(job.updatedAt).toLocaleString()}
+        Updated: <ClientDate date={job.updatedAt} />
       </p>
     </Link>
   );

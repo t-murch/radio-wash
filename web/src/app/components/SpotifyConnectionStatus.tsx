@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '../lib/supabase/client';
+import { ClientDate } from '@/components/ui/ClientDate';
 
 const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
@@ -155,13 +156,19 @@ export function SpotifyConnectionStatus({
               {status.connected ? 'Spotify Connected' : 'Spotify Not Connected'}
             </h3>
             <p className="text-sm text-muted-foreground">
-              {status.connected
-                ? `Connected ${
-                    status.connectedAt
-                      ? new Date(status.connectedAt).toLocaleDateString()
-                      : ''
-                  }`
-                : 'Connect your Spotify account to access playlists'}
+              {status.connected ? (
+                <>
+                  Connected{' '}
+                  {status.connectedAt && (
+                    <ClientDate
+                      date={status.connectedAt}
+                      format="toLocaleDateString"
+                    />
+                  )}
+                </>
+              ) : (
+                'Connect your Spotify account to access playlists'
+              )}
             </p>
           </div>
         </div>
@@ -188,7 +195,7 @@ export function SpotifyConnectionStatus({
       {status.connected && status.lastRefreshAt && (
         <div className="mt-4 pt-4">
           <p className="text-xs text-muted-foreground">
-            Last refreshed: {new Date(status.lastRefreshAt).toLocaleString()}
+            Last refreshed: <ClientDate date={status.lastRefreshAt} />
           </p>
         </div>
       )}
