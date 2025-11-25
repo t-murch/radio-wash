@@ -34,17 +34,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Redirect authenticated users away from auth page to dashboard
+  // This prevents timing issues where the auth page might not detect
+  // a freshly refreshed session, causing users to see the login form
+  if (user && request.nextUrl.pathname === '/auth') {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
   return response;
 }
-
-export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
-};
