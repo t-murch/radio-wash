@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 import { AuthForm } from './auth-form';
+import { ServiceUnavailableBanner } from '../components/ux/ServiceUnavailableBanner';
 
 export const metadata: Metadata = {
   title: 'Sign In',
@@ -64,6 +65,9 @@ export default async function LoginPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+      <div className="w-full max-w-md mb-8">
+        <ServiceUnavailableBanner />
+      </div>
       <AuthForm signInWithSpotify={signInWithSpotify} />
     </div>
   );

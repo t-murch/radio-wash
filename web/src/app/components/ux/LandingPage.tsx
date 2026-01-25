@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggle } from '../ui/theme-toggle';
+import { ServiceUnavailableBanner } from './ServiceUnavailableBanner';
 
 export default function LandingPage() {
 
@@ -11,12 +12,13 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="text-2xl font-bold text-success">RadioWash</div>
           <div className="flex items-center space-x-3 sm:space-x-6">
-            <Link
-              href="/auth"
-              className="bg-success text-success-foreground px-3 py-2 sm:px-4 rounded-lg hover:bg-success-hover text-sm sm:text-base inline-block"
+            <button
+              disabled
+              className="bg-muted text-muted-foreground px-3 py-2 sm:px-4 rounded-lg cursor-not-allowed text-sm sm:text-base inline-block"
+              title="Service Temporarily Unavailable"
             >
               Get Started
-            </Link>
+            </button>
             <ThemeToggle />
           </div>
         </div>
@@ -34,12 +36,9 @@ export default function LandingPage() {
             Spotify playlists. Perfect for family listening, work environments,
             or personal preference.
           </p>
-          <Link
-            href="/auth"
-            className="bg-success text-success-foreground px-8 py-4 rounded-lg text-lg font-semibold hover:bg-success-hover transition-colors inline-block"
-          >
-            Connect with Spotify - It&apos;s Free
-          </Link>
+          
+          <ServiceUnavailableBanner />
+
           <p className="text-sm text-muted-foreground mt-4">
             No credit card required • 30 seconds to start
           </p>
@@ -294,12 +293,13 @@ export default function LandingPage() {
           <p className="text-xl mb-8 opacity-90">
             Join thousands of users who&apos;ve made their music family-friendly
           </p>
-          <Link
-            href="/auth"
-            className="bg-card text-success px-8 py-4 rounded-lg text-lg font-semibold hover:bg-muted transition-colors inline-block"
+          <button
+            disabled
+            className="bg-card text-muted-foreground px-8 py-4 rounded-lg text-lg font-semibold cursor-not-allowed inline-block opacity-75"
+            title="Service Temporarily Unavailable"
           >
             Get Started for Free
-          </Link>
+          </button>
         </div>
       </section>
 
