@@ -95,3 +95,9 @@ chrome-user-data/
 .chrome/
 playwright-report/
 test-results/
+
+
+sentry-*
+
+.gemini/
+GEMINI.md
