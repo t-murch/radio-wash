@@ -42,20 +42,9 @@ public class LocalSupabaseAuthenticationTests : IClassFixture<LocalSupabaseWebAp
         _testUserToken = authResponse.access_token;
         _testUserId = authResponse.user?.id;
 
-        // Wait a moment for the auth trigger to create the user in our Users table
-        await Task.Delay(500);
-
-        // Verify the user was created by the trigger
+        // Wait for the auth trigger to create the user in our Users table
         using var scope = _factory.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
-
-        var existingUser = await dbContext.Users.FirstOrDefaultAsync(u => u.SupabaseId == _testUserId);
-        if (existingUser == null)
-        {
-            throw new InvalidOperationException(
-                $"User with SupabaseId {_testUserId} was not created by the auth trigger. " +
-                "Make sure the CreateAuthUserTrigger migration has been applied.");
-        }
+        await WaitForUserCreationAsync(scope, _testUserId!, timeout: TimeSpan.FromSeconds(5));
     }
 
     public async Task DisposeAsync()
@@ -221,7 +210,8 @@ public class LocalSupabaseAuthenticationTests : IClassFixture<LocalSupabaseWebAp
         var user2Auth = await _factory.CreateTestUserAsync(user2Email, user2Password);
 
         // Wait for trigger to create user
-        await Task.Delay(500);
+        using var scope = _factory.Services.CreateScope();
+        await WaitForUserCreationAsync(scope, user2Auth.user!.id!, timeout: TimeSpan.FromSeconds(5));
 
         try
         {
@@ -270,5 +260,29 @@ public class LocalSupabaseAuthenticationTests : IClassFixture<LocalSupabaseWebAp
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         return $"{header}.{payload}.{signature}";
+    }
+
+    /// <summary>
+    /// Polls the database until the user is created by the auth trigger or timeout is reached.
+    /// </summary>
+    private static async Task WaitForUserCreationAsync(
+        IServiceScope scope,
+        string userId,
+        TimeSpan timeout)
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+        var deadline = DateTime.UtcNow.Add(timeout);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var user = await dbContext.Users
+                .FirstOrDefaultAsync(u => u.SupabaseId == userId);
+            if (user != null) return;
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"User with SupabaseId {userId} was not created by the auth trigger within {timeout}. " +
+            "Make sure the CreateAuthUserTrigger migration has been applied.");
     }
 }

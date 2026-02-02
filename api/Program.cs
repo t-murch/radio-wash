@@ -26,6 +26,12 @@ var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000
 // Services
 builder.Services.AddHttpClient();
 
+// Named HttpClient for JWKS fetching with appropriate timeout
+builder.Services.AddHttpClient("JwksClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
 // Configure Data Protection with persistent key storage
 builder.Services.AddDataProtection()
     .PersistKeysToDbContext<RadioWashDbContext>()
@@ -143,8 +149,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     options.Audience = "authenticated";
 
     // Configure JWKS key management with caching
-    // Use a static HttpClient to avoid socket exhaustion
-    var jwksHttpClient = new HttpClient();
+    // Use IHttpClientFactory for proper HttpClient lifecycle management
+    var httpClientFactory = builder.Services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>();
+    var jwksHttpClient = httpClientFactory.CreateClient("JwksClient");
+    var jwksLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
     JsonWebKeySet? cachedJwks = null;
     DateTime cacheExpiry = DateTime.MinValue;
     var jwksCacheLock = new object();
@@ -162,15 +170,39 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Use IssuerSigningKeyResolver with caching to avoid fetching JWKS on every request
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
-            // Thread-safe cache check and refresh
+            // Double-checked locking: check cache without lock first for performance
+            if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
+            {
+                return cachedJwks.GetSigningKeys();
+            }
+
             lock (jwksCacheLock)
             {
-                if (cachedJwks == null || DateTime.UtcNow >= cacheExpiry)
+                // Double-check after acquiring lock
+                if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
+                {
+                    return cachedJwks.GetSigningKeys();
+                }
+
+                try
                 {
                     var jwksJson = jwksHttpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
                     cachedJwks = new JsonWebKeySet(jwksJson);
                     cacheExpiry = DateTime.UtcNow.Add(jwksCacheDuration);
                 }
+                catch (Exception ex)
+                {
+                    jwksLogger.LogError(ex, "Failed to fetch JWKS from {Url}", jwksUrl);
+
+                    // Use expired cache as fallback if available
+                    if (cachedJwks != null)
+                    {
+                        jwksLogger.LogWarning("Using expired JWKS cache as fallback");
+                        return cachedJwks.GetSigningKeys();
+                    }
+                    throw;
+                }
+
                 return cachedJwks.GetSigningKeys();
             }
         }
@@ -212,50 +244,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         }
     };
 });
-// builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-// .AddJwtBearer(options =>
-// {
-//     options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Test");
-//
-//     var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
-//     var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
-//     options.Authority = $"{supabasePublicUrl}/auth/v1";
-//     options.Audience = "authenticated";
-//     options.TokenValidationParameters = new TokenValidationParameters
-//     {
-//         ValidateIssuer = true,
-//         ValidateAudience = true,
-//         ValidateLifetime = true,
-//         ValidateIssuerSigningKey = true,
-//         ValidIssuer = $"{supabasePublicUrl}/auth/v1",
-//         ValidAudience = "authenticated",
-//         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
-//     };
-//
-//     options.Events = new JwtBearerEvents
-//     {
-//         OnMessageReceived = context =>
-//         {
-//             // For SignalR connections, read token from query string (WebSocket/SSE cannot use headers)
-//             var accessToken = context.Request.Query["access_token"];
-//             var path = context.HttpContext.Request.Path;
-//             if (!string.IsNullOrEmpty(accessToken) &&
-//             path.StartsWithSegments("/hubs"))
-//             {
-//                 context.Token = accessToken;
-//                 return Task.CompletedTask;
-//             }
-//
-//             // For regular HTTP requests, read token from Authorization header
-//             var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
-//             if (authHeader?.StartsWith("Bearer ") == true)
-//             {
-//                 context.Token = authHeader.Substring("Bearer ".Length).Trim();
-//             }
-//             return Task.CompletedTask;
-//         }
-//     };
-// });
 
 // Supabase Gotrue Client
 builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
