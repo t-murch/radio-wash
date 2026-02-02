@@ -4,8 +4,8 @@
   "license": "MIT",
   "scripts": {
     "prepare": "nx g @nx-dotnet/core:restore",
-    "dev:api": "docker compose -f docker-compose.yml up",
-    "dev:web": "nx run web:dev --experimental-https",
+    "dev:api": "docker compose -f docker-compose.yml up --build",
+    "dev:web": "nx run web:dev --experimental-https -H 127.0.0.1",
     "test": "cd web && vitest",
     "test:watch": "cd web && vitest --watch",
     "test:ui": "cd web && vitest --ui",
