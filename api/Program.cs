@@ -142,8 +142,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     options.SaveToken = true;
     options.Audience = "authenticated";
 
-    // Configure token validation with JWKS key resolver
-    // This explicitly fetches keys from the JWKS endpoint for each validation
+    // Configure JWKS key management with caching
+    // Use a static HttpClient to avoid socket exhaustion
+    var jwksHttpClient = new HttpClient();
+    JsonWebKeySet? cachedJwks = null;
+    DateTime cacheExpiry = DateTime.MinValue;
+    var jwksCacheLock = new object();
+    var jwksCacheDuration = TimeSpan.FromHours(1); // Cache JWKS for 1 hour
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -153,14 +159,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         ValidIssuer = issuer,
         ValidAudience = "authenticated",
         ClockSkew = TimeSpan.FromMinutes(1),
-        // Use IssuerSigningKeyResolver to dynamically fetch keys from JWKS
+        // Use IssuerSigningKeyResolver with caching to avoid fetching JWKS on every request
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
-            // Fetch JWKS synchronously (cached by the HTTP client)
-            using var httpClient = new HttpClient();
-            var jwksJson = httpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
-            var jwks = new JsonWebKeySet(jwksJson);
-            return jwks.GetSigningKeys();
+            // Thread-safe cache check and refresh
+            lock (jwksCacheLock)
+            {
+                if (cachedJwks == null || DateTime.UtcNow >= cacheExpiry)
+                {
+                    var jwksJson = jwksHttpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
+                    cachedJwks = new JsonWebKeySet(jwksJson);
+                    cacheExpiry = DateTime.UtcNow.Add(jwksCacheDuration);
+                }
+                return cachedJwks.GetSigningKeys();
+            }
         }
     };
 

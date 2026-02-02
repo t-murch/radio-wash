@@ -28,6 +28,8 @@ export async function GET(request: Request) {
         data: { session },
       } = await supabase.auth.getSession();
 
+      console.log(`auth/callback session: ${JSON.stringify(session, null, 2)}`);
+
       if (
         session?.provider_token &&
         session?.provider_refresh_token &&
@@ -36,6 +38,12 @@ export async function GET(request: Request) {
         try {
           const apiUrl =
             process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159';
+
+          console.log(
+            'Issuer of token being sent:',
+            JSON.parse(atob(session.access_token.split('.')[1])).iss
+          );
+
           await fetch(`${apiUrl}/api/auth/spotify/tokens`, {
             method: 'POST',
             headers: {
@@ -56,7 +64,6 @@ export async function GET(request: Request) {
 
       if (platform === 'spotify') {
         console.log('Redirecting to Spotify connection flow');
-        return NextResponse.redirect(`${baseOrigin}${next}`);
       } else if (platform === 'apple') {
         console.log('Redirecting to Apple connection flow');
       }
