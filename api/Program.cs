@@ -122,6 +122,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
     var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
+    // Supabase:Url is the internal Docker network URL for container-to-container communication
+    // Used for JWKS fetching when running in Docker
+    var supabaseInternalUrl = builder.Configuration["Supabase:Url"] ?? supabasePublicUrl;
 
     // Safety check for missing config
     if (string.IsNullOrEmpty(supabasePublicUrl))
@@ -129,8 +132,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         throw new InvalidOperationException("Supabase:PublicUrl is missing from configuration.");
     }
 
+    // Issuer must match what's in the JWT (the public URL that GoTrue uses)
     var issuer = $"{supabasePublicUrl}/auth/v1";
-    var jwksUrl = $"{supabasePublicUrl}/auth/v1/.well-known/jwks.json";
+    // JWKS URL uses internal URL for Docker networking (falls back to public URL if not set)
+    var jwksUrl = $"{supabaseInternalUrl}/auth/v1/.well-known/jwks.json";
 
     // Don't require HTTPS in development (local Supabase uses HTTP)
     options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing");
