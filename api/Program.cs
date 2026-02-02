@@ -88,9 +88,9 @@ builder.Services.AddScoped<SpotifyPlaylistCleaner>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {
-  var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
-      .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
-  return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
+    var settings = builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName)
+        .Get<RadioWash.Api.Configuration.BatchProcessingSettings>() ?? new RadioWash.Api.Configuration.BatchProcessingSettings();
+    return new BatchConfiguration(settings.BatchSize, settings.ProgressReportingThreshold, settings.DatabasePersistenceThreshold);
 });
 
 // SignalR
@@ -115,51 +115,130 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Authentication - Configure for Supabase JWT
+// Authentication - Configure for Supabase JWT using JWKS
+// Supabase uses asymmetric keys (ES256) with a JWKS endpoint for token verification.
+// This is the recommended approach per Supabase documentation.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Test");
-
     var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
-    var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
-    options.Authority = $"{supabasePublicUrl}/auth/v1";
+
+    // Safety check for missing config
+    if (string.IsNullOrEmpty(supabasePublicUrl))
+    {
+        throw new InvalidOperationException("Supabase:PublicUrl is missing from configuration.");
+    }
+
+    var issuer = $"{supabasePublicUrl}/auth/v1";
+    var jwksUrl = $"{supabasePublicUrl}/auth/v1/.well-known/jwks.json";
+
+    // Don't require HTTPS in development (local Supabase uses HTTP)
+    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing");
+    options.SaveToken = true;
     options.Audience = "authenticated";
+
+    // Configure token validation with JWKS key resolver
+    // This explicitly fetches keys from the JWKS endpoint for each validation
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = $"{supabasePublicUrl}/auth/v1",
+        ValidIssuer = issuer,
         ValidAudience = "authenticated",
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
+        ClockSkew = TimeSpan.FromMinutes(1),
+        // Use IssuerSigningKeyResolver to dynamically fetch keys from JWKS
+        IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
+        {
+            // Fetch JWKS synchronously (cached by the HTTP client)
+            using var httpClient = new HttpClient();
+            var jwksJson = httpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
+            var jwks = new JsonWebKeySet(jwksJson);
+            return jwks.GetSigningKeys();
+        }
     };
 
     options.Events = new JwtBearerEvents
     {
+        // Log authentication failures for debugging
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError("Authentication Failed: {Message}", context.Exception.Message);
+            if (context.Exception.InnerException != null)
+            {
+                logger.LogError("Inner Exception: {InnerMessage}", context.Exception.InnerException.Message);
+            }
+            return Task.CompletedTask;
+        },
+
+        // Log successful token validation
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("Token successfully validated for user: {Subject}",
+                context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+            return Task.CompletedTask;
+        },
+
+        // Handle SignalR tokens from query string (WebSockets can't use headers)
         OnMessageReceived = context =>
         {
-            // For SignalR connections, read token from query string (WebSocket/SSE cannot use headers)
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) &&
-            path.StartsWithSegments("/hubs"))
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
             {
                 context.Token = accessToken;
-                return Task.CompletedTask;
-            }
-
-            // For regular HTTP requests, read token from Authorization header
-            var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
-            if (authHeader?.StartsWith("Bearer ") == true)
-            {
-                context.Token = authHeader.Substring("Bearer ".Length).Trim();
             }
             return Task.CompletedTask;
         }
     };
 });
+// builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// .AddJwtBearer(options =>
+// {
+//     options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Test");
+//
+//     var supabasePublicUrl = builder.Configuration["Supabase:PublicUrl"];
+//     var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
+//     options.Authority = $"{supabasePublicUrl}/auth/v1";
+//     options.Audience = "authenticated";
+//     options.TokenValidationParameters = new TokenValidationParameters
+//     {
+//         ValidateIssuer = true,
+//         ValidateAudience = true,
+//         ValidateLifetime = true,
+//         ValidateIssuerSigningKey = true,
+//         ValidIssuer = $"{supabasePublicUrl}/auth/v1",
+//         ValidAudience = "authenticated",
+//         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!))
+//     };
+//
+//     options.Events = new JwtBearerEvents
+//     {
+//         OnMessageReceived = context =>
+//         {
+//             // For SignalR connections, read token from query string (WebSocket/SSE cannot use headers)
+//             var accessToken = context.Request.Query["access_token"];
+//             var path = context.HttpContext.Request.Path;
+//             if (!string.IsNullOrEmpty(accessToken) &&
+//             path.StartsWithSegments("/hubs"))
+//             {
+//                 context.Token = accessToken;
+//                 return Task.CompletedTask;
+//             }
+//
+//             // For regular HTTP requests, read token from Authorization header
+//             var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+//             if (authHeader?.StartsWith("Bearer ") == true)
+//             {
+//                 context.Token = authHeader.Substring("Bearer ".Length).Trim();
+//             }
+//             return Task.CompletedTask;
+//         }
+//     };
+// });
 
 // Supabase Gotrue Client
 builder.Services.AddSingleton<Supabase.Gotrue.Client>(provider =>
@@ -273,45 +352,45 @@ if (app.Environment.IsDevelopment())
 var skipMigrations = app.Configuration.GetValue<bool>("SkipMigrations");
 if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
 {
-  using (var scope = app.Services.CreateScope())
-  {
-    var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
-    var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+        var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    try
-    {
-      dbContext.Database.Migrate();
-      migrationLogger.LogInformation("Database migrations applied successfully");
+        try
+        {
+            dbContext.Database.Migrate();
+            migrationLogger.LogInformation("Database migrations applied successfully");
 
-      // Seed subscription plans
-      await RadioWash.Api.Infrastructure.Data.DatabaseSeeder.SeedSubscriptionPlansAsync(dbContext, app.Configuration);
-      migrationLogger.LogInformation("Database seeding completed successfully");
-    }
-    catch (Exception ex)
-    {
-      migrationLogger.LogError(ex, "Error applying database migrations or seeding");
-      throw;
-    }
+            // Seed subscription plans
+            await RadioWash.Api.Infrastructure.Data.DatabaseSeeder.SeedSubscriptionPlansAsync(dbContext, app.Configuration);
+            migrationLogger.LogInformation("Database seeding completed successfully");
+        }
+        catch (Exception ex)
+        {
+            migrationLogger.LogError(ex, "Error applying database migrations or seeding");
+            throw;
+        }
 
-    // Validate Stripe configuration
-    var stripeHealthCheck = scope.ServiceProvider.GetRequiredService<IStripeHealthCheckService>();
-    var stripeConfigValid = await stripeHealthCheck.ValidateConfigurationAsync();
-    if (!stripeConfigValid)
-    {
-      migrationLogger.LogError("Stripe configuration validation failed - application will not start");
-      throw new InvalidOperationException("Stripe configuration is invalid");
+        // Validate Stripe configuration
+        var stripeHealthCheck = scope.ServiceProvider.GetRequiredService<IStripeHealthCheckService>();
+        var stripeConfigValid = await stripeHealthCheck.ValidateConfigurationAsync();
+        if (!stripeConfigValid)
+        {
+            migrationLogger.LogError("Stripe configuration validation failed - application will not start");
+            throw new InvalidOperationException("Stripe configuration is invalid");
+        }
+
+        // Test Stripe connectivity in non-test environments
+        if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test"))
+        {
+            var stripeConnectivityOk = await stripeHealthCheck.TestConnectivityAsync();
+            if (!stripeConnectivityOk)
+            {
+                migrationLogger.LogWarning("Stripe connectivity test failed - check network connectivity and API keys");
+            }
+        }
     }
-    
-    // Test Stripe connectivity in non-test environments
-    if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test"))
-    {
-      var stripeConnectivityOk = await stripeHealthCheck.TestConnectivityAsync();
-      if (!stripeConnectivityOk)
-      {
-        migrationLogger.LogWarning("Stripe connectivity test failed - check network connectivity and API keys");
-      }
-    }
-  }
 }
 
 app.UseCors("AllowFrontend");
@@ -340,14 +419,14 @@ logger.LogInformation("SignalR Hub mapped at /hubs/playlist-progress with transp
 var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); // Use same flag for consistency
 if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
-  app.UseHangfireDashboard();
+    app.UseHangfireDashboard();
 
-  // Initialize scheduled sync jobs
-  using (var scope = app.Services.CreateScope())
-  {
-    var syncScheduler = scope.ServiceProvider.GetRequiredService<ISyncSchedulerService>();
-    syncScheduler.InitializeScheduledJobs();
-  }
+    // Initialize scheduled sync jobs
+    using (var scope = app.Services.CreateScope())
+    {
+        var syncScheduler = scope.ServiceProvider.GetRequiredService<ISyncSchedulerService>();
+        syncScheduler.InitializeScheduledJobs();
+    }
 }
 
 app.Run();
