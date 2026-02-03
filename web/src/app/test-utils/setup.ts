@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
-import { vi, beforeEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
+import { vi, beforeEach, afterEach } from 'vitest';
 
 // Global mocks
 global.fetch = vi.fn();
@@ -14,20 +15,16 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
-// Mock environment detection
-Object.defineProperty(globalThis, 'window', {
-  value: {
-    location: {
-      href: 'http://localhost:3000',
-    },
-  },
-  writable: true,
-});
-
 beforeEach(() => {
   // Reset all mocks before each test
   vi.clearAllMocks();
-  
+
   // Reset fetch mock
   (global.fetch as any).mockClear();
+});
+
+afterEach(() => {
+  // Clean up React Testing Library renders to prevent scheduler state leaks
+  // between tests when using happy-dom with React 18's concurrent rendering
+  cleanup();
 });

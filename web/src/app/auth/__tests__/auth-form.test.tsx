@@ -81,7 +81,7 @@ describe('AuthForm', () => {
       'w-full',
       'bg-success',
       'hover:bg-success-hover',
-      'focus:ring-green-500'
+      'focus:ring-success'
     );
   });
 

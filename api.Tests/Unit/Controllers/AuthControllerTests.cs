@@ -170,7 +170,7 @@ public class AuthControllerTests
         x => x.Log(
             LogLevel.Error,
             It.IsAny<EventId>(),
-            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Exception occurred while storing Spotify tokens")),
+            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Error storing Spotify tokens")),
             It.IsAny<Exception>(),
             It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
         Times.Once);
