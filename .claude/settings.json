@@ -1,8 +1,4 @@
 {
-  "_readme": "Claude Code configuration. Machine-specific overrides go in settings.local.json (gitignored).",
-  "enabledPlugins": {
-    "ce@claude-essentials": true
-  },
   "permissions": {
     "allow": [
       "Skill",
@@ -49,5 +45,10 @@
       "Bash(git reset --hard)",
       "Bash(git clean -f)"
     ]
-  }
+  },
+  "enabledPlugins": {
+    "ce@claude-essentials": true,
+    "frontend-design@claude-plugins-official": true
+  },
+  "_readme": "Claude Code configuration. Machine-specific overrides go in settings.local.json (gitignored)."
 }

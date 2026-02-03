@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ThemeToggle } from '../ui/theme-toggle';
+import { FloatingFeedbackButton } from './ReportBug-Btn';
 import { ServiceUnavailableBanner } from './ServiceUnavailableBanner';
 
 export default function LandingPage() {
@@ -314,6 +315,8 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+
+      <FloatingFeedbackButton />
     </div>
   );
 }

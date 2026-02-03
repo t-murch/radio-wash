@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 import { AuthForm } from './auth-form';
+import { FloatingFeedbackButton } from '../components/ux/ReportBug-Btn';
 import { ServiceUnavailableBanner } from '../components/ux/ServiceUnavailableBanner';
 
 export const metadata: Metadata = {
@@ -69,6 +70,7 @@ export default async function LoginPage() {
         <ServiceUnavailableBanner />
       </div>
       <AuthForm signInWithSpotify={signInWithSpotify} />
+      <FloatingFeedbackButton />
     </div>
   );
 }
