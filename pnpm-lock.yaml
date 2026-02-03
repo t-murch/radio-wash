@@ -177,9 +177,6 @@ importers:
       eslint-plugin-react-hooks:
         specifier: 5.0.0
         version: 5.0.0(eslint@9.33.0(jiti@2.5.1))
-      happy-dom:
-        specifier: ^18.0.1
-        version: 18.0.1
       jsdom:
         specifier: ^28.0.0
         version: 28.0.0
@@ -12376,6 +12373,7 @@ snapshots:
   '@types/node@20.19.10':
     dependencies:
       undici-types: 6.21.0
+    optional: true
 
   '@types/node@22.15.21':
     dependencies:
@@ -12443,7 +12441,8 @@ snapshots:
 
   '@types/tough-cookie@4.0.5': {}
 
-  '@types/whatwg-mimetype@3.0.2': {}
+  '@types/whatwg-mimetype@3.0.2':
+    optional: true
 
   '@types/ws@8.18.1':
     dependencies:
@@ -14746,6 +14745,7 @@ snapshots:
       '@types/node': 20.19.10
       '@types/whatwg-mimetype': 3.0.2
       whatwg-mimetype: 3.0.0
+    optional: true
 
   has-bigints@1.1.0: {}
 
@@ -17953,7 +17953,8 @@ snapshots:
     dependencies:
       iconv-lite: 0.6.3
 
-  whatwg-mimetype@3.0.0: {}
+  whatwg-mimetype@3.0.0:
+    optional: true
 
   whatwg-mimetype@5.0.0: {}
 

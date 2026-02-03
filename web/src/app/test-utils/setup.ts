@@ -24,7 +24,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Clean up React Testing Library renders to prevent scheduler state leaks
-  // between tests when using happy-dom with React 18's concurrent rendering
+  // Clean up React Testing Library renders to prevent state leaks between tests
   cleanup();
 });
