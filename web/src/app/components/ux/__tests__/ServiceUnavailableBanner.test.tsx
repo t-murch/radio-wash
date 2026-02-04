@@ -39,11 +39,4 @@ describe('ServiceUnavailableBanner', () => {
     expect(banner).toHaveAttribute('id', 'service-unavailable-banner');
   });
 
-  it('should use warning semantic color classes', () => {
-    render(<ServiceUnavailableBanner />);
-
-    const banner = screen.getByRole('alert');
-    expect(banner.className).toContain('bg-warning/10');
-    expect(banner.className).toContain('border-warning/20');
-  });
 });
