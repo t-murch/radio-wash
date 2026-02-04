@@ -17,7 +17,7 @@ export default function LandingPage() {
             {isServiceAvailable ? (
               <Link
                 href="/auth"
-                className="bg-brand text-brand-foreground hover:bg-brand-hover px-3 py-2 sm:px-4 rounded-lg text-sm sm:text-base inline-block"
+                className="bg-success text-success-foreground hover:bg-success-hover px-3 py-2 sm:px-4 rounded-lg text-sm sm:text-base inline-block"
               >
                 Get Started
               </Link>
