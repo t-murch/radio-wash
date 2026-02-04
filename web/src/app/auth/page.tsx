@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 import { AuthForm } from './auth-form';
+import { FloatingFeedbackButton } from '../components/ux/ReportBug-Btn';
 
 export const metadata: Metadata = {
   title: 'Sign In',
@@ -65,6 +66,7 @@ export default async function LoginPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
       <AuthForm signInWithSpotify={signInWithSpotify} />
+      <FloatingFeedbackButton />
     </div>
   );
 }
