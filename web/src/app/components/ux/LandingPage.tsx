@@ -4,7 +4,7 @@ import { ThemeToggle } from '../ui/theme-toggle';
 import { FloatingFeedbackButton } from './ReportBug-Btn';
 import { ServiceUnavailableBanner } from './ServiceUnavailableBanner';
 
-const isServiceAvailable = process.env.NEXT_PUBLIC_SERVICE_AVAILABLE !== 'false';
+const isServiceAvailable = process.env.NEXT_PUBLIC_SERVICE_AVAILABLE === 'true';
 
 export default function LandingPage() {
   return (
@@ -47,7 +47,7 @@ export default function LandingPage() {
             Spotify playlists. Perfect for family listening, work environments,
             or personal preference.
           </p>
-          
+
           {!isServiceAvailable && <ServiceUnavailableBanner />}
 
           <p className="text-sm text-muted-foreground mt-4">
