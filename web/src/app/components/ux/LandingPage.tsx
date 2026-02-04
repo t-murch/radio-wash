@@ -14,9 +14,9 @@ export default function LandingPage() {
           <div className="text-2xl font-bold text-success">RadioWash</div>
           <div className="flex items-center space-x-3 sm:space-x-6">
             <button
-              disabled
-              className="bg-muted text-muted-foreground px-3 py-2 sm:px-4 rounded-lg cursor-not-allowed text-sm sm:text-base inline-block"
-              title="Service Temporarily Unavailable"
+              aria-disabled="true"
+              aria-describedby="service-unavailable-banner"
+              className="bg-muted text-muted-foreground px-3 py-2 sm:px-4 rounded-lg cursor-not-allowed text-sm sm:text-base inline-block opacity-75 pointer-events-none"
             >
               Get Started
             </button>
@@ -295,9 +295,9 @@ export default function LandingPage() {
             Join thousands of users who&apos;ve made their music family-friendly
           </p>
           <button
-            disabled
-            className="bg-card text-muted-foreground px-8 py-4 rounded-lg text-lg font-semibold cursor-not-allowed inline-block opacity-75"
-            title="Service Temporarily Unavailable"
+            aria-disabled="true"
+            aria-describedby="service-unavailable-banner"
+            className="bg-card text-muted-foreground px-8 py-4 rounded-lg text-lg font-semibold cursor-not-allowed inline-block opacity-75 pointer-events-none"
           >
             Get Started for Free
           </button>
