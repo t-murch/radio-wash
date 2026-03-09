@@ -44,8 +44,25 @@ public class StripePaymentService : IPaymentService
     _stripeClient = new StripeClient(_configuration["Stripe:SecretKey"]);
   }
 
-  public async Task<string> CreateCheckoutSessionAsync(int userId, string planPriceId)
+  public async Task<string> CreateCheckoutSessionAsync(int userId, int planId)
   {
+    // Server-side price lookup — never trust client-provided price IDs
+    var plan = await _subscriptionService.GetPlanByIdAsync(planId);
+    if (plan == null)
+    {
+      throw new InvalidOperationException($"Subscription plan {planId} not found");
+    }
+
+    if (!plan.IsActive)
+    {
+      throw new InvalidOperationException($"Subscription plan {planId} is not active");
+    }
+
+    if (string.IsNullOrEmpty(plan.StripePriceId))
+    {
+      throw new InvalidOperationException($"Subscription plan {planId} has no Stripe price configured");
+    }
+
     var options = new SessionCreateOptions
     {
       PaymentMethodTypes = new List<string> { "card" },
@@ -53,12 +70,12 @@ public class StripePaymentService : IPaymentService
             {
                 new SessionLineItemOptions
                 {
-                    Price = planPriceId,
+                    Price = plan.StripePriceId,
                     Quantity = 1
                 }
             },
       Mode = "subscription",
-      SuccessUrl = $"{_configuration["FrontendUrl"]}/subscription/success",
+      SuccessUrl = $"{_configuration["FrontendUrl"]}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
       CancelUrl = $"{_configuration["FrontendUrl"]}/subscription/cancel",
       Metadata = new Dictionary<string, string>
             {
@@ -76,7 +93,7 @@ public class StripePaymentService : IPaymentService
     var service = new SessionService(_stripeClient);
     var session = await service.CreateAsync(options);
 
-    _logger.LogInformation("Created Stripe checkout session {SessionId} for user {UserId}", session.Id, userId);
+    _logger.LogInformation("Created Stripe checkout session {SessionId} for user {UserId} with plan {PlanId}", session.Id, userId, planId);
 
     return session.Url;
   }

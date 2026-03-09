@@ -65,6 +65,93 @@ public class StripePaymentServiceTests : IDisposable
     );
   }
 
+  #region CreateCheckoutSession Tests
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_ShouldLookUpPlanById_NotTrustClientPriceId()
+  {
+    // Arrange
+    var userId = 1;
+    var planId = 5;
+    var plan = new SubscriptionPlan
+    {
+      Id = planId,
+      Name = "Pro",
+      PriceInCents = 1999,
+      BillingPeriod = "monthly",
+      StripePriceId = "price_server_side_123",
+      IsActive = true,
+      CreatedAt = DateTime.UtcNow,
+      UpdatedAt = DateTime.UtcNow
+    };
+
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(planId))
+        .ReturnsAsync(plan);
+
+    // Act & Assert — The method should look up the plan by ID, not accept a client price ID.
+    // We can't easily verify the Stripe API call without more mocking,
+    // but we CAN verify the subscription service was called with the plan ID.
+    // The actual Stripe call will fail since we're using a test key, but the lookup happens first.
+    try
+    {
+      await _stripePaymentService.CreateCheckoutSessionAsync(userId, planId);
+    }
+    catch (Stripe.StripeException)
+    {
+      // Expected — test Stripe key won't work for real API calls
+    }
+
+    // Verify server-side plan lookup happened
+    _mockSubscriptionService.Verify(x => x.GetPlanByIdAsync(planId), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_WithNonExistentPlan_ShouldThrow()
+  {
+    // Arrange
+    var userId = 1;
+    var planId = 999;
+
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(planId))
+        .ReturnsAsync((SubscriptionPlan?)null);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _stripePaymentService.CreateCheckoutSessionAsync(userId, planId));
+
+    Assert.Contains("not found", exception.Message);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_WithInactivePlan_ShouldThrow()
+  {
+    // Arrange
+    var userId = 1;
+    var planId = 5;
+    var plan = new SubscriptionPlan
+    {
+      Id = planId,
+      Name = "Deprecated",
+      PriceInCents = 999,
+      BillingPeriod = "monthly",
+      StripePriceId = "price_old",
+      IsActive = false,
+      CreatedAt = DateTime.UtcNow,
+      UpdatedAt = DateTime.UtcNow
+    };
+
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(planId))
+        .ReturnsAsync(plan);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _stripePaymentService.CreateCheckoutSessionAsync(userId, planId));
+
+    Assert.Contains("not active", exception.Message);
+  }
+
+  #endregion
+
   #region Subscription Updated Tests
 
   [Fact]

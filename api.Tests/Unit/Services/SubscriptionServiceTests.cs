@@ -3,6 +3,7 @@ using Moq;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
+using RadioWash.Api.Services.Interfaces;
 using Xunit;
 
 namespace RadioWash.Api.Tests.Unit.Services;
@@ -10,16 +11,19 @@ namespace RadioWash.Api.Tests.Unit.Services;
 public class SubscriptionServiceTests
 {
   private readonly Mock<IUnitOfWork> _mockUnitOfWork;
+  private readonly Mock<IStripeSubscriptionClient> _mockStripeSubscriptionClient;
   private readonly Mock<ILogger<SubscriptionService>> _mockLogger;
   private readonly SubscriptionService _subscriptionService;
 
   public SubscriptionServiceTests()
   {
     _mockUnitOfWork = new Mock<IUnitOfWork>();
+    _mockStripeSubscriptionClient = new Mock<IStripeSubscriptionClient>();
     _mockLogger = new Mock<ILogger<SubscriptionService>>();
 
     _subscriptionService = new SubscriptionService(
         _mockUnitOfWork.Object,
+        _mockStripeSubscriptionClient.Object,
         _mockLogger.Object
     );
   }
@@ -274,35 +278,135 @@ public class SubscriptionServiceTests
     Assert.Null(result);
   }
 
+  #region CancelSubscriptionAsync Tests
+
   [Fact]
-  public async Task CancelSubscriptionAsync_WithValidUser_ShouldCancelAndDisableSyncs()
+  public async Task CancelSubscriptionAsync_ShouldCallStripeCancelAtPeriodEnd()
   {
     // Arrange
     var userId = 1;
     var subscription = CreateUserSubscription(userId);
-    var syncConfigs = new List<PlaylistSyncConfig>
-        {
-            new PlaylistSyncConfig { Id = 1, UserId = userId, IsActive = true }
-        };
+    SetupCancelMocks(subscription);
 
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
-        .ReturnsAsync(subscription);
-    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByUserIdAsync(userId))
-        .ReturnsAsync(syncConfigs);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
-        .ReturnsAsync((UserSubscription s) => s);
-    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>()))
-        .Returns(Task.CompletedTask);
+    // Act
+    await _subscriptionService.CancelSubscriptionAsync(userId);
+
+    // Assert
+    _mockStripeSubscriptionClient.Verify(
+        x => x.CancelAtPeriodEndAsync("sub_123"), Times.Once);
+  }
+
+  [Fact]
+  public async Task CancelSubscriptionAsync_ShouldSetStatusToCancelAtPeriodEnd()
+  {
+    // Arrange
+    var userId = 1;
+    var subscription = CreateUserSubscription(userId);
+    SetupCancelMocks(subscription);
 
     // Act
     var result = await _subscriptionService.CancelSubscriptionAsync(userId);
 
     // Assert
     Assert.NotNull(result);
-    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.Equal(SubscriptionStatus.CancelAtPeriodEnd, result.Status);
     Assert.NotNull(result.CanceledAt);
+  }
 
-    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(1), Times.Once);
+  [Fact]
+  public async Task CancelSubscriptionAsync_ShouldNotDisableSyncConfigs()
+  {
+    // Arrange
+    var userId = 1;
+    var subscription = CreateUserSubscription(userId);
+    SetupCancelMocks(subscription);
+
+    // Act
+    await _subscriptionService.CancelSubscriptionAsync(userId);
+
+    // Assert — sync configs should NOT be disabled (user keeps access until period end)
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.GetByUserIdAsync(It.IsAny<int>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task CancelSubscriptionAsync_ShouldUseTransaction()
+  {
+    // Arrange
+    var userId = 1;
+    var subscription = CreateUserSubscription(userId);
+    SetupCancelMocks(subscription);
+
+    // Act
+    await _subscriptionService.CancelSubscriptionAsync(userId);
+
+    // Assert
+    _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Once);
+    _mockUnitOfWork.Verify(x => x.CommitTransactionAsync(), Times.Once);
+    _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Never);
+  }
+
+  [Fact]
+  public async Task CancelSubscriptionAsync_WhenStripeFails_ShouldRollback()
+  {
+    // Arrange
+    var userId = 1;
+    var subscription = CreateUserSubscription(userId);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.BeginTransactionAsync())
+        .Returns(Task.CompletedTask);
+    _mockUnitOfWork.Setup(x => x.RollbackTransactionAsync())
+        .Returns(Task.CompletedTask);
+
+    _mockStripeSubscriptionClient.Setup(x => x.CancelAtPeriodEndAsync("sub_123"))
+        .ThrowsAsync(new Stripe.StripeException("Stripe API error"));
+
+    // Act & Assert
+    await Assert.ThrowsAsync<Stripe.StripeException>(
+        () => _subscriptionService.CancelSubscriptionAsync(userId));
+
+    _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Once);
+    _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Once);
+    _mockUnitOfWork.Verify(x => x.CommitTransactionAsync(), Times.Never);
+    // No local DB update should have been persisted
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task CancelSubscriptionAsync_WithNoSubscription_ShouldThrow()
+  {
+    // Arrange
+    var userId = 1;
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync((UserSubscription?)null);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.CancelSubscriptionAsync(userId));
+
+    Assert.Contains("No active subscription found", exception.Message);
+    _mockStripeSubscriptionClient.Verify(
+        x => x.CancelAtPeriodEndAsync(It.IsAny<string>()), Times.Never);
+  }
+
+  #endregion
+
+  #region Helper Methods
+
+  private void SetupCancelMocks(UserSubscription subscription)
+  {
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(subscription.UserId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.BeginTransactionAsync())
+        .Returns(Task.CompletedTask);
+    _mockUnitOfWork.Setup(x => x.CommitTransactionAsync())
+        .Returns(Task.CompletedTask);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockStripeSubscriptionClient.Setup(x => x.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId!))
+        .ReturnsAsync(new Stripe.Subscription { Id = subscription.StripeSubscriptionId, CancelAtPeriodEnd = true });
   }
 
   private static UserSubscription CreateUserSubscription(int userId)
@@ -333,4 +437,6 @@ public class SubscriptionServiceTests
       UpdatedAt = DateTime.UtcNow
     };
   }
+
+  #endregion
 }

@@ -28,11 +28,18 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
         .FirstOrDefaultAsync(us => us.Id == subscriptionId);
   }
 
+  private static readonly string[] ActiveStatuses = new[]
+  {
+    SubscriptionStatus.Active,
+    SubscriptionStatus.Trialing,
+    SubscriptionStatus.CancelAtPeriodEnd
+  };
+
   public async Task<UserSubscription?> GetByUserIdAsync(int userId)
   {
     return await _dbContext.UserSubscriptions
         .Include(us => us.Plan)
-        .Where(us => us.UserId == userId)
+        .Where(us => us.UserId == userId && ActiveStatuses.Contains(us.Status))
         .OrderByDescending(us => us.CreatedAt)
         .FirstOrDefaultAsync();
   }
@@ -108,7 +115,7 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   {
     return await _dbContext.UserSubscriptions
         .AnyAsync(us => us.UserId == userId &&
-                       us.Status == SubscriptionStatus.Active &&
+                       (us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.CancelAtPeriodEnd) &&
                        (us.CurrentPeriodEnd == null || us.CurrentPeriodEnd > DateTime.UtcNow));
   }
 

@@ -71,6 +71,7 @@ builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
 builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
 
 // Stripe services
+builder.Services.AddScoped<IStripeSubscriptionClient, StripeSubscriptionClient>();
 builder.Services.AddScoped<Stripe.CustomerService>();
 
 // Idempotency service for webhook race condition prevention

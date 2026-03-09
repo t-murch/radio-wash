@@ -7,6 +7,7 @@ public static class SubscriptionStatus
   public const string PastDue = "past_due";
   public const string Trialing = "trialing";
   public const string Incomplete = "incomplete";
+  public const string CancelAtPeriodEnd = "cancel_at_period_end";
 }
 
 public class UserSubscription

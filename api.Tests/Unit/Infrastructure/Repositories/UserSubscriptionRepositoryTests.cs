@@ -73,7 +73,7 @@ public class UserSubscriptionRepositoryTests : IDisposable
   }
 
   [Fact]
-  public async Task GetByUserIdAsync_WithCanceledSubscription_ShouldReturnCanceledSubscription()
+  public async Task GetByUserIdAsync_WithCanceledSubscription_ShouldReturnNull()
   {
     // Arrange
     await SeedRequiredEntitiesAsync();
@@ -84,11 +84,26 @@ public class UserSubscriptionRepositoryTests : IDisposable
     // Act
     var result = await _repository.GetByUserIdAsync(1);
 
-    // Assert
-    // Note: GetByUserIdAsync returns the most recent subscription regardless of status
+    // Assert — fully canceled subscriptions are not active and should not be returned
+    Assert.Null(result);
+  }
+
+  [Fact]
+  public async Task GetByUserIdAsync_WithCancelAtPeriodEnd_ShouldReturnSubscription()
+  {
+    // Arrange
+    await SeedRequiredEntitiesAsync();
+    var subscription = CreateUserSubscription(1, SubscriptionStatus.CancelAtPeriodEnd);
+    _context.UserSubscriptions.Add(subscription);
+    await _context.SaveChangesAsync();
+
+    // Act
+    var result = await _repository.GetByUserIdAsync(1);
+
+    // Assert — cancel_at_period_end still has access, should be returned
     Assert.NotNull(result);
     Assert.Equal(1, result.UserId);
-    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.Equal(SubscriptionStatus.CancelAtPeriodEnd, result.Status);
   }
 
   [Fact]

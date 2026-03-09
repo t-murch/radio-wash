@@ -7,13 +7,16 @@ namespace RadioWash.Api.Services.Implementations;
 public class SubscriptionService : ISubscriptionService
 {
   private readonly IUnitOfWork _unitOfWork;
+  private readonly IStripeSubscriptionClient _stripeSubscriptionClient;
   private readonly ILogger<SubscriptionService> _logger;
 
   public SubscriptionService(
       IUnitOfWork unitOfWork,
+      IStripeSubscriptionClient stripeSubscriptionClient,
       ILogger<SubscriptionService> logger)
   {
     _unitOfWork = unitOfWork;
+    _stripeSubscriptionClient = stripeSubscriptionClient;
     _logger = logger;
   }
 
@@ -97,17 +100,27 @@ public class SubscriptionService : ISubscriptionService
 
     _logger.LogInformation("Canceling subscription {SubscriptionId} for user {UserId}", subscription.Id, userId);
 
-    subscription.Status = SubscriptionStatus.Canceled;
-    subscription.CanceledAt = DateTime.UtcNow;
-
-    // Disable all sync configs for this user
-    var syncConfigs = await _unitOfWork.SyncConfigs.GetByUserIdAsync(userId);
-    foreach (var config in syncConfigs)
+    await _unitOfWork.BeginTransactionAsync();
+    try
     {
-      await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
-    }
+      // Call Stripe to cancel at period end (user keeps access until then)
+      await _stripeSubscriptionClient.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId!);
 
-    return await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
+      subscription.Status = SubscriptionStatus.CancelAtPeriodEnd;
+      subscription.CanceledAt = DateTime.UtcNow;
+
+      // Do NOT disable sync configs here — user keeps access until period end.
+      // Sync configs are disabled when the webhook fires at period end.
+
+      var result = await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
+      await _unitOfWork.CommitTransactionAsync();
+      return result;
+    }
+    catch (Exception)
+    {
+      await _unitOfWork.RollbackTransactionAsync();
+      throw;
+    }
   }
 
   public async Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync()
