@@ -133,11 +133,11 @@ public class SubscriptionControllerTests : IDisposable
     // Arrange
     var request = new CreateCheckoutDto
     {
-      PlanPriceId = "price_test123"
+      PlanId = 1
     };
     var checkoutUrl = "https://checkout.stripe.com/test";
 
-    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanPriceId))
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanId))
         .ReturnsAsync(checkoutUrl);
 
     // Act
@@ -152,26 +152,23 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task CreateCheckoutSession_WhenPaymentServiceThrows_ShouldReturnBadRequest()
+  public async Task CreateCheckoutSession_WhenPaymentServiceThrows_ShouldReturnProblem()
   {
     // Arrange
     var request = new CreateCheckoutDto
     {
-      PlanPriceId = "invalid_price_id"
+      PlanId = 99
     };
 
-    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanPriceId))
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanId))
         .ThrowsAsync(new Exception("Invalid price ID"));
 
     // Act
     var result = await _controller.CreateCheckoutSession(request);
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to create checkout session", errorProperty?.GetValue(response));
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
   }
 
   [Fact]
@@ -260,7 +257,7 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task HandleStripeWebhook_WhenServiceThrows_ShouldReturnBadRequest()
+  public async Task HandleStripeWebhook_WhenServiceThrows_ShouldReturnOkToPreventRetry()
   {
     // Arrange
     var payload = "invalid_payload";
@@ -278,9 +275,8 @@ public class SubscriptionControllerTests : IDisposable
     // Act
     var result = await _controller.HandleStripeWebhook();
 
-    // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    Assert.Equal("Webhook processing failed", badRequestResult.Value);
+    // Assert - returns OK to prevent Stripe from retrying
+    Assert.IsType<OkResult>(result);
   }
 
   private static SubscriptionPlan CreateSubscriptionPlan(int id, string name)
@@ -333,7 +329,7 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task CreatePortalSession_WithNoActiveSubscription_ShouldReturnBadRequest()
+  public async Task CreatePortalSession_WithNoActiveSubscription_ShouldReturnProblem()
   {
     // Arrange
     _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
@@ -343,11 +339,8 @@ public class SubscriptionControllerTests : IDisposable
     var result = await _controller.CreatePortalSession();
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("No active subscription found", errorProperty?.GetValue(response));
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
   }
 
   [Fact]

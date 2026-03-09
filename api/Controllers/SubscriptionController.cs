@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
-using System.Text.Json;
 
 namespace RadioWash.Api.Controllers;
 
@@ -31,20 +30,7 @@ public class SubscriptionController : AuthenticatedControllerBase
   public async Task<ActionResult<IEnumerable<SubscriptionPlanDto>>> GetAvailablePlans()
   {
     var plans = await _subscriptionService.GetAvailablePlansAsync();
-
-    var planDtos = plans.Select(p => new SubscriptionPlanDto
-    {
-      Id = p.Id,
-      Name = p.Name,
-      Price = p.PriceInCents / 100m,
-      BillingPeriod = p.BillingPeriod,
-      StripePriceId = p.StripePriceId,
-      MaxPlaylists = p.MaxPlaylists,
-      MaxTracksPerPlaylist = p.MaxTracksPerPlaylist,
-      Features = ParseFeatures(p.Features),
-      IsActive = p.IsActive
-    });
-
+    var planDtos = plans.Select(p => p.ToDto());
     return Ok(planDtos);
   }
 
@@ -59,29 +45,7 @@ public class SubscriptionController : AuthenticatedControllerBase
       return Ok(null);
     }
 
-    var subscriptionDto = new UserSubscriptionDto
-    {
-      Id = subscription.Id,
-      Status = subscription.Status,
-      CurrentPeriodStart = subscription.CurrentPeriodStart,
-      CurrentPeriodEnd = subscription.CurrentPeriodEnd,
-      CanceledAt = subscription.CanceledAt,
-      Plan = new SubscriptionPlanDto
-      {
-        Id = subscription.Plan.Id,
-        Name = subscription.Plan.Name,
-        Price = subscription.Plan.PriceInCents / 100m,
-        BillingPeriod = subscription.Plan.BillingPeriod,
-        StripePriceId = subscription.Plan.StripePriceId,
-        MaxPlaylists = subscription.Plan.MaxPlaylists,
-        MaxTracksPerPlaylist = subscription.Plan.MaxTracksPerPlaylist,
-        Features = ParseFeatures(subscription.Plan.Features),
-        IsActive = subscription.Plan.IsActive
-      },
-      CreatedAt = subscription.CreatedAt
-    };
-
-    return Ok(subscriptionDto);
+    return Ok(subscription.ToDto());
   }
 
   [HttpPost("checkout")]
@@ -91,13 +55,16 @@ public class SubscriptionController : AuthenticatedControllerBase
 
     try
     {
-      var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, dto.PlanPriceId);
+      var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, dto.PlanId);
       return Ok(new { checkoutUrl });
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to create checkout session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create checkout session" });
+      return Problem(
+        detail: "Failed to create checkout session",
+        statusCode: StatusCodes.Status400BadRequest
+      );
     }
   }
 
@@ -109,7 +76,10 @@ public class SubscriptionController : AuthenticatedControllerBase
 
     if (subscription?.StripeCustomerId == null)
     {
-      return BadRequest(new { error = "No active subscription found" });
+      return Problem(
+        detail: "No active subscription found",
+        statusCode: StatusCodes.Status400BadRequest
+      );
     }
 
     try
@@ -120,7 +90,10 @@ public class SubscriptionController : AuthenticatedControllerBase
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to create portal session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create portal session" });
+      return Problem(
+        detail: "Failed to create portal session",
+        statusCode: StatusCodes.Status400BadRequest
+      );
     }
   }
 
@@ -177,23 +150,5 @@ public class SubscriptionController : AuthenticatedControllerBase
     var hasActiveSubscription = await _subscriptionService.HasActiveSubscriptionAsync(userId);
 
     return Ok(new { hasActiveSubscription });
-  }
-
-  private static List<string> ParseFeatures(string featuresJson)
-  {
-    try
-    {
-      if (string.IsNullOrEmpty(featuresJson) || featuresJson == "{}")
-      {
-        return new List<string>();
-      }
-
-      var features = JsonSerializer.Deserialize<List<string>>(featuresJson);
-      return features ?? new List<string>();
-    }
-    catch
-    {
-      return new List<string>();
-    }
   }
 }

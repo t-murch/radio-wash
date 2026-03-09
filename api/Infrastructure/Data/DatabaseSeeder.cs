@@ -23,7 +23,7 @@ public static class DatabaseSeeder
         var syncPlan = new SubscriptionPlan
         {
             Name = "Sync Plan",
-            PriceInCents = 299, // $5.00/month
+            PriceInCents = 500, // $5.00/month
             BillingPeriod = "monthly",
             StripePriceId = stripePriceId,
             MaxPlaylists = 10, // 10 playlists maximum
