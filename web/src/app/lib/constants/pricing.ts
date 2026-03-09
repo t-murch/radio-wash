@@ -9,16 +9,16 @@ export const SUBSCRIPTION_PRICING = {
   // Base subscription plan
   MONTHLY: {
     // The actual price charged (what Stripe charges)
-    AMOUNT_CENTS: 299, // $2.99
-    AMOUNT_DOLLARS: 2.99,
-    
+    AMOUNT_CENTS: 500, // $5.00
+    AMOUNT_DOLLARS: 5.00,
+
     // Display prices (for marketing, may be different from actual)
-    DISPLAY_PRICE: '$2.99',
-    MARKETING_PRICE: '$3', // Simplified for marketing copy
-    
+    DISPLAY_PRICE: '$5.00',
+    MARKETING_PRICE: '$5', // Simplified for marketing copy
+
     // Stripe-related identifiers
-    STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || '',
-    
+    STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_MONTHLY || '',
+
     // Features
     FEATURES: {
       DAILY_SYNC: true,
@@ -26,20 +26,6 @@ export const SUBSCRIPTION_PRICING = {
       PRIORITY_SUPPORT: false,
     }
   },
-  
-  // Future pricing tiers (for easy expansion)
-  YEARLY: {
-    AMOUNT_CENTS: 2990, // $29.90 (about 17% discount)
-    AMOUNT_DOLLARS: 29.90,
-    DISPLAY_PRICE: '$29.90',
-    MARKETING_PRICE: '$30',
-    STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_YEARLY_PRICE_ID || '',
-    FEATURES: {
-      DAILY_SYNC: true,
-      MAX_PLAYLISTS: 25,
-      PRIORITY_SUPPORT: true,
-    }
-  }
 } as const;
 
 // Helper functions for formatting
@@ -48,7 +34,7 @@ export const formatPrice = (cents: number): string => {
 };
 
 export const formatMarketingPrice = (price: string): string => {
-  // Remove decimals for marketing copy (e.g., "$2.99" -> "$3")
+  // Remove trailing decimals for marketing copy (e.g., "$5.00" -> "$5")
   return price.replace(/\.00$/, '').replace(/\.99$/, '');
 };
 

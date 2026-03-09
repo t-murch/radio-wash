@@ -297,16 +297,22 @@ export const getAvailablePlans = (): Promise<SubscriptionPlanDto[]> => {
 
 export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
   // Get available plans first
-  const plans = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+  const plans: SubscriptionPlanDto[] = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
   if (!plans || plans.length === 0) {
     throw new Error('No subscription plans available');
   }
-  
-  // Use the first available plan's Stripe price ID
-  const defaultPlan = plans[0];
+
+  // Find the active monthly plan
+  const monthlyPlan = plans.find(
+    (p) => p.billingPeriod === 'monthly' && p.isActive
+  );
+  if (!monthlyPlan) {
+    throw new Error('No active monthly subscription plan found');
+  }
+
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
     method: 'POST',
-    body: JSON.stringify({ planPriceId: defaultPlan.stripePriceId }),
+    body: JSON.stringify({ planId: monthlyPlan.id }),
   });
 };
 
