@@ -18,6 +18,7 @@ public class StripePaymentService : IPaymentService
   private readonly IWebhookRetryService _webhookRetryService;
   private readonly IWebhookProcessor _webhookProcessor;
   private readonly ILogger<StripePaymentService> _logger;
+  private readonly StripeClient _stripeClient;
 
   public StripePaymentService(
       IConfiguration configuration,
@@ -40,7 +41,7 @@ public class StripePaymentService : IPaymentService
     _webhookProcessor = webhookProcessor;
     _logger = logger;
 
-    StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
+    _stripeClient = new StripeClient(_configuration["Stripe:SecretKey"]);
   }
 
   public async Task<string> CreateCheckoutSessionAsync(int userId, string planPriceId)
@@ -72,7 +73,7 @@ public class StripePaymentService : IPaymentService
       }
     };
 
-    var service = new SessionService();
+    var service = new SessionService(_stripeClient);
     var session = await service.CreateAsync(options);
 
     _logger.LogInformation("Created Stripe checkout session {SessionId} for user {UserId}", session.Id, userId);
@@ -88,7 +89,7 @@ public class StripePaymentService : IPaymentService
       ReturnUrl = $"{_configuration["FrontendUrl"]}/dashboard"
     };
 
-    var service = new Stripe.BillingPortal.SessionService();
+    var service = new Stripe.BillingPortal.SessionService(_stripeClient);
     var session = await service.CreateAsync(options);
 
     return session.Url;
@@ -124,12 +125,12 @@ public class StripePaymentService : IPaymentService
       try
       {
         // Use the webhook processor for actual event processing
-        await _webhookProcessor.ProcessWebhookAsync(payload, signature);
+        await _webhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Mark event as successfully processed
         await _idempotencyService.MarkEventSuccessfulAsync(stripeEvent.Id);
 
-        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
+        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}",
             stripeEvent.Id, stripeEvent.Type);
       }
       catch (Exception processingEx)
@@ -137,7 +138,7 @@ public class StripePaymentService : IPaymentService
         // Mark event as failed
         await _idempotencyService.MarkEventFailedAsync(stripeEvent.Id, processingEx.Message);
 
-        _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}", 
+        _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}",
             stripeEvent.Id, stripeEvent.Type, processingEx.Message);
 
         // Schedule retry if the error is retryable
@@ -146,27 +147,26 @@ public class StripePaymentService : IPaymentService
           try
           {
             await _webhookRetryService.ScheduleRetryAsync(
-              stripeEvent.Id, 
-              stripeEvent.Type, 
-              payload, 
-              signature, 
+              stripeEvent.Id,
+              stripeEvent.Type,
+              stripeEvent.ToJson(),
               processingEx.Message);
-            
+
             _logger.LogInformation("Scheduled retry for webhook event {EventId} due to retryable error", stripeEvent.Id);
           }
           catch (Exception retryEx)
           {
-            _logger.LogError(retryEx, "Failed to schedule retry for webhook event {EventId}: {RetryError}", 
+            _logger.LogError(retryEx, "Failed to schedule retry for webhook event {EventId}: {RetryError}",
               stripeEvent.Id, retryEx.Message);
           }
         }
         else
         {
-          _logger.LogWarning("Webhook event {EventId} failed with non-retryable error: {ErrorMessage}", 
+          _logger.LogWarning("Webhook event {EventId} failed with non-retryable error: {ErrorMessage}",
             stripeEvent.Id, processingEx.Message);
         }
-        
-        throw;
+
+        // Return gracefully - don't throw, to avoid triggering Stripe retries
       }
     }
     catch (StripeException ex)

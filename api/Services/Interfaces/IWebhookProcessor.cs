@@ -1,3 +1,5 @@
+using Stripe;
+
 namespace RadioWash.Api.Services.Interfaces;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace RadioWash.Api.Services.Interfaces;
 public interface IWebhookProcessor
 {
   /// <summary>
-  /// Processes a webhook event payload
+  /// Processes a verified webhook event
   /// </summary>
-  Task ProcessWebhookAsync(string payload, string signature);
+  Task ProcessWebhookAsync(Event stripeEvent);
 }

@@ -37,7 +37,7 @@ public class WebhookRetryService : IWebhookRetryService
     _errorClassifier = errorClassifier;
   }
 
-  public async Task ScheduleRetryAsync(string eventId, string eventType, string payload, string signature, string errorMessage, int attemptNumber = 1)
+  public async Task ScheduleRetryAsync(string eventId, string eventType, string eventJson, string errorMessage, int attemptNumber = 1)
   {
     try
     {
@@ -53,7 +53,7 @@ public class WebhookRetryService : IWebhookRetryService
         existingRetry.NextRetryAt = CalculateNextRetryTime(attemptNumber);
         existingRetry.Status = WebhookRetryStatus.Pending;
         existingRetry.UpdatedAt = _dateTimeProvider.UtcNow;
-        
+
         _dbContext.WebhookRetries.Update(existingRetry);
       }
       else
@@ -63,8 +63,7 @@ public class WebhookRetryService : IWebhookRetryService
         {
           EventId = eventId,
           EventType = eventType,
-          Payload = payload,
-          Signature = signature,
+          Payload = eventJson,
           AttemptNumber = attemptNumber,
           MaxRetries = DefaultMaxRetries,
           Status = WebhookRetryStatus.Pending,
@@ -121,11 +120,12 @@ public class WebhookRetryService : IWebhookRetryService
       _dbContext.WebhookRetries.Update(retry);
       await _dbContext.SaveChangesAsync();
 
-      _logger.LogInformation("Processing webhook retry for event {EventId}, attempt {AttemptNumber}", 
+      _logger.LogInformation("Processing webhook retry for event {EventId}, attempt {AttemptNumber}",
         retry.EventId, retry.AttemptNumber);
 
-      // Process the webhook
-      await _webhookProcessor.ProcessWebhookAsync(retry.Payload, retry.Signature);
+      // Deserialize the stored event JSON and process
+      var stripeEvent = EventUtility.ParseEvent(retry.Payload, throwOnApiVersionMismatch: false);
+      await _webhookProcessor.ProcessWebhookAsync(stripeEvent);
       
       // Mark as succeeded
       await MarkRetrySucceededAsync(retry.Id);

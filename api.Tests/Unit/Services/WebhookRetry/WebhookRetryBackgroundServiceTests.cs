@@ -229,7 +229,6 @@ public class WebhookRetryBackgroundServiceTests
             EventId = eventId,
             EventType = "test.event",
             Payload = "test_payload",
-            Signature = "test_signature",
             AttemptNumber = 1,
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,

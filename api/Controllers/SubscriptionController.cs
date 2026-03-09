@@ -158,10 +158,15 @@ public class SubscriptionController : AuthenticatedControllerBase
       await _paymentService.HandleWebhookAsync(json, signature);
       return Ok();
     }
+    catch (Stripe.StripeException ex)
+    {
+      _logger.LogError(ex, "Stripe webhook signature verification failed");
+      return BadRequest("Invalid webhook signature");
+    }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error processing Stripe webhook");
-      return BadRequest("Webhook processing failed");
+      return Ok(); // Return OK to prevent Stripe from retrying - we handle retries internally
     }
   }
 

@@ -43,7 +43,7 @@ public class StripePaymentServiceTests : IDisposable
         .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
         .Options;
     _dbContext = new RadioWashDbContext(options);
-    
+
     // Ensure database schema is created for new webhook event table
     _dbContext.Database.EnsureCreated();
 
@@ -83,7 +83,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -92,7 +92,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -108,7 +108,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -117,7 +117,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -137,7 +137,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -146,7 +146,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.deleted"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -167,7 +167,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -176,7 +176,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "invoice.payment_failed"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -192,7 +192,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -201,7 +201,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "invoice.payment_failed"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -222,7 +222,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -231,7 +231,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "invoice.payment_succeeded"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -247,7 +247,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -256,7 +256,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "invoice.payment_succeeded"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -282,7 +282,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -291,7 +291,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.created"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -311,7 +311,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -320,7 +320,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.created"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -337,7 +337,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -346,7 +346,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.created"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -367,7 +367,7 @@ public class StripePaymentServiceTests : IDisposable
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -376,7 +376,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "checkout.session.completed"), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   #endregion
@@ -390,14 +390,14 @@ public class StripePaymentServiceTests : IDisposable
     var eventType = "customer.created";
     var eventId = "evt_test_unhandled";
     var mockEvent = new Event { Id = eventId, Type = eventType };
-    
+
     _mockEventUtility.Setup(x => x.ConstructEvent(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
         .Returns(mockEvent);
     _mockIdempotencyService.Setup(x => x.TryProcessEventAsync(eventId, eventType))
         .ReturnsAsync(true);
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync("{}", "test_signature"))
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -406,7 +406,63 @@ public class StripePaymentServiceTests : IDisposable
     // Assert
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, eventType), Times.Once);
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync("{}", "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
+  }
+
+  #endregion
+
+  #region Verified Event Passing Tests
+
+  [Fact]
+  public async Task HandleWebhookAsync_ShouldPassVerifiedEventToProcessor()
+  {
+    // Arrange
+    var eventId = "evt_test_verified";
+    var eventType = "customer.subscription.updated";
+    var webhookPayload = "test_payload";
+
+    var mockEvent = new Event
+    {
+      Id = eventId,
+      Type = eventType,
+      Data = new Stripe.EventData
+      {
+        Object = new Stripe.Subscription { Id = "sub_123", Status = "active" }
+      }
+    };
+
+    _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "test_signature", "whsec_123"))
+        .Returns(mockEvent);
+    _mockIdempotencyService.Setup(x => x.TryProcessEventAsync(eventId, eventType))
+        .ReturnsAsync(true);
+    _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
+        .Returns(Task.CompletedTask);
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "test_signature");
+
+    // Assert - Verify the exact verified event is passed to the processor
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(
+        It.Is<Event>(e => e.Id == eventId && e.Type == eventType)), Times.Once);
+  }
+
+  [Fact]
+  public async Task HandleWebhookAsync_SignatureVerificationFails_ShouldThrowStripeException()
+  {
+    // Arrange
+    var webhookPayload = "invalid_payload";
+
+    _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "bad_signature", "whsec_123"))
+        .Throws(new StripeException("Signature verification failed"));
+
+    // Act & Assert
+    await Assert.ThrowsAsync<StripeException>(
+        () => _stripePaymentService.HandleWebhookAsync(webhookPayload, "bad_signature"));
+
+    // Verify processor was never called
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Never);
   }
 
   #endregion
@@ -416,14 +472,14 @@ public class StripePaymentServiceTests : IDisposable
   private void SetupEventUtilityMock(string payload, string eventType, string subscriptionId, string eventId = null)
   {
     var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active" };
-    
+
     // Create subscription items with period dates
     var subscriptionItem = new SubscriptionItem();
     var periodStart = DateTime.UtcNow.AddDays(-30);
     var periodEnd = DateTime.UtcNow.AddDays(30);
     subscriptionItem.CurrentPeriodStart = periodStart;
     subscriptionItem.CurrentPeriodEnd = periodEnd;
-    
+
     subscription.Items = new StripeList<SubscriptionItem>
     {
       Data = new List<SubscriptionItem> { subscriptionItem }
@@ -457,7 +513,7 @@ public class StripePaymentServiceTests : IDisposable
   private void SetupEventUtilityMockForInvoice(string payload, string eventType, string invoiceId, string? subscriptionId, string eventId = null)
   {
     var invoice = new Invoice { Id = invoiceId };
-    
+
     // Mock RawJObject for subscription reference
     var rawJObject = new Newtonsoft.Json.Linq.JObject();
     if (!string.IsNullOrEmpty(subscriptionId))
@@ -466,7 +522,7 @@ public class StripePaymentServiceTests : IDisposable
     }
 
     // Minimal reflection usage for setting RawJObject - unavoidable due to Stripe SDK design
-    var rawJObjectProperty = typeof(StripeEntity).GetProperty("RawJObject", 
+    var rawJObjectProperty = typeof(StripeEntity).GetProperty("RawJObject",
         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
     rawJObjectProperty?.SetValue(invoice, rawJObject);
 
@@ -483,9 +539,9 @@ public class StripePaymentServiceTests : IDisposable
 
   private void SetupEventUtilityMockForSubscriptionCreated(string payload, string subscriptionId, string customerId, string priceId, int userId, string eventId = null)
   {
-    var subscription = new Stripe.Subscription 
-    { 
-      Id = subscriptionId, 
+    var subscription = new Stripe.Subscription
+    {
+      Id = subscriptionId,
       CustomerId = customerId,
       Status = "active"
     };
@@ -494,7 +550,7 @@ public class StripePaymentServiceTests : IDisposable
     var subscriptionItem = new SubscriptionItem();
     var price = new Price { Id = priceId };
     subscriptionItem.Price = price;
-    
+
     subscription.Items = new StripeList<SubscriptionItem>
     {
       Data = new List<SubscriptionItem> { subscriptionItem }
@@ -519,9 +575,9 @@ public class StripePaymentServiceTests : IDisposable
 
   private void SetupEventUtilityMockForSubscriptionCreatedNoItems(string payload, string subscriptionId, string customerId, string eventId = null)
   {
-    var subscription = new Stripe.Subscription 
-    { 
-      Id = subscriptionId, 
+    var subscription = new Stripe.Subscription
+    {
+      Id = subscriptionId,
       CustomerId = customerId,
       Items = null // No items
     };
@@ -539,8 +595,8 @@ public class StripePaymentServiceTests : IDisposable
 
   private void SetupEventUtilityMockForCheckoutCompleted(string payload, string sessionId, int userId, string eventId = null)
   {
-    var session = new Stripe.Checkout.Session 
-    { 
+    var session = new Stripe.Checkout.Session
+    {
       Id = sessionId,
       Metadata = new Dictionary<string, string>
       {
@@ -605,19 +661,19 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new Stripe.EventData 
-      { 
-        Object = new Stripe.Subscription 
-        { 
-          Id = subscriptionId, 
-          Status = "active" 
-        } 
+      Data = new Stripe.EventData
+      {
+        Object = new Stripe.Subscription
+        {
+          Id = subscriptionId,
+          Status = "active"
+        }
       }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "test_signature", "whsec_123"))
         .Returns(mockEvent);
-    
+
     // First call should be allowed to process
     _mockIdempotencyService.SetupSequence(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"))
         .ReturnsAsync(true)   // First call - allow processing
@@ -625,8 +681,8 @@ public class StripePaymentServiceTests : IDisposable
 
     _mockIdempotencyService.Setup(x => x.MarkEventSuccessfulAsync(eventId))
         .Returns(Task.CompletedTask);
-    
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"))
+
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .Returns(Task.CompletedTask);
 
     // Act - Process the webhook twice
@@ -636,7 +692,7 @@ public class StripePaymentServiceTests : IDisposable
     // Assert - Idempotency service should be called twice, but webhook processor only once
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"), Times.Exactly(2));
     _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(eventId), Times.Once);
-    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(webhookPayload, "test_signature"), Times.Once);
+    _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(It.IsAny<Event>()), Times.Once);
   }
 
   [Fact]
@@ -651,19 +707,19 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new Stripe.EventData 
-      { 
-        Object = new Stripe.Subscription 
-        { 
-          Id = subscriptionId, 
-          Status = "active" 
-        } 
+      Data = new Stripe.EventData
+      {
+        Object = new Stripe.Subscription
+        {
+          Id = subscriptionId,
+          Status = "active"
+        }
       }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "test_signature", "whsec_123"))
         .Returns(mockEvent);
-    
+
     // Idempotency service indicates event already processed
     _mockIdempotencyService.Setup(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"))
         .ReturnsAsync(false);
@@ -690,31 +746,33 @@ public class StripePaymentServiceTests : IDisposable
     {
       Id = eventId,
       Type = "customer.subscription.updated",
-      Data = new Stripe.EventData 
-      { 
-        Object = new Stripe.Subscription 
-        { 
-          Id = subscriptionId, 
-          Status = "active" 
-        } 
+      Data = new Stripe.EventData
+      {
+        Object = new Stripe.Subscription
+        {
+          Id = subscriptionId,
+          Status = "active"
+        }
       }
     };
 
     _mockEventUtility.Setup(x => x.ConstructEvent(webhookPayload, "failed_signature", "whsec_123"))
         .Returns(mockEvent);
-    
+
     _mockIdempotencyService.Setup(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"))
         .ReturnsAsync(true);
-    
+
     _mockIdempotencyService.Setup(x => x.MarkEventFailedAsync(eventId, errorMessage))
         .Returns(Task.CompletedTask);
-    
-    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(webhookPayload, "failed_signature"))
+
+    _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Event>()))
         .ThrowsAsync(new InvalidOperationException(errorMessage));
 
-    // Act & Assert
-    await Assert.ThrowsAsync<InvalidOperationException>(
-        () => _stripePaymentService.HandleWebhookAsync(webhookPayload, "failed_signature"));
+    _mockWebhookRetryService.Setup(x => x.IsRetryableError(It.IsAny<Exception>()))
+        .Returns(false);
+
+    // Act - Should NOT throw (processing failure is handled gracefully)
+    await _stripePaymentService.HandleWebhookAsync(webhookPayload, "failed_signature");
 
     // Verify that idempotency service was called to mark failure
     _mockIdempotencyService.Verify(x => x.TryProcessEventAsync(eventId, "customer.subscription.updated"), Times.Once);

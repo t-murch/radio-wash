@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Infrastructure.Data;
@@ -13,9 +12,7 @@ namespace RadioWash.Api.Tests.Unit.Services.WebhookRetry;
 
 public class StripeWebhookProcessorTests : IDisposable
 {
-    private readonly Mock<IConfiguration> _mockConfiguration;
     private readonly Mock<ISubscriptionService> _mockSubscriptionService;
-    private readonly Mock<IEventUtility> _mockEventUtility;
     private readonly Mock<CustomerService> _mockCustomerService;
     private readonly Mock<ILogger<StripeWebhookProcessor>> _mockLogger;
     private readonly RadioWashDbContext _dbContext;
@@ -23,9 +20,7 @@ public class StripeWebhookProcessorTests : IDisposable
 
     public StripeWebhookProcessorTests()
     {
-        _mockConfiguration = new Mock<IConfiguration>();
         _mockSubscriptionService = new Mock<ISubscriptionService>();
-        _mockEventUtility = new Mock<IEventUtility>();
         _mockCustomerService = new Mock<CustomerService>();
         _mockLogger = new Mock<ILogger<StripeWebhookProcessor>>();
 
@@ -37,41 +32,12 @@ public class StripeWebhookProcessorTests : IDisposable
         _dbContext = new RadioWashDbContext(options);
         _dbContext.Database.EnsureCreated();
 
-        // Setup configuration
-        _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
-        _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns("whsec_123");
-
         _stripeWebhookProcessor = new StripeWebhookProcessor(
-            _mockConfiguration.Object,
             _mockSubscriptionService.Object,
-            _mockEventUtility.Object,
             _dbContext,
             _mockCustomerService.Object,
             _mockLogger.Object);
     }
-
-    #region Configuration Tests
-
-    [Fact]
-    public async Task ProcessWebhookAsync_WithMissingWebhookSecret_ShouldThrowInvalidOperationException()
-    {
-        // Arrange
-        _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns((string?)null);
-        
-        var processor = new StripeWebhookProcessor(
-            _mockConfiguration.Object,
-            _mockSubscriptionService.Object,
-            _mockEventUtility.Object,
-            _dbContext,
-            _mockCustomerService.Object,
-            _mockLogger.Object);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => processor.ProcessWebhookAsync("payload", "signature"));
-    }
-
-    #endregion
 
     #region Subscription Updated Tests
 
@@ -85,17 +51,15 @@ public class StripeWebhookProcessorTests : IDisposable
         var periodEnd = DateTime.UtcNow.AddDays(30);
 
         var subscription = CreateMockSubscription(subscriptionId, "active", periodStart, periodEnd);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
             .ReturnsAsync(CreateMockUserSubscription());
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionDatesAsync(subscriptionId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
@@ -113,15 +77,13 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_no_items";
 
         var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active", Items = null };
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
@@ -140,15 +102,13 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_deleted";
 
         var subscription = new Stripe.Subscription { Id = subscriptionId };
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.deleted", subscription);
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.deleted", subscription);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "canceled"))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "canceled"), Times.Once);
@@ -167,15 +127,13 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_payment_failed";
 
         var invoice = CreateMockInvoice(invoiceId, subscriptionId);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
+        var stripeEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "past_due"))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "past_due"), Times.Once);
@@ -189,13 +147,10 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_payment_failed_no_sub";
 
         var invoice = CreateMockInvoice(invoiceId, null);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
+        var stripeEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
@@ -214,15 +169,13 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_payment_succeeded";
 
         var invoice = CreateMockInvoice(invoiceId, subscriptionId);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_succeeded", invoice);
+        var stripeEvent = CreateMockEvent(eventId, "invoice.payment_succeeded", invoice);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
@@ -244,18 +197,16 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_subscription_created";
 
         var subscription = CreateMockSubscriptionCreated(subscriptionId, customerId, priceId, userId);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
         var mockPlan = CreateMockSubscriptionPlan(planId, priceId);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
             .ReturnsAsync(mockPlan);
         _mockSubscriptionService.Setup(x => x.CreateSubscriptionAsync(userId, planId, subscriptionId, customerId))
             .ReturnsAsync(CreateMockUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.GetPlanByStripePriceIdAsync(priceId), Times.Once);
@@ -273,15 +224,13 @@ public class StripeWebhookProcessorTests : IDisposable
         var eventId = "evt_test_subscription_created_no_plan";
 
         var subscription = CreateMockSubscriptionCreated(subscriptionId, customerId, priceId, userId);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
         _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
             .ReturnsAsync((SubscriptionPlan?)null);
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.GetPlanByStripePriceIdAsync(priceId), Times.Once);
@@ -305,16 +254,13 @@ public class StripeWebhookProcessorTests : IDisposable
             Id = sessionId,
             Metadata = new Dictionary<string, string> { { "userId", userId.ToString() } }
         };
-        var mockEvent = CreateMockEvent(eventId, "checkout.session.completed", session);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
+        var stripeEvent = CreateMockEvent(eventId, "checkout.session.completed", session);
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert - Should complete without error
-        Assert.True(true); // Placeholder assertion - main test is that no exception is thrown
+        Assert.True(true);
     }
 
     #endregion
@@ -326,16 +272,13 @@ public class StripeWebhookProcessorTests : IDisposable
     {
         // Arrange
         var eventId = "evt_test_unhandled";
-        var mockEvent = new Event { Id = eventId, Type = "customer.created" };
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
+        var stripeEvent = new Event { Id = eventId, Type = "customer.created" };
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
 
         // Assert - Should complete without error
-        Assert.True(true); // Placeholder assertion - main test is that no exception is thrown
+        Assert.True(true);
     }
 
     #endregion

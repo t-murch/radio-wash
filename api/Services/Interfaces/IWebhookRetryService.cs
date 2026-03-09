@@ -10,7 +10,7 @@ public interface IWebhookRetryService
   /// <summary>
   /// Schedules a webhook for retry with exponential backoff
   /// </summary>
-  Task ScheduleRetryAsync(string eventId, string eventType, string payload, string signature, string errorMessage, int attemptNumber = 1);
+  Task ScheduleRetryAsync(string eventId, string eventType, string eventJson, string errorMessage, int attemptNumber = 1);
   
   /// <summary>
   /// Gets pending webhook retries that are ready for processing

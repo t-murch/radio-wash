@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
@@ -9,44 +8,26 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class StripeWebhookProcessor : IWebhookProcessor
 {
-    private readonly IConfiguration _configuration;
     private readonly ISubscriptionService _subscriptionService;
-    private readonly IEventUtility _eventUtility;
     private readonly RadioWashDbContext _dbContext;
     private readonly CustomerService _customerService;
     private readonly ILogger<StripeWebhookProcessor> _logger;
 
     public StripeWebhookProcessor(
-        IConfiguration configuration,
         ISubscriptionService subscriptionService,
-        IEventUtility eventUtility,
         RadioWashDbContext dbContext,
         CustomerService customerService,
         ILogger<StripeWebhookProcessor> logger)
     {
-        _configuration = configuration;
         _subscriptionService = subscriptionService;
-        _eventUtility = eventUtility;
         _dbContext = dbContext;
         _customerService = customerService;
         _logger = logger;
-
-        StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
     }
 
-    public async Task ProcessWebhookAsync(string payload, string signature)
+    public async Task ProcessWebhookAsync(Event stripeEvent)
     {
-        var webhookSecret = _configuration["Stripe:WebhookSecret"];
-        
-        if (string.IsNullOrEmpty(webhookSecret))
-        {
-            _logger.LogError("Stripe webhook secret is not configured");
-            throw new InvalidOperationException("Stripe webhook secret is not configured");
-        }
-
-        var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
-
-        _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
+        _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}",
             stripeEvent.Type, stripeEvent.Id);
 
         switch (stripeEvent.Type)

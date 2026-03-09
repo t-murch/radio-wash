@@ -7,6 +7,7 @@ using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Tests.Unit.TestHelpers;
+using Stripe;
 
 namespace RadioWash.Api.Tests.Unit.Services.WebhookRetry;
 
@@ -167,21 +168,19 @@ public class WebhookRetryServiceTests : IDisposable
         var eventId = "evt_test_123";
         var eventType = "customer.subscription.updated";
         var payload = "test_payload";
-        var signature = "test_signature";
         var errorMessage = "Test error";
         var baseTime = new DateTime(2024, 10, 25, 12, 0, 0, DateTimeKind.Utc);
         _testDateTimeProvider.SetUtcNow(baseTime);
         _testRandomProvider.SetFixedValue(0.5); // No jitter
 
         // Act
-        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, signature, errorMessage);
+        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, errorMessage);
 
         // Assert
         var retry = await _dbContext.WebhookRetries.FirstOrDefaultAsync(wr => wr.EventId == eventId);
         Assert.NotNull(retry);
         Assert.Equal(eventType, retry.EventType);
         Assert.Equal(payload, retry.Payload);
-        Assert.Equal(signature, retry.Signature);
         Assert.Equal(errorMessage, retry.LastErrorMessage);
         Assert.Equal(1, retry.AttemptNumber);
         Assert.Equal(5, retry.MaxRetries);
@@ -198,7 +197,6 @@ public class WebhookRetryServiceTests : IDisposable
         var eventId = "evt_test_existing";
         var eventType = "customer.subscription.updated";
         var payload = "test_payload";
-        var signature = "test_signature";
         var initialErrorMessage = "Initial error";
         var updatedErrorMessage = "Updated error";
         var baseTime = new DateTime(2024, 10, 25, 12, 0, 0, DateTimeKind.Utc);
@@ -206,13 +204,13 @@ public class WebhookRetryServiceTests : IDisposable
         _testRandomProvider.SetFixedValue(0.5);
 
         // Create initial retry
-        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, signature, initialErrorMessage);
-        
+        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, initialErrorMessage);
+
         // Advance time
         _testDateTimeProvider.AdvanceTime(TimeSpan.FromMinutes(2));
 
         // Act - Schedule second attempt
-        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, signature, updatedErrorMessage, 2);
+        await _webhookRetryService.ScheduleRetryAsync(eventId, eventType, payload, updatedErrorMessage, 2);
 
         // Assert
         var retries = await _dbContext.WebhookRetries.Where(wr => wr.EventId == eventId).ToListAsync();
@@ -252,7 +250,6 @@ public class WebhookRetryServiceTests : IDisposable
             EventId = "evt_1",
             EventType = "test.event",
             Payload = "payload1",
-            Signature = "sig1",
             AttemptNumber = 1,
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,
@@ -267,7 +264,6 @@ public class WebhookRetryServiceTests : IDisposable
             EventId = "evt_2",
             EventType = "test.event",
             Payload = "payload2",
-            Signature = "sig2",
             AttemptNumber = 2,
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,
@@ -302,7 +298,6 @@ public class WebhookRetryServiceTests : IDisposable
             EventId = "evt_future",
             EventType = "test.event",
             Payload = "payload",
-            Signature = "sig",
             AttemptNumber = 1,
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,
@@ -334,7 +329,6 @@ public class WebhookRetryServiceTests : IDisposable
             EventId = "evt_maxed",
             EventType = "test.event",
             Payload = "payload",
-            Signature = "sig",
             AttemptNumber = 6, // Exceeds max of 5
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,
@@ -367,7 +361,6 @@ public class WebhookRetryServiceTests : IDisposable
             EventId = $"evt_{i}",
             EventType = "test.event",
             Payload = $"payload{i}",
-            Signature = $"sig{i}",
             AttemptNumber = 1,
             MaxRetries = 5,
             Status = WebhookRetryStatus.Pending,
@@ -385,6 +378,54 @@ public class WebhookRetryServiceTests : IDisposable
 
         // Assert
         Assert.Equal(50, result.Count()); // Should be limited to batch size
+    }
+
+    #endregion
+
+    #region ProcessRetryAsync Tests
+
+    [Fact]
+    public async Task ProcessRetryAsync_ShouldDeserializeEventAndCallProcessor()
+    {
+        // Arrange
+        var baseTime = new DateTime(2024, 10, 25, 12, 0, 0, DateTimeKind.Utc);
+        _testDateTimeProvider.SetUtcNow(baseTime);
+
+        // Create a valid Stripe Event JSON with all required fields
+        var eventJson = "{\"id\":\"evt_retry_123\",\"object\":\"event\",\"type\":\"customer.subscription.updated\",\"api_version\":\"2024-09-30.acacia\",\"created\":1729872000,\"livemode\":false,\"pending_webhooks\":0,\"request\":{\"id\":null,\"idempotency_key\":null},\"data\":{\"object\":{\"id\":\"sub_123\",\"object\":\"subscription\"}}}";
+
+        var retry = new RadioWash.Api.Models.Domain.WebhookRetry
+        {
+            EventId = "evt_retry_123",
+            EventType = "customer.subscription.updated",
+            Payload = eventJson,
+            AttemptNumber = 1,
+            MaxRetries = 5,
+            Status = WebhookRetryStatus.Pending,
+            NextRetryAt = baseTime.AddMinutes(-1),
+            LastErrorMessage = "Previous error",
+            CreatedAt = baseTime.AddMinutes(-10),
+            UpdatedAt = baseTime.AddMinutes(-10)
+        };
+
+        _dbContext.WebhookRetries.Add(retry);
+        await _dbContext.SaveChangesAsync();
+
+        _mockWebhookProcessor.Setup(x => x.ProcessWebhookAsync(It.IsAny<Stripe.Event>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _webhookRetryService.ProcessRetryAsync(retry);
+
+        // Assert
+        _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(
+            It.Is<Stripe.Event>(e => e.Id == "evt_retry_123" && e.Type == "customer.subscription.updated")),
+            Times.Once);
+
+        // Verify retry was marked as succeeded
+        var updatedRetry = await _dbContext.WebhookRetries.FindAsync(retry.Id);
+        Assert.NotNull(updatedRetry);
+        Assert.Equal(WebhookRetryStatus.Succeeded, updatedRetry.Status);
     }
 
     #endregion
