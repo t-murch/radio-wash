@@ -98,13 +98,19 @@ public class SubscriptionService : ISubscriptionService
       throw new InvalidOperationException($"No active subscription found for user {userId}");
     }
 
+    if (string.IsNullOrEmpty(subscription.StripeSubscriptionId))
+    {
+      throw new InvalidOperationException(
+        $"Subscription {subscription.Id} has no Stripe subscription ID");
+    }
+
     _logger.LogInformation("Canceling subscription {SubscriptionId} for user {UserId}", subscription.Id, userId);
 
     await _unitOfWork.BeginTransactionAsync();
     try
     {
       // Call Stripe to cancel at period end (user keeps access until then)
-      await _stripeSubscriptionClient.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId!);
+      await _stripeSubscriptionClient.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId);
 
       subscription.Status = SubscriptionStatus.CancelAtPeriodEnd;
       subscription.CanceledAt = DateTime.UtcNow;

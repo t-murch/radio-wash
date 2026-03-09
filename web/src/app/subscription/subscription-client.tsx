@@ -161,15 +161,21 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 >
                   Back to Dashboard
                 </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleCancelSubscription}
-                  disabled={cancelSubscriptionMutation.isPending}
-                >
-                  {cancelSubscriptionMutation.isPending
-                    ? 'Cancelling...'
-                    : 'Cancel Subscription'}
-                </Button>
+                {subscriptionStatus.status === 'cancel_at_period_end' ? (
+                  <span className="text-sm text-warning font-medium px-3 py-2">
+                    Cancellation pending — access until end of billing period
+                  </span>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelSubscriptionMutation.isPending}
+                  >
+                    {cancelSubscriptionMutation.isPending
+                      ? 'Cancelling...'
+                      : 'Cancel Subscription'}
+                  </Button>
+                )}
               </div>
             </div>
           ) : (

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { Button } from '@/components/ui/button';
@@ -197,10 +198,12 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
   const { isVerified, isLoading, isTimeout } = useVerifyCheckoutSession(sessionId);
 
   // Invalidate subscription queries when verified
-  if (isVerified) {
-    queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
-    queryClient.invalidateQueries({ queryKey: ['current-subscription'] });
-  }
+  useEffect(() => {
+    if (isVerified) {
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
+      queryClient.invalidateQueries({ queryKey: ['current-subscription'] });
+    }
+  }, [isVerified, queryClient]);
 
   const handleDashboard = () => router.push('/dashboard');
   const handleManage = () => router.push('/subscription');

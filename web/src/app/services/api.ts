@@ -284,7 +284,6 @@ export interface SubscriptionPlanDto {
   name: string;
   price: number;
   billingPeriod: string;
-  stripePriceId?: string;
   maxPlaylists?: number;
   maxTracksPerPlaylist?: number;
   features: string[];
