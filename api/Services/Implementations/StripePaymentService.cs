@@ -112,6 +112,29 @@ public class StripePaymentService : IPaymentService
     return session.Url;
   }
 
+  public async Task<Stripe.Checkout.Session?> VerifyCheckoutSessionAsync(string sessionId)
+  {
+    try
+    {
+      var service = new SessionService(_stripeClient);
+      var session = await service.GetAsync(sessionId);
+
+      if (session.Status == "complete")
+      {
+        _logger.LogInformation("Checkout session {SessionId} verified as complete", sessionId);
+        return session;
+      }
+
+      _logger.LogInformation("Checkout session {SessionId} has status {Status}, not complete", sessionId, session.Status);
+      return null;
+    }
+    catch (StripeException ex)
+    {
+      _logger.LogWarning(ex, "Failed to verify checkout session {SessionId}", sessionId);
+      return null;
+    }
+  }
+
   public async Task HandleWebhookAsync(string payload, string signature)
   {
     var webhookSecret = _configuration["Stripe:WebhookSecret"];

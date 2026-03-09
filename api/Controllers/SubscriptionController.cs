@@ -143,6 +143,39 @@ public class SubscriptionController : AuthenticatedControllerBase
     }
   }
 
+  [HttpGet("verify-session")]
+  public async Task<ActionResult> VerifyCheckoutSession([FromQuery] string sessionId)
+  {
+    if (string.IsNullOrEmpty(sessionId))
+    {
+      return BadRequest(new { error = "Session ID is required" });
+    }
+
+    try
+    {
+      var session = await _paymentService.VerifyCheckoutSessionAsync(sessionId);
+
+      if (session == null)
+      {
+        return Ok(new { verified = false });
+      }
+
+      var userId = GetCurrentUserId();
+      var subscription = await _subscriptionService.GetActiveSubscriptionAsync(userId);
+
+      return Ok(new
+      {
+        verified = true,
+        subscription = subscription?.ToDto()
+      });
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Failed to verify checkout session {SessionId}", sessionId);
+      return Ok(new { verified = false });
+    }
+  }
+
   [HttpGet("status")]
   public async Task<ActionResult> GetSubscriptionStatus()
   {

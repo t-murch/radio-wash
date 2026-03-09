@@ -344,6 +344,82 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
+  public async Task VerifyCheckoutSession_WithValidSession_ShouldReturnVerifiedTrue()
+  {
+    // Arrange
+    var sessionId = "cs_test_123";
+    var mockSession = new Stripe.Checkout.Session { Id = sessionId, Status = "complete" };
+    var subscription = CreateUserSubscriptionWithPlan(1);
+
+    _mockPaymentService.Setup(x => x.VerifyCheckoutSessionAsync(sessionId))
+        .ReturnsAsync(mockSession);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+
+    // Act
+    var result = await _controller.VerifyCheckoutSession(sessionId);
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var response = okResult.Value;
+    Assert.NotNull(response);
+    var verifiedProperty = response.GetType().GetProperty("verified");
+    Assert.True((bool)verifiedProperty?.GetValue(response)!);
+  }
+
+  [Fact]
+  public async Task VerifyCheckoutSession_WithIncompleteSession_ShouldReturnVerifiedFalse()
+  {
+    // Arrange
+    var sessionId = "cs_test_456";
+    _mockPaymentService.Setup(x => x.VerifyCheckoutSessionAsync(sessionId))
+        .ReturnsAsync((Stripe.Checkout.Session?)null);
+
+    // Act
+    var result = await _controller.VerifyCheckoutSession(sessionId);
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var response = okResult.Value;
+    Assert.NotNull(response);
+    var verifiedProperty = response.GetType().GetProperty("verified");
+    Assert.False((bool)verifiedProperty?.GetValue(response)!);
+  }
+
+  [Fact]
+  public async Task VerifyCheckoutSession_WithEmptySessionId_ShouldReturnBadRequest()
+  {
+    // Act
+    var result = await _controller.VerifyCheckoutSession("");
+
+    // Assert
+    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+    var response = badRequestResult.Value;
+    Assert.NotNull(response);
+    var errorProperty = response.GetType().GetProperty("error");
+    Assert.Equal("Session ID is required", errorProperty?.GetValue(response));
+  }
+
+  [Fact]
+  public async Task VerifyCheckoutSession_WhenServiceThrows_ShouldReturnVerifiedFalse()
+  {
+    // Arrange
+    var sessionId = "cs_test_error";
+    _mockPaymentService.Setup(x => x.VerifyCheckoutSessionAsync(sessionId))
+        .ThrowsAsync(new Exception("Stripe error"));
+
+    // Act
+    var result = await _controller.VerifyCheckoutSession(sessionId);
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var response = okResult.Value;
+    Assert.NotNull(response);
+    var verifiedProperty = response.GetType().GetProperty("verified");
+    Assert.False((bool)verifiedProperty?.GetValue(response)!);
+  }
+
+  [Fact]
   public async Task GetSubscriptionStatus_WithActiveSubscription_ShouldReturnOkWithTrue()
   {
     // Arrange

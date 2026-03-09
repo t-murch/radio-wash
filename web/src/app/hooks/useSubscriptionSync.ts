@@ -1,15 +1,18 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  getSubscriptionStatus, 
+import {
+  getSubscriptionStatus,
   getCurrentSubscription,
-  enableSyncForJob, 
+  enableSyncForJob,
   subscribeToSync,
   getSyncConfigs,
+  verifyCheckoutSession,
   type SubscriptionStatus,
   type UserSubscriptionDto,
-  type PlaylistSyncConfig 
+  type PlaylistSyncConfig,
+  type CheckoutVerification,
 } from '../services/api';
 
 export const useSubscriptionStatus = () => {
@@ -49,6 +52,39 @@ export const useSubscribeToSync = () => {
       window.location.href = data.checkoutUrl;
     },
   });
+};
+
+export const useVerifyCheckoutSession = (sessionId: string | null) => {
+  const [attemptCount, setAttemptCount] = useState(0);
+  const maxAttempts = 15;
+
+  const query = useQuery<CheckoutVerification>({
+    queryKey: ['verify-checkout-session', sessionId],
+    queryFn: () => verifyCheckoutSession(sessionId!),
+    enabled: !!sessionId && attemptCount < maxAttempts,
+    refetchInterval: (query) => {
+      if (query.state.data?.verified) return false;
+      if (attemptCount >= maxAttempts) return false;
+      return 2000;
+    },
+  });
+
+  useEffect(() => {
+    if (query.dataUpdatedAt) {
+      setAttemptCount((prev) => prev + 1);
+    }
+  }, [query.dataUpdatedAt]);
+
+  const isVerified = query.data?.verified ?? false;
+  const isTimeout = !isVerified && attemptCount >= maxAttempts;
+  const isLoading = !isVerified && !isTimeout && query.isLoading;
+
+  return {
+    isVerified,
+    isLoading,
+    subscription: query.data?.subscription,
+    isTimeout,
+  };
 };
 
 export const useSyncConfigs = () => {

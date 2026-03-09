@@ -316,6 +316,17 @@ export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
   });
 };
 
+export interface CheckoutVerification {
+  verified: boolean;
+  subscription?: UserSubscriptionDto;
+}
+
+export const verifyCheckoutSession = (sessionId: string): Promise<CheckoutVerification> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/subscription/verify-session?sessionId=${encodeURIComponent(sessionId)}`
+  );
+};
+
 export const cancelSubscription = (): Promise<{ success: boolean }> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/cancel`, {
     method: 'POST',

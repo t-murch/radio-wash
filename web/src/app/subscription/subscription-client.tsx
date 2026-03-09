@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { CURRENT_PLAN } from '@/lib/constants/pricing';
+import { CancelSubscriptionDialog } from './cancel-subscription-dialog';
 
 const formatDateTime = (dateString: string) => {
   return new Date(dateString).toLocaleString();
@@ -19,6 +21,7 @@ const formatDateTime = (dateString: string) => {
 export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   const { data: subscriptionStatus, isLoading } = useSubscriptionStatus();
   const subscribeToSyncMutation = useSubscribeToSync();
@@ -27,6 +30,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     mutationFn: cancelSubscription,
     onSuccess: () => {
       toast.success('Subscription cancelled successfully');
+      setCancelDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
       queryClient.invalidateQueries({ queryKey: ['sync-configs'] });
     },
@@ -52,14 +56,12 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (
-      confirm(
-        'Are you sure you want to cancel your subscription? This will disable all active sync configurations.'
-      )
-    ) {
-      await cancelSubscriptionMutation.mutateAsync();
-    }
+  const handleCancelSubscription = () => {
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    await cancelSubscriptionMutation.mutateAsync();
   };
 
   if (isLoading) {
@@ -139,7 +141,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   <h3 className="font-medium text-foreground">Features</h3>
                   <ul className="text-sm space-y-1 text-muted-foreground">
                     <li>✓ Automatic daily playlist synchronization</li>
-                    <li>✓ Unlimited playlist sync configurations</li>
+                    <li>✓ Playlist sync configurations</li>
                     <li>✓ Manual sync triggering</li>
                     <li>✓ Sync history and status tracking</li>
                   </ul>
@@ -315,6 +317,14 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
             </div>
           )}
         </div>
+
+        <CancelSubscriptionDialog
+          open={cancelDialogOpen}
+          onOpenChange={setCancelDialogOpen}
+          onConfirm={handleConfirmCancel}
+          periodEndDate={subscriptionStatus?.currentPeriodEnd}
+          isLoading={cancelSubscriptionMutation.isPending}
+        />
       </main>
     </div>
   );
