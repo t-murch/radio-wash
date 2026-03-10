@@ -72,6 +72,7 @@ builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>(
 
 // Stripe services
 builder.Services.AddScoped<Stripe.CustomerService>();
+Stripe.StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
 
 // Idempotency service for webhook race condition prevention
 builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();

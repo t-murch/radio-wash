@@ -30,8 +30,6 @@ public class StripeWebhookProcessor : IWebhookProcessor
         _dbContext = dbContext;
         _customerService = customerService;
         _logger = logger;
-
-        StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
     }
 
     public async Task ProcessWebhookAsync(string payload, string signature)
@@ -78,13 +76,13 @@ public class StripeWebhookProcessor : IWebhookProcessor
             stripeEvent.Id, stripeEvent.Type);
     }
 
-    private async Task HandleCheckoutCompletedAsync(Event stripeEvent)
+    private Task HandleCheckoutCompletedAsync(Event stripeEvent)
     {
         var session = stripeEvent.Data.Object as Session;
         if (session == null)
         {
             _logger.LogWarning("Checkout completed event received but session object is null");
-            return;
+            return Task.CompletedTask;
         }
 
         try
@@ -106,7 +104,7 @@ public class StripeWebhookProcessor : IWebhookProcessor
             throw;
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task HandleSubscriptionUpdatedAsync(Event stripeEvent)
@@ -374,7 +372,5 @@ public class StripeWebhookProcessor : IWebhookProcessor
             _logger.LogError(ex, "Error processing payment succeeded event for invoice {InvoiceId}", invoice.Id);
             throw;
         }
-
-        await Task.CompletedTask;
     }
 }

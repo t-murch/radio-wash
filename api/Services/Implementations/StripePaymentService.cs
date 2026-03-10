@@ -39,8 +39,6 @@ public class StripePaymentService : IPaymentService
     _webhookRetryService = webhookRetryService;
     _webhookProcessor = webhookProcessor;
     _logger = logger;
-
-    StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
   }
 
   public async Task<string> CreateCheckoutSessionAsync(int userId, string planPriceId)
