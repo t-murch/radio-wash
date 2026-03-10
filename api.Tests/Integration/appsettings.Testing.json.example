@@ -1,0 +1,8 @@
+{
+  "Stripe": {
+    "SecretKey": "sk_test_REPLACE_WITH_YOUR_TEST_KEY",
+    "WebhookSecret": "whsec_test_bypassed",
+    "PricePlanId": "price_REPLACE_WITH_YOUR_TEST_PRICE_ID",
+    "PublishableKey": "pk_test_REPLACE_WITH_YOUR_TEST_KEY"
+  }
+}
