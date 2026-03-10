@@ -4,6 +4,7 @@ using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
 using System.Text.Json;
+using Stripe;
 
 namespace RadioWash.Api.Controllers;
 
@@ -59,6 +60,16 @@ public class SubscriptionController : AuthenticatedControllerBase
       return Ok(null);
     }
 
+    if (subscription.Plan == null)
+    {
+      _logger.LogWarning("Subscription {SubscriptionId} for user {UserId} has no associated plan",
+          subscription.Id, userId);
+      return Problem(
+          title: "Subscription Data Incomplete",
+          detail: "The subscription has no associated plan",
+          statusCode: StatusCodes.Status500InternalServerError);
+    }
+
     var subscriptionDto = new UserSubscriptionDto
     {
       Id = subscription.Id,
@@ -94,10 +105,15 @@ public class SubscriptionController : AuthenticatedControllerBase
       var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, dto.PlanPriceId);
       return Ok(new { checkoutUrl });
     }
-    catch (Exception ex)
+    catch (InvalidOperationException ex)
     {
-      _logger.LogError(ex, "Failed to create checkout session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create checkout session" });
+      _logger.LogWarning(ex, "Invalid checkout session request for user {UserId}", userId);
+      return BadRequest(new { error = ex.Message });
+    }
+    catch (StripeException ex)
+    {
+      _logger.LogError(ex, "Stripe error creating checkout session for user {UserId}", userId);
+      return BadRequest(new { error = "Payment provider error. Please try again." });
     }
   }
 
@@ -117,10 +133,15 @@ public class SubscriptionController : AuthenticatedControllerBase
       var portalUrl = await _paymentService.CreatePortalSessionAsync(subscription.StripeCustomerId);
       return Ok(new { portalUrl });
     }
-    catch (Exception ex)
+    catch (InvalidOperationException ex)
     {
-      _logger.LogError(ex, "Failed to create portal session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create portal session" });
+      _logger.LogWarning(ex, "Invalid portal session request for user {UserId}", userId);
+      return BadRequest(new { error = ex.Message });
+    }
+    catch (StripeException ex)
+    {
+      _logger.LogError(ex, "Stripe error creating portal session for user {UserId}", userId);
+      return BadRequest(new { error = "Payment provider error. Please try again." });
     }
   }
 
@@ -134,10 +155,15 @@ public class SubscriptionController : AuthenticatedControllerBase
       await _subscriptionService.CancelSubscriptionAsync(userId);
       return Ok(new { message = "Subscription canceled successfully" });
     }
-    catch (Exception ex)
+    catch (InvalidOperationException ex)
     {
-      _logger.LogError(ex, "Failed to cancel subscription for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to cancel subscription" });
+      _logger.LogWarning(ex, "Invalid cancel subscription request for user {UserId}", userId);
+      return BadRequest(new { error = ex.Message });
+    }
+    catch (StripeException ex)
+    {
+      _logger.LogError(ex, "Stripe error cancelling subscription for user {UserId}", userId);
+      return BadRequest(new { error = "Payment provider error. Please try again." });
     }
   }
 

@@ -9,12 +9,12 @@ export const SUBSCRIPTION_PRICING = {
   // Base subscription plan
   MONTHLY: {
     // The actual price charged (what Stripe charges)
-    AMOUNT_CENTS: 299, // $2.99
-    AMOUNT_DOLLARS: 2.99,
-    
+    AMOUNT_CENTS: 500, // $5.00
+    AMOUNT_DOLLARS: 5.00,
+
     // Display prices (for marketing, may be different from actual)
-    DISPLAY_PRICE: '$2.99',
-    MARKETING_PRICE: '$3', // Simplified for marketing copy
+    DISPLAY_PRICE: '$5.00',
+    MARKETING_PRICE: '$5', // Simplified for marketing copy
     
     // Stripe-related identifiers
     STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || '',

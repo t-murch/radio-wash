@@ -108,7 +108,7 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   {
     return await _dbContext.UserSubscriptions
         .AnyAsync(us => us.UserId == userId &&
-                       us.Status == SubscriptionStatus.Active &&
+                       (us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.Trialing) &&
                        (us.CurrentPeriodEnd == null || us.CurrentPeriodEnd > DateTime.UtcNow));
   }
 

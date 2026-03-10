@@ -161,7 +161,7 @@ public class SubscriptionControllerTests : IDisposable
     };
 
     _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanPriceId))
-        .ThrowsAsync(new Exception("Invalid price ID"));
+        .ThrowsAsync(new InvalidOperationException("Invalid price ID"));
 
     // Act
     var result = await _controller.CreateCheckoutSession(request);
@@ -171,7 +171,7 @@ public class SubscriptionControllerTests : IDisposable
     var response = badRequestResult.Value;
     Assert.NotNull(response);
     var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to create checkout session", errorProperty?.GetValue(response));
+    Assert.Equal("Invalid price ID", errorProperty?.GetValue(response));
   }
 
   [Fact]
@@ -222,7 +222,7 @@ public class SubscriptionControllerTests : IDisposable
   {
     // Arrange
     _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
-        .ThrowsAsync(new Exception("Cancellation failed"));
+        .ThrowsAsync(new InvalidOperationException("Cancellation failed"));
 
     // Act
     var result = await _controller.CancelSubscription();
@@ -232,7 +232,7 @@ public class SubscriptionControllerTests : IDisposable
     var response = badRequestResult.Value;
     Assert.NotNull(response);
     var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to cancel subscription", errorProperty?.GetValue(response));
+    Assert.Equal("Cancellation failed", errorProperty?.GetValue(response));
   }
 
   [Fact]
