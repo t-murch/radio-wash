@@ -58,7 +58,11 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
         'Are you sure you want to cancel your subscription? This will disable all active sync configurations.'
       )
     ) {
-      await cancelSubscriptionMutation.mutateAsync();
+      try {
+        await cancelSubscriptionMutation.mutateAsync();
+      } catch {
+        // Error already handled by mutation's onError callback
+      }
     }
   };
 
