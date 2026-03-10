@@ -55,39 +55,27 @@ public class StripeWebhookProcessor : IWebhookProcessor
                 break;
         }
 
-        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
-            stripeEvent.Id, stripeEvent.Type);
     }
 
-    private async Task HandleCheckoutCompletedAsync(Event stripeEvent)
+    private Task HandleCheckoutCompletedAsync(Event stripeEvent)
     {
         var session = stripeEvent.Data.Object as Session;
         if (session == null)
         {
             _logger.LogWarning("Checkout completed event received but session object is null");
-            return;
+            return Task.CompletedTask;
         }
 
-        try
+        if (session.Metadata?.TryGetValue("userId", out var userIdStr) == true && int.TryParse(userIdStr, out var userId))
         {
-            if (session.Metadata?.TryGetValue("userId", out var userIdStr) == true && int.TryParse(userIdStr, out var userId))
-            {
-                _logger.LogInformation("Checkout completed for user {UserId}, session {SessionId}", userId, session.Id);
-                // The subscription will be handled by the subscription.created event
-                // For now, we just log the successful checkout
-            }
-            else
-            {
-                _logger.LogWarning("Checkout completed for session {SessionId} but no valid userId found in metadata", session.Id);
-            }
+            _logger.LogInformation("Checkout completed for user {UserId}, session {SessionId}", userId, session.Id);
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Error processing checkout completed event for session {SessionId}", session.Id);
-            throw;
+            _logger.LogWarning("Checkout completed for session {SessionId} but no valid userId found in metadata", session.Id);
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task HandleSubscriptionUpdatedAsync(Event stripeEvent)
@@ -221,8 +209,8 @@ public class StripeWebhookProcessor : IWebhookProcessor
             // Get the price ID from the subscription items
             if (subscription.Items?.Data?.Any() != true)
             {
-                _logger.LogWarning("Subscription {SubscriptionId} has no items", subscription.Id);
-                return;
+                throw new InvalidOperationException(
+                    $"Subscription {subscription.Id} has no items — cannot create subscription record");
             }
 
             var priceId = subscription.Items.Data.First().Price.Id;
@@ -270,8 +258,8 @@ public class StripeWebhookProcessor : IWebhookProcessor
 
             if (!userId.HasValue)
             {
-                _logger.LogError("Could not determine user ID for subscription {SubscriptionId}", subscription.Id);
-                return;
+                throw new InvalidOperationException(
+                    $"Could not determine user ID for subscription {subscription.Id} — cannot create subscription record");
             }
 
             // Use transaction only for the database write operation to ensure atomicity
@@ -355,7 +343,5 @@ public class StripeWebhookProcessor : IWebhookProcessor
             _logger.LogError(ex, "Error processing payment succeeded event for invoice {InvoiceId}", invoice.Id);
             throw;
         }
-
-        await Task.CompletedTask;
     }
 }

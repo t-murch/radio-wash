@@ -155,28 +155,6 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TryProcessEventAsync_AfterDisposal_ShouldThrowObjectDisposedException()
-    {
-        // Arrange
-        _idempotencyService.Dispose();
-
-        // Act & Assert
-        await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => _idempotencyService.TryProcessEventAsync("evt_test", "test.event"));
-    }
-
-    [Fact]
-    public async Task MarkEventSuccessfulAsync_AfterDisposal_ShouldThrowObjectDisposedException()
-    {
-        // Arrange
-        _idempotencyService.Dispose();
-
-        // Act & Assert
-        await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => _idempotencyService.MarkEventSuccessfulAsync("evt_test"));
-    }
-
-    [Fact]
     public async Task TryProcessEventAsync_WithPreExistingDatabaseRecord_ShouldReturnFalse()
     {
         // Arrange
@@ -203,7 +181,6 @@ public class DatabaseIdempotencyServiceTests : IDisposable
 
     public void Dispose()
     {
-        _idempotencyService.Dispose();
         _dbContext.Dispose();
     }
 }

@@ -215,7 +215,22 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task CancelSubscription_WhenServiceThrows_ShouldReturnBadRequest()
+  public async Task CancelSubscription_WhenInvalidOperation_ShouldReturnBadRequest()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
+        .ThrowsAsync(new InvalidOperationException("No active subscription"));
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+  }
+
+  [Fact]
+  public async Task CancelSubscription_WhenServiceThrows_ShouldReturn500()
   {
     // Arrange
     _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
@@ -225,11 +240,8 @@ public class SubscriptionControllerTests : IDisposable
     var result = await _controller.CancelSubscription();
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to cancel subscription", errorProperty?.GetValue(response));
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
   }
 
   [Fact]
@@ -365,6 +377,34 @@ public class SubscriptionControllerTests : IDisposable
     Assert.NotNull(response);
     var verifiedProperty = response.GetType().GetProperty("verified");
     Assert.True((bool)verifiedProperty?.GetValue(response)!);
+  }
+
+  [Fact]
+  public async Task VerifyCheckoutSession_WithDifferentUserSession_ShouldReturnVerifiedFalse()
+  {
+    // Arrange
+    var sessionId = "cs_test_other_user";
+    var mockSession = new Stripe.Checkout.Session
+    {
+      Id = sessionId,
+      Status = "complete",
+      Metadata = new Dictionary<string, string> { { "userId", "999" } }
+    };
+
+    _mockPaymentService.Setup(x => x.VerifyCheckoutSessionAsync(sessionId))
+        .ReturnsAsync(mockSession);
+
+    // Act
+    var result = await _controller.VerifyCheckoutSession(sessionId);
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var response = okResult.Value;
+    Assert.NotNull(response);
+    var verifiedProperty = response.GetType().GetProperty("verified");
+    Assert.False((bool)verifiedProperty?.GetValue(response)!);
+    // Should NOT call GetActiveSubscriptionAsync since ownership failed
+    _mockSubscriptionService.Verify(x => x.GetActiveSubscriptionAsync(It.IsAny<int>()), Times.Never);
   }
 
   [Fact]

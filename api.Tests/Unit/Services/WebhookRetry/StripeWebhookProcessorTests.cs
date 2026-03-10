@@ -214,6 +214,67 @@ public class StripeWebhookProcessorTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoItems_ShouldThrow()
+    {
+        // Arrange
+        var subscriptionId = "sub_no_items";
+        var eventId = "evt_test_no_items";
+
+        var subscription = new Stripe.Subscription
+        {
+            Id = subscriptionId,
+            CustomerId = "cus_123",
+            Status = "active",
+            Metadata = new Dictionary<string, string> { { "userId", "1" } },
+            Items = new StripeList<SubscriptionItem> { Data = new List<SubscriptionItem>() }
+        };
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent));
+        Assert.Contains("has no items", ex.Message);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoUserId_ShouldThrow()
+    {
+        // Arrange
+        var subscriptionId = "sub_no_user";
+        var customerId = "cus_no_user";
+        var priceId = "price_123";
+        var eventId = "evt_test_no_user";
+
+        var subscription = new Stripe.Subscription
+        {
+            Id = subscriptionId,
+            CustomerId = customerId,
+            Status = "active",
+            Metadata = new Dictionary<string, string>(), // No userId
+            Items = new StripeList<SubscriptionItem>
+            {
+                Data = new List<SubscriptionItem>
+                {
+                    new SubscriptionItem { Price = new Price { Id = priceId } }
+                }
+            }
+        };
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
+        var mockPlan = CreateMockSubscriptionPlan(1, priceId);
+
+        _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
+            .ReturnsAsync(mockPlan);
+        // Customer lookup also returns no userId
+        _mockCustomerService.Setup(x => x.GetAsync(customerId, null, null, default))
+            .ReturnsAsync(new Customer { Metadata = new Dictionary<string, string>() });
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent));
+        Assert.Contains("Could not determine user ID", ex.Message);
+    }
+
+    [Fact]
     public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoPlan_ShouldNotCreateSubscription()
     {
         // Arrange

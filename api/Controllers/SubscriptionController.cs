@@ -107,10 +107,29 @@ public class SubscriptionController : AuthenticatedControllerBase
       await _subscriptionService.CancelSubscriptionAsync(userId);
       return Ok(new { message = "Subscription canceled successfully" });
     }
+    catch (InvalidOperationException ex)
+    {
+      _logger.LogWarning(ex, "Cannot cancel subscription for user {UserId}", userId);
+      return Problem(
+        detail: ex.Message,
+        statusCode: StatusCodes.Status400BadRequest
+      );
+    }
+    catch (Stripe.StripeException ex)
+    {
+      _logger.LogWarning(ex, "Stripe error canceling subscription for user {UserId}", userId);
+      return Problem(
+        detail: "Failed to cancel subscription",
+        statusCode: StatusCodes.Status400BadRequest
+      );
+    }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to cancel subscription for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to cancel subscription" });
+      return Problem(
+        detail: "Failed to cancel subscription",
+        statusCode: StatusCodes.Status500InternalServerError
+      );
     }
   }
 
@@ -161,6 +180,17 @@ public class SubscriptionController : AuthenticatedControllerBase
       }
 
       var userId = GetCurrentUserId();
+
+      // Verify the session belongs to the authenticated user
+      if (session.Metadata?.TryGetValue("userId", out var sessionUserIdStr) == true
+          && int.TryParse(sessionUserIdStr, out var sessionUserId)
+          && sessionUserId != userId)
+      {
+        _logger.LogWarning("Session {SessionId} belongs to user {SessionUserId}, not {UserId}",
+            sessionId, sessionUserId, userId);
+        return Ok(new { verified = false });
+      }
+
       var subscription = await _subscriptionService.GetActiveSubscriptionAsync(userId);
 
       return Ok(new

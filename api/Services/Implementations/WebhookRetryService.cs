@@ -45,12 +45,14 @@ public class WebhookRetryService : IWebhookRetryService
       var existingRetry = await _dbContext.WebhookRetries
         .FirstOrDefaultAsync(wr => wr.EventId == eventId);
 
+      var nextRetryAt = CalculateNextRetryTime(attemptNumber);
+
       if (existingRetry != null)
       {
         // Update existing retry with new attempt
         existingRetry.AttemptNumber = attemptNumber;
         existingRetry.LastErrorMessage = errorMessage;
-        existingRetry.NextRetryAt = CalculateNextRetryTime(attemptNumber);
+        existingRetry.NextRetryAt = nextRetryAt;
         existingRetry.Status = WebhookRetryStatus.Pending;
         existingRetry.UpdatedAt = _dateTimeProvider.UtcNow;
 
@@ -67,7 +69,7 @@ public class WebhookRetryService : IWebhookRetryService
           AttemptNumber = attemptNumber,
           MaxRetries = DefaultMaxRetries,
           Status = WebhookRetryStatus.Pending,
-          NextRetryAt = CalculateNextRetryTime(attemptNumber),
+          NextRetryAt = nextRetryAt,
           LastErrorMessage = errorMessage,
           CreatedAt = _dateTimeProvider.UtcNow,
           UpdatedAt = _dateTimeProvider.UtcNow
@@ -77,9 +79,9 @@ public class WebhookRetryService : IWebhookRetryService
       }
 
       await _dbContext.SaveChangesAsync();
-      
-      _logger.LogInformation("Scheduled webhook retry for event {EventId}, attempt {AttemptNumber}, next retry at {NextRetryAt}", 
-        eventId, attemptNumber, CalculateNextRetryTime(attemptNumber));
+
+      _logger.LogInformation("Scheduled webhook retry for event {EventId}, attempt {AttemptNumber}, next retry at {NextRetryAt}",
+        eventId, attemptNumber, nextRetryAt);
     }
     catch (Exception ex)
     {
