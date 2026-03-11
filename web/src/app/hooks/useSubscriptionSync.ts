@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getSubscriptionStatus,
@@ -69,11 +69,15 @@ export const useVerifyCheckoutSession = (sessionId: string | null) => {
     },
   });
 
+  const prevFetchStatusRef = useRef(query.fetchStatus);
+
   useEffect(() => {
-    if (query.dataUpdatedAt) {
+    // Track actual fetch completions: fetchStatus transitions from 'fetching' to 'idle'
+    if (prevFetchStatusRef.current === 'fetching' && query.fetchStatus === 'idle') {
       setAttemptCount((prev) => prev + 1);
     }
-  }, [query.dataUpdatedAt]);
+    prevFetchStatusRef.current = query.fetchStatus;
+  }, [query.fetchStatus]);
 
   const isVerified = query.data?.verified ?? false;
   const isTimeout = !isVerified && attemptCount >= maxAttempts;
@@ -84,6 +88,7 @@ export const useVerifyCheckoutSession = (sessionId: string | null) => {
     isLoading,
     subscription: query.data?.subscription,
     isTimeout,
+    isError: query.isError,
   };
 };
 

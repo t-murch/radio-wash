@@ -59,8 +59,8 @@ public class CancelIntegrationTests : SubscriptionTestBase
         // Act — real Stripe call will fail because subscription doesn't exist
         var response = await client.PostAsync("/api/subscription/cancel", null);
 
-        // Assert — should return error
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Assert — should return 502 (upstream Stripe error)
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
 
         // DB status should still be active (transaction rolled back)
         var subscription = await WithDbContextAsync(async db =>

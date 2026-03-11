@@ -81,7 +81,11 @@ public class StripeWebhookProcessor : IWebhookProcessor
     private async Task HandleSubscriptionUpdatedAsync(Event stripeEvent)
     {
         var subscription = stripeEvent.Data.Object as Stripe.Subscription;
-        if (subscription == null) return;
+        if (subscription == null)
+        {
+            _logger.LogWarning("Subscription updated event received but subscription object is null");
+            return;
+        }
 
         await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, subscription.Status);
 
@@ -131,7 +135,11 @@ public class StripeWebhookProcessor : IWebhookProcessor
     private async Task HandleSubscriptionDeletedAsync(Event stripeEvent)
     {
         var subscription = stripeEvent.Data.Object as Stripe.Subscription;
-        if (subscription == null) return;
+        if (subscription == null)
+        {
+            _logger.LogWarning("Subscription deleted event received but subscription object is null");
+            return;
+        }
 
         await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, "canceled");
 
@@ -144,32 +152,16 @@ public class StripeWebhookProcessor : IWebhookProcessor
         if (invoice == null) return;
 
         // Handle v49 compatibility - get subscription ID from RawJObject if direct property not available
-        string? subscriptionId = null;
+        string? subscriptionId = ExtractSubscriptionIdFromInvoice(invoice, invoice.Id);
 
-        try
+        if (!string.IsNullOrEmpty(subscriptionId))
         {
-            // Try to get subscription ID from RawJObject (always available in webhook events)
-            var subscriptionValue = invoice.RawJObject?["subscription"];
-            if (subscriptionValue != null)
-            {
-                subscriptionId = subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
-                    ? subscriptionValue.ToString()
-                    : subscriptionValue["id"]?.ToString();
-            }
-
-            if (!string.IsNullOrEmpty(subscriptionId))
-            {
-                _logger.LogInformation("Retrieved subscription ID {SubscriptionId} from invoice {InvoiceId} webhook",
-                    subscriptionId, invoice.Id);
-            }
-            else
-            {
-                _logger.LogWarning("No subscription reference found in invoice {InvoiceId} webhook payload", invoice.Id);
-            }
+            _logger.LogInformation("Retrieved subscription ID {SubscriptionId} from invoice {InvoiceId} webhook",
+                subscriptionId, invoice.Id);
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Error accessing subscription information from invoice {InvoiceId} webhook", invoice.Id);
+            _logger.LogWarning("No subscription reference found in invoice {InvoiceId} webhook payload", invoice.Id);
         }
 
         if (!string.IsNullOrEmpty(subscriptionId))
@@ -308,22 +300,7 @@ public class StripeWebhookProcessor : IWebhookProcessor
         try
         {
             // Get subscription ID from invoice
-            string? subscriptionId = null;
-
-            try
-            {
-                var subscriptionValue = invoice.RawJObject?["subscription"];
-                if (subscriptionValue != null)
-                {
-                    subscriptionId = subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
-                        ? subscriptionValue.ToString()
-                        : subscriptionValue["id"]?.ToString();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to extract subscription ID from invoice {InvoiceId}", invoice.Id);
-            }
+            string? subscriptionId = ExtractSubscriptionIdFromInvoice(invoice, invoice.Id);
 
             if (!string.IsNullOrEmpty(subscriptionId))
             {
@@ -343,5 +320,25 @@ public class StripeWebhookProcessor : IWebhookProcessor
             _logger.LogError(ex, "Error processing payment succeeded event for invoice {InvoiceId}", invoice.Id);
             throw;
         }
+    }
+
+    private string? ExtractSubscriptionIdFromInvoice(Invoice invoice, string invoiceId)
+    {
+        try
+        {
+            var subscriptionValue = invoice.RawJObject?["subscription"];
+            if (subscriptionValue != null)
+            {
+                return subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
+                    ? subscriptionValue.ToString()
+                    : subscriptionValue["id"]?.ToString();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract subscription ID from invoice {InvoiceId}", invoiceId);
+        }
+
+        return null;
     }
 }

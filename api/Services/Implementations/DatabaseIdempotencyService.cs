@@ -31,10 +31,27 @@ public class DatabaseIdempotencyService : IIdempotencyService
 
         if (existingEvent != null)
         {
-            _logger.LogInformation(
-                "Webhook event {EventId} of type {EventType} has already been processed. Status: {IsSuccessful}",
-                eventId, eventType, existingEvent.IsSuccessful ? "Success" : "Failed");
-            return false;
+            if (existingEvent.IsSuccessful)
+            {
+                _logger.LogInformation(
+                    "Webhook event {EventId} of type {EventType} has already been successfully processed",
+                    eventId, eventType);
+                return false;
+            }
+
+            // Failed event — allow re-processing by removing the old record
+            _logger.LogWarning(
+                "Webhook event {EventId} of type {EventType} previously failed. Allowing re-processing",
+                eventId, eventType);
+
+            // Remove using a fresh query to get a tracked entity
+            var trackedEvent = await _dbContext.ProcessedWebhookEvents
+                .FirstOrDefaultAsync(e => e.EventId == eventId);
+            if (trackedEvent != null)
+            {
+                _dbContext.ProcessedWebhookEvents.Remove(trackedEvent);
+                await _dbContext.SaveChangesAsync();
+            }
         }
 
         // Try to create the webhook event record to claim processing rights
@@ -125,26 +142,15 @@ public class DatabaseIdempotencyService : IIdempotencyService
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
     {
-        // Check for SQL Server unique constraint violation
-        if (ex.InnerException?.Message?.Contains("duplicate key") == true ||
-            ex.InnerException?.Message?.Contains("UNIQUE constraint") == true ||
-            ex.InnerException?.Message?.Contains("unique constraint") == true)
-        {
+        // Check for PostgreSQL-specific exception with unique violation code
+        if (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
             return true;
-        }
 
-        // Check for SQLite unique constraint violation
-        if (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
-        {
-            return true;
-        }
-
-        // Check for PostgreSQL unique constraint violation
-        if (ex.InnerException?.Message?.Contains("duplicate key value violates unique constraint") == true)
-        {
-            return true;
-        }
-
+        // Fallback for SQLite (used in tests) and other providers
+        var message = ex.InnerException?.Message;
+        if (message == null) return false;
+        if (message.Contains("duplicate key")) return true;
+        if (message.Contains("UNIQUE constraint")) return true;
         return false;
     }
 }

@@ -16,6 +16,7 @@ public class WebhookRetryServiceTests : IDisposable
     private readonly Mock<ILogger<WebhookRetryService>> _mockLogger;
     private readonly Mock<IWebhookProcessor> _mockWebhookProcessor;
     private readonly Mock<IErrorClassifier> _mockErrorClassifier;
+    private readonly Mock<IIdempotencyService> _mockIdempotencyService;
     private readonly TestDateTimeProvider _testDateTimeProvider;
     private readonly TestRandomProvider _testRandomProvider;
     private readonly RadioWashDbContext _dbContext;
@@ -26,6 +27,7 @@ public class WebhookRetryServiceTests : IDisposable
         _mockLogger = new Mock<ILogger<WebhookRetryService>>();
         _mockWebhookProcessor = new Mock<IWebhookProcessor>();
         _mockErrorClassifier = new Mock<IErrorClassifier>();
+        _mockIdempotencyService = new Mock<IIdempotencyService>();
         _testDateTimeProvider = new TestDateTimeProvider();
         _testRandomProvider = new TestRandomProvider();
 
@@ -43,7 +45,8 @@ public class WebhookRetryServiceTests : IDisposable
             _mockWebhookProcessor.Object,
             _testDateTimeProvider,
             _testRandomProvider,
-            _mockErrorClassifier.Object);
+            _mockErrorClassifier.Object,
+            _mockIdempotencyService.Object);
     }
 
     #region CalculateNextRetryTime Tests
@@ -420,6 +423,11 @@ public class WebhookRetryServiceTests : IDisposable
         // Assert
         _mockWebhookProcessor.Verify(x => x.ProcessWebhookAsync(
             It.Is<Stripe.Event>(e => e.Id == "evt_retry_123" && e.Type == "customer.subscription.updated")),
+            Times.Once);
+
+        // Verify idempotency service was called to mark event successful
+        _mockIdempotencyService.Verify(
+            x => x.MarkEventSuccessfulAsync("evt_retry_123"),
             Times.Once);
 
         // Verify retry was marked as succeeded

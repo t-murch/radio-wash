@@ -8,7 +8,7 @@ import { type User } from '../../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVerifyCheckoutSession } from '@/hooks/useSubscriptionSync';
 
-function LoadingState() {
+function LoadingState({ message }: { message?: string }) {
   return (
     <div className="text-center">
       <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-info-muted mb-4 animate-pulse">
@@ -36,7 +36,7 @@ function LoadingState() {
         Verifying Your Subscription...
       </h1>
       <p className="text-lg text-muted-foreground">
-        Please wait while we confirm your payment.
+        {message || 'Please wait while we confirm your payment.'}
       </p>
     </div>
   );
@@ -189,13 +189,52 @@ function NoSessionState({ onDashboard }: { onDashboard: () => void }) {
   );
 }
 
+function ErrorState({ onDashboard }: { onDashboard: () => void }) {
+  return (
+    <div className="text-center">
+      <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-error-muted mb-4">
+        <svg
+          className="h-6 w-6 text-error"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"
+          />
+        </svg>
+      </div>
+
+      <h1 className="text-3xl font-bold text-foreground mb-2">
+        Verification Error
+      </h1>
+
+      <p className="text-lg text-muted-foreground mb-8">
+        We couldn&apos;t verify your payment status. Your payment may have succeeded —
+        please check your dashboard.
+      </p>
+
+      <Button
+        onClick={onDashboard}
+        size="lg"
+        className="bg-info hover:bg-info-hover text-info-foreground"
+      >
+        Go to Dashboard
+      </Button>
+    </div>
+  );
+}
+
 export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const sessionId = searchParams.get('session_id');
 
-  const { isVerified, isLoading, isTimeout } = useVerifyCheckoutSession(sessionId);
+  const { isVerified, isLoading, isTimeout, isError } = useVerifyCheckoutSession(sessionId);
 
   // Invalidate subscription queries when verified
   useEffect(() => {
@@ -218,8 +257,10 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
     content = <SuccessState onDashboard={handleDashboard} onManage={handleManage} />;
   } else if (isTimeout) {
     content = <TimeoutState onDashboard={handleDashboard} />;
+  } else if (isError) {
+    content = <ErrorState onDashboard={handleDashboard} />;
   } else {
-    content = <LoadingState />;
+    content = <LoadingState message="Still checking your payment status..." />;
   }
 
   return (

@@ -58,12 +58,28 @@ public class SubscriptionController : AuthenticatedControllerBase
       var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, dto.PlanId);
       return Ok(new { checkoutUrl });
     }
+    catch (InvalidOperationException ex)
+    {
+      _logger.LogWarning(ex, "Cannot create checkout session for user {UserId}", userId);
+      return Problem(
+        detail: ex.Message,
+        statusCode: StatusCodes.Status400BadRequest
+      );
+    }
+    catch (Stripe.StripeException ex)
+    {
+      _logger.LogWarning(ex, "Stripe error creating checkout session for user {UserId}", userId);
+      return Problem(
+        detail: "Upstream payment service error",
+        statusCode: StatusCodes.Status502BadGateway
+      );
+    }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to create checkout session for user {UserId}", userId);
       return Problem(
         detail: "Failed to create checkout session",
-        statusCode: StatusCodes.Status400BadRequest
+        statusCode: StatusCodes.Status500InternalServerError
       );
     }
   }
@@ -87,12 +103,28 @@ public class SubscriptionController : AuthenticatedControllerBase
       var portalUrl = await _paymentService.CreatePortalSessionAsync(subscription.StripeCustomerId);
       return Ok(new { portalUrl });
     }
+    catch (InvalidOperationException ex)
+    {
+      _logger.LogWarning(ex, "Cannot create portal session for user {UserId}", userId);
+      return Problem(
+        detail: ex.Message,
+        statusCode: StatusCodes.Status400BadRequest
+      );
+    }
+    catch (Stripe.StripeException ex)
+    {
+      _logger.LogWarning(ex, "Stripe error creating portal session for user {UserId}", userId);
+      return Problem(
+        detail: "Upstream payment service error",
+        statusCode: StatusCodes.Status502BadGateway
+      );
+    }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to create portal session for user {UserId}", userId);
       return Problem(
         detail: "Failed to create portal session",
-        statusCode: StatusCodes.Status400BadRequest
+        statusCode: StatusCodes.Status500InternalServerError
       );
     }
   }
@@ -119,8 +151,8 @@ public class SubscriptionController : AuthenticatedControllerBase
     {
       _logger.LogWarning(ex, "Stripe error canceling subscription for user {UserId}", userId);
       return Problem(
-        detail: "Failed to cancel subscription",
-        statusCode: StatusCodes.Status400BadRequest
+        detail: "Upstream payment service error",
+        statusCode: StatusCodes.Status502BadGateway
       );
     }
     catch (Exception ex)
@@ -182,9 +214,14 @@ public class SubscriptionController : AuthenticatedControllerBase
       var userId = GetCurrentUserId();
 
       // Verify the session belongs to the authenticated user
-      if (session.Metadata?.TryGetValue("userId", out var sessionUserIdStr) == true
-          && int.TryParse(sessionUserIdStr, out var sessionUserId)
-          && sessionUserId != userId)
+      if (session.Metadata == null
+          || !session.Metadata.TryGetValue("userId", out var sessionUserIdStr)
+          || !int.TryParse(sessionUserIdStr, out var sessionUserId))
+      {
+        _logger.LogWarning("Session {SessionId} has no valid userId metadata", sessionId);
+        return Ok(new { verified = false });
+      }
+      if (sessionUserId != userId)
       {
         _logger.LogWarning("Session {SessionId} belongs to user {SessionUserId}, not {UserId}",
             sessionId, sessionUserId, userId);

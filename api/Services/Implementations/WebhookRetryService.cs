@@ -14,7 +14,8 @@ public class WebhookRetryService : IWebhookRetryService
   private readonly IDateTimeProvider _dateTimeProvider;
   private readonly IRandomProvider _randomProvider;
   private readonly IErrorClassifier _errorClassifier;
-  
+  private readonly IIdempotencyService _idempotencyService;
+
   // Configuration constants
   private const int DefaultMaxRetries = 5;
   private const int BaseDelayMinutes = 1;
@@ -27,7 +28,8 @@ public class WebhookRetryService : IWebhookRetryService
     IWebhookProcessor webhookProcessor,
     IDateTimeProvider dateTimeProvider,
     IRandomProvider randomProvider,
-    IErrorClassifier errorClassifier)
+    IErrorClassifier errorClassifier,
+    IIdempotencyService idempotencyService)
   {
     _dbContext = dbContext;
     _logger = logger;
@@ -35,6 +37,7 @@ public class WebhookRetryService : IWebhookRetryService
     _dateTimeProvider = dateTimeProvider;
     _randomProvider = randomProvider;
     _errorClassifier = errorClassifier;
+    _idempotencyService = idempotencyService;
   }
 
   public async Task ScheduleRetryAsync(string eventId, string eventType, string eventJson, string errorMessage, int attemptNumber = 1)
@@ -128,7 +131,10 @@ public class WebhookRetryService : IWebhookRetryService
       // Deserialize the stored event JSON and process
       var stripeEvent = EventUtility.ParseEvent(retry.Payload, throwOnApiVersionMismatch: false);
       await _webhookProcessor.ProcessWebhookAsync(stripeEvent);
-      
+
+      // Update idempotency record to reflect successful processing
+      await _idempotencyService.MarkEventSuccessfulAsync(retry.EventId);
+
       // Mark as succeeded
       await MarkRetrySucceededAsync(retry.Id);
     }

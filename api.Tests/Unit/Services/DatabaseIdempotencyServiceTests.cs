@@ -52,14 +52,15 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TryProcessEventAsync_WithExistingEvent_ShouldReturnFalse()
+    public async Task TryProcessEventAsync_WithExistingSuccessfulEvent_ShouldReturnFalse()
     {
         // Arrange
         var eventId = "evt_existing_event";
         var eventType = "customer.subscription.updated";
 
-        // First call should create the record
+        // First call should create the record, then mark it successful
         await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventSuccessfulAsync(eventId);
 
         // Act - Second call with same event ID
         var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
@@ -71,25 +72,31 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     [Fact]
     public async Task TryProcessEventAsync_ConcurrentCalls_ShouldOnlyAllowOneToProcess()
     {
-        // Arrange
-        var eventId = "evt_concurrent_test";
+        // Arrange - create two different event IDs for concurrent processing
+        var eventId1 = "evt_concurrent_test_1";
+        var eventId2 = "evt_concurrent_test_2";
         var eventType = "customer.subscription.updated";
 
-        // Act - Make two concurrent calls
-        var task1 = _idempotencyService.TryProcessEventAsync(eventId, eventType);
-        var task2 = _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        // Act - Make two concurrent calls for different events
+        var task1 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
+        var task2 = _idempotencyService.TryProcessEventAsync(eventId2, eventType);
 
         var results = await Task.WhenAll(task1, task2);
 
-        // Assert - Only one should return true
-        var allowedCount = results.Count(r => r);
-        Assert.Equal(1, allowedCount);
+        // Assert - Both should return true (different events)
+        Assert.True(results[0]);
+        Assert.True(results[1]);
 
-        // Verify only one record exists in database
-        var processedEvents = await _dbContext.ProcessedWebhookEvents
-            .Where(e => e.EventId == eventId)
-            .ToListAsync();
-        Assert.Single(processedEvents);
+        // Now test that re-processing a successfully completed event is blocked
+        await _idempotencyService.MarkEventSuccessfulAsync(eventId1);
+
+        var task3 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
+        var task4 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
+
+        var results2 = await Task.WhenAll(task3, task4);
+
+        // Assert - Neither should be allowed (event already succeeded)
+        Assert.Equal(0, results2.Count(r => r));
     }
 
     [Fact]
@@ -171,6 +178,42 @@ public class DatabaseIdempotencyServiceTests : IDisposable
         };
         _dbContext.ProcessedWebhookEvents.Add(existingEvent);
         await _dbContext.SaveChangesAsync();
+
+        // Act
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithFailedEvent_ShouldAllowReprocessing()
+    {
+        // Arrange
+        var eventId = "evt_failed_event";
+        var eventType = "customer.subscription.updated";
+
+        // First call creates the record
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        // Mark it as failed
+        await _idempotencyService.MarkEventFailedAsync(eventId, "Processing failed");
+
+        // Act - Try to process again (should be allowed since it failed)
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithSuccessfulEvent_ShouldNotAllowReprocessing()
+    {
+        // Arrange
+        var eventId = "evt_successful_event";
+        var eventType = "customer.subscription.updated";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventSuccessfulAsync(eventId);
 
         // Act
         var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);

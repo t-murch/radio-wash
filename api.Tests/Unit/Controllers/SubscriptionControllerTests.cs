@@ -168,7 +168,7 @@ public class SubscriptionControllerTests : IDisposable
 
     // Assert
     var objectResult = Assert.IsType<ObjectResult>(result);
-    Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+    Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
   }
 
   [Fact]
@@ -360,7 +360,12 @@ public class SubscriptionControllerTests : IDisposable
   {
     // Arrange
     var sessionId = "cs_test_123";
-    var mockSession = new Stripe.Checkout.Session { Id = sessionId, Status = "complete" };
+    var mockSession = new Stripe.Checkout.Session
+    {
+      Id = sessionId,
+      Status = "complete",
+      Metadata = new Dictionary<string, string> { { "userId", "1" } }
+    };
     var subscription = CreateUserSubscriptionWithPlan(1);
 
     _mockPaymentService.Setup(x => x.VerifyCheckoutSessionAsync(sessionId))
@@ -493,6 +498,56 @@ public class SubscriptionControllerTests : IDisposable
     Assert.NotNull(response);
     var hasActiveSubscriptionProperty = response.GetType().GetProperty("hasActiveSubscription");
     Assert.False((bool)hasActiveSubscriptionProperty?.GetValue(response)!);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WhenStripeThrows_ShouldReturn502()
+  {
+    // Arrange
+    var request = new CreateCheckoutDto { PlanId = 1 };
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanId))
+        .ThrowsAsync(new Stripe.StripeException("Stripe error"));
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(request);
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+  }
+
+  [Fact]
+  public async Task CreatePortalSession_WhenStripeThrows_ShouldReturn502()
+  {
+    // Arrange
+    var subscription = CreateUserSubscriptionWithPlan(1);
+    subscription.StripeCustomerId = "cus_test123";
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+    _mockPaymentService.Setup(x => x.CreatePortalSessionAsync(subscription.StripeCustomerId))
+        .ThrowsAsync(new Stripe.StripeException("Stripe error"));
+
+    // Act
+    var result = await _controller.CreatePortalSession();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+  }
+
+  [Fact]
+  public async Task CancelSubscription_WhenStripeThrows_ShouldReturn502()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
+        .ThrowsAsync(new Stripe.StripeException("Stripe error"));
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
   }
 
   [Fact]

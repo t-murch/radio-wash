@@ -71,6 +71,10 @@ builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
 builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
 
 // Stripe services
+var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
+if (string.IsNullOrEmpty(stripeSecretKey))
+    throw new InvalidOperationException("Stripe:SecretKey configuration is required");
+builder.Services.AddSingleton(new Stripe.StripeClient(stripeSecretKey));
 builder.Services.AddScoped<IStripeSubscriptionClient, StripeSubscriptionClient>();
 builder.Services.AddScoped<Stripe.CustomerService>();
 
@@ -122,6 +126,10 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Service provider reference for lazy resolution inside IssuerSigningKeyResolver
+// (set after builder.Build(), used at runtime when tokens are validated)
+IServiceProvider? appServices = null;
+
 // Authentication - Configure for Supabase JWT using JWKS
 // Supabase uses asymmetric keys (ES256) with a JWKS endpoint for token verification.
 // This is the recommended approach per Supabase documentation.
@@ -150,10 +158,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     options.Audience = "authenticated";
 
     // Configure JWKS key management with caching
-    // Use IHttpClientFactory for proper HttpClient lifecycle management
-    var httpClientFactory = builder.Services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>();
-    var jwksHttpClient = httpClientFactory.CreateClient("JwksClient");
-    var jwksLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+    // Dependencies are resolved lazily from the app's service provider to avoid BuildServiceProvider()
+    IHttpClientFactory? resolvedHttpClientFactory = null;
+    ILogger<Program>? resolvedLogger = null;
     JsonWebKeySet? cachedJwks = null;
     DateTime cacheExpiry = DateTime.MinValue;
     var jwksCacheLock = new object();
@@ -171,6 +178,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Use IssuerSigningKeyResolver with caching to avoid fetching JWKS on every request
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
+            // Lazy-resolve dependencies from the app's service provider (available at request time)
+            resolvedHttpClientFactory ??= appServices!.GetRequiredService<IHttpClientFactory>();
+            resolvedLogger ??= appServices!.GetRequiredService<ILogger<Program>>();
+
             // Double-checked locking: check cache without lock first for performance
             if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
             {
@@ -187,18 +198,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 try
                 {
+                    var jwksHttpClient = resolvedHttpClientFactory.CreateClient("JwksClient");
                     var jwksJson = jwksHttpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
                     cachedJwks = new JsonWebKeySet(jwksJson);
                     cacheExpiry = DateTime.UtcNow.Add(jwksCacheDuration);
                 }
                 catch (Exception ex)
                 {
-                    jwksLogger.LogError(ex, "Failed to fetch JWKS from {Url}", jwksUrl);
+                    resolvedLogger.LogError(ex, "Failed to fetch JWKS from {Url}", jwksUrl);
 
                     // Use expired cache as fallback if available
                     if (cachedJwks != null)
                     {
-                        jwksLogger.LogWarning("Using expired JWKS cache as fallback");
+                        resolvedLogger.LogWarning("Using expired JWKS cache as fallback");
                         return cachedJwks.GetSigningKeys();
                     }
                     throw;
@@ -347,6 +359,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 });
 
 var app = builder.Build();
+appServices = app.Services;
 
 if (app.Environment.IsDevelopment())
 {
