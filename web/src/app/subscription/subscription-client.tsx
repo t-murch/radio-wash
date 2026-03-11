@@ -18,6 +18,27 @@ const formatDateTime = (dateString: string) => {
   return new Date(dateString).toLocaleString();
 };
 
+const getStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'active': return 'Active';
+    case 'canceled': return 'Canceled';
+    case 'past_due': return 'Past Due';
+    case 'trialing': return 'Trialing';
+    case 'incomplete': return 'Incomplete';
+    case 'cancel_at_period_end': return 'Canceling';
+    default: return status;
+  }
+};
+
+const getStatusColor = (status: string): string => {
+  switch (status) {
+    case 'active': return 'text-success';
+    case 'canceled': return 'text-error';
+    case 'past_due': case 'cancel_at_period_end': return 'text-warning';
+    default: return 'text-muted-foreground';
+  }
+};
+
 export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -26,7 +47,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   const { data: subscriptionStatus, isLoading } = useSubscriptionStatus();
   const subscribeToSyncMutation = useSubscribeToSync();
 
-  const cancelSubscriptionMutation = useMutation<{ success: boolean }, Error>({
+  const cancelSubscriptionMutation = useMutation<{ message: string }, Error>({
     mutationFn: cancelSubscription,
     onSuccess: () => {
       toast.success('Subscription cancelled successfully');
@@ -120,8 +141,8 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Status:</span>
-                      <span className="ml-2 font-medium text-success">
-                        {subscriptionStatus.status || 'Active'}
+                      <span className={`ml-2 font-medium ${getStatusColor(subscriptionStatus.status || 'active')}`}>
+                        {getStatusLabel(subscriptionStatus.status || 'active')}
                       </span>
                     </div>
                     {subscriptionStatus.currentPeriodEnd && (

@@ -21,6 +21,7 @@ public abstract class SubscriptionTestBase : IClassFixture<SubscriptionWebApplic
     private string? _testUserToken;
     private string? _testUserSupabaseId;
     protected int TestUserId { get; private set; }
+    private DateTime _testStartTime;
 
     protected SubscriptionTestBase(SubscriptionWebApplicationFactory factory)
     {
@@ -41,6 +42,8 @@ public abstract class SubscriptionTestBase : IClassFixture<SubscriptionWebApplic
 
     public async Task InitializeAsync()
     {
+        _testStartTime = DateTime.UtcNow;
+
         // Ensure EF migrations and seed data are applied before any test runs
         await Factory.EnsureMigratedAsync();
 
@@ -77,8 +80,12 @@ public abstract class SubscriptionTestBase : IClassFixture<SubscriptionWebApplic
         // Clean up webhook event and retry records created during tests.
         // Use ExecuteDeleteAsync to avoid optimistic concurrency issues
         // when multiple test classes clean up in parallel.
-        await dbContext.ProcessedWebhookEvents.ExecuteDeleteAsync();
-        await dbContext.WebhookRetries.ExecuteDeleteAsync();
+        await dbContext.ProcessedWebhookEvents
+            .Where(e => e.ProcessedAt >= _testStartTime)
+            .ExecuteDeleteAsync();
+        await dbContext.WebhookRetries
+            .Where(r => r.CreatedAt >= _testStartTime)
+            .ExecuteDeleteAsync();
 
         // Delete GoTrue user
         if (_testUserSupabaseId != null)

@@ -326,7 +326,7 @@ export const verifyCheckoutSession = (sessionId: string): Promise<CheckoutVerifi
   );
 };
 
-export const cancelSubscription = (): Promise<{ success: boolean }> => {
+export const cancelSubscription = (): Promise<{ message: string }> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/cancel`, {
     method: 'POST',
   });

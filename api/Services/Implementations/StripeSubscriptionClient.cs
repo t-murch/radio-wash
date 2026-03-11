@@ -7,9 +7,9 @@ public class StripeSubscriptionClient : IStripeSubscriptionClient
 {
   private readonly StripeClient _stripeClient;
 
-  public StripeSubscriptionClient(IConfiguration configuration)
+  public StripeSubscriptionClient(StripeClient stripeClient)
   {
-    _stripeClient = new StripeClient(configuration["Stripe:SecretKey"]);
+    _stripeClient = stripeClient;
   }
 
   public async Task<Subscription> CancelAtPeriodEndAsync(string stripeSubscriptionId)

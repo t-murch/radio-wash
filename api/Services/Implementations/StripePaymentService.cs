@@ -29,7 +29,8 @@ public class StripePaymentService : IPaymentService
       IIdempotencyService idempotencyService,
       IWebhookRetryService webhookRetryService,
       IWebhookProcessor webhookProcessor,
-      ILogger<StripePaymentService> logger)
+      ILogger<StripePaymentService> logger,
+      StripeClient stripeClient)
   {
     _configuration = configuration;
     _subscriptionService = subscriptionService;
@@ -40,8 +41,7 @@ public class StripePaymentService : IPaymentService
     _webhookRetryService = webhookRetryService;
     _webhookProcessor = webhookProcessor;
     _logger = logger;
-
-    _stripeClient = new StripeClient(_configuration["Stripe:SecretKey"]);
+    _stripeClient = stripeClient;
   }
 
   public async Task<string> CreateCheckoutSessionAsync(int userId, int planId)

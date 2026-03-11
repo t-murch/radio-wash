@@ -48,7 +48,6 @@ public class StripePaymentServiceTests : IDisposable
     _dbContext.Database.EnsureCreated();
 
     // Setup configuration
-    _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
     _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns("whsec_123");
     _mockConfiguration.Setup(x => x["FrontendUrl"]).Returns("https://example.com");
 
@@ -61,7 +60,8 @@ public class StripePaymentServiceTests : IDisposable
         _mockIdempotencyService.Object,
         _mockWebhookRetryService.Object,
         _mockWebhookProcessor.Object,
-        _mockLogger.Object
+        _mockLogger.Object,
+        new Stripe.StripeClient("sk_test_123")
     );
   }
 
@@ -556,7 +556,7 @@ public class StripePaymentServiceTests : IDisposable
 
   #region Helper Methods
 
-  private void SetupEventUtilityMock(string payload, string eventType, string subscriptionId, string eventId = null)
+  private void SetupEventUtilityMock(string payload, string eventType, string subscriptionId, string eventId)
   {
     var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active" };
 
@@ -574,7 +574,7 @@ public class StripePaymentServiceTests : IDisposable
 
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = eventType,
       Data = new Stripe.EventData { Object = subscription }
     };
@@ -583,12 +583,12 @@ public class StripePaymentServiceTests : IDisposable
         .Returns(mockEvent);
   }
 
-  private void SetupEventUtilityMockWithEmptyItems(string payload, string eventType, string subscriptionId, string eventId = null)
+  private void SetupEventUtilityMockWithEmptyItems(string payload, string eventType, string subscriptionId, string eventId)
   {
     var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active", Items = null };
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = eventType,
       Data = new Stripe.EventData { Object = subscription }
     };
@@ -597,7 +597,7 @@ public class StripePaymentServiceTests : IDisposable
         .Returns(mockEvent);
   }
 
-  private void SetupEventUtilityMockForInvoice(string payload, string eventType, string invoiceId, string? subscriptionId, string eventId = null)
+  private void SetupEventUtilityMockForInvoice(string payload, string eventType, string invoiceId, string? subscriptionId, string eventId)
   {
     var invoice = new Invoice { Id = invoiceId };
 
@@ -615,7 +615,7 @@ public class StripePaymentServiceTests : IDisposable
 
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = eventType,
       Data = new Stripe.EventData { Object = invoice }
     };
@@ -624,7 +624,7 @@ public class StripePaymentServiceTests : IDisposable
         .Returns(mockEvent);
   }
 
-  private void SetupEventUtilityMockForSubscriptionCreated(string payload, string subscriptionId, string customerId, string priceId, int userId, string eventId = null)
+  private void SetupEventUtilityMockForSubscriptionCreated(string payload, string subscriptionId, string customerId, string priceId, int userId, string eventId)
   {
     var subscription = new Stripe.Subscription
     {
@@ -651,7 +651,7 @@ public class StripePaymentServiceTests : IDisposable
 
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = "customer.subscription.created",
       Data = new Stripe.EventData { Object = subscription }
     };
@@ -660,7 +660,7 @@ public class StripePaymentServiceTests : IDisposable
         .Returns(mockEvent);
   }
 
-  private void SetupEventUtilityMockForSubscriptionCreatedNoItems(string payload, string subscriptionId, string customerId, string eventId = null)
+  private void SetupEventUtilityMockForSubscriptionCreatedNoItems(string payload, string subscriptionId, string customerId, string eventId)
   {
     var subscription = new Stripe.Subscription
     {
@@ -671,7 +671,7 @@ public class StripePaymentServiceTests : IDisposable
 
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = "customer.subscription.created",
       Data = new Stripe.EventData { Object = subscription }
     };
@@ -680,7 +680,7 @@ public class StripePaymentServiceTests : IDisposable
         .Returns(mockEvent);
   }
 
-  private void SetupEventUtilityMockForCheckoutCompleted(string payload, string sessionId, int userId, string eventId = null)
+  private void SetupEventUtilityMockForCheckoutCompleted(string payload, string sessionId, int userId, string eventId)
   {
     var session = new Stripe.Checkout.Session
     {
@@ -693,7 +693,7 @@ public class StripePaymentServiceTests : IDisposable
 
     var mockEvent = new Event
     {
-      Id = eventId ?? "evt_test_" + Guid.NewGuid().ToString()[..8],
+      Id = eventId,
       Type = "checkout.session.completed",
       Data = new Stripe.EventData { Object = session }
     };

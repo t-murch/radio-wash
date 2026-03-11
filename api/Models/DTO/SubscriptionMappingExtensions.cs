@@ -30,7 +30,8 @@ public static class SubscriptionMappingExtensions
       CurrentPeriodStart = subscription.CurrentPeriodStart,
       CurrentPeriodEnd = subscription.CurrentPeriodEnd,
       CanceledAt = subscription.CanceledAt,
-      Plan = subscription.Plan.ToDto(),
+      Plan = subscription.Plan?.ToDto()
+          ?? throw new InvalidOperationException("Plan navigation property must be loaded before mapping to DTO"),
       CreatedAt = subscription.CreatedAt
     };
   }
