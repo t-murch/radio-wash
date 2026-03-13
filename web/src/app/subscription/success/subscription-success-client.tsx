@@ -6,7 +6,10 @@ import { GlobalHeader } from '@/components/GlobalHeader';
 import { Button } from '@/components/ui/button';
 import { type User } from '../../services/api';
 import { useQueryClient } from '@tanstack/react-query';
-import { useVerifyCheckoutSession } from '@/hooks/useSubscriptionSync';
+import {
+  useVerifyCheckoutSession,
+  useSubscriptionStatus,
+} from '@/hooks/useSubscriptionSync';
 
 function LoadingState({ message }: { message?: string }) {
   return (
@@ -42,7 +45,13 @@ function LoadingState({ message }: { message?: string }) {
   );
 }
 
-function SuccessState({ onDashboard, onManage }: { onDashboard: () => void; onManage: () => void }) {
+function SuccessState({
+  onDashboard,
+  onManage,
+}: {
+  onDashboard: () => void;
+  onManage: () => void;
+}) {
   return (
     <div className="text-center">
       <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-success-muted mb-4">
@@ -66,11 +75,14 @@ function SuccessState({ onDashboard, onManage }: { onDashboard: () => void; onMa
       </h1>
 
       <p className="text-lg text-muted-foreground mb-8">
-        Welcome to RadioWash Sync! You can now enable automatic playlist synchronization.
+        Welcome to RadioWash Sync! You can now enable automatic playlist
+        synchronization.
       </p>
 
       <div className="bg-card border border-border rounded-lg p-6 max-w-md mx-auto mb-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">What&apos;s Next?</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-4">
+          What&apos;s Next?
+        </h2>
         <ul className="space-y-2 text-sm text-muted-foreground text-left">
           <li className="flex items-center">
             <span className="text-success mr-2">&#10003;</span>
@@ -99,11 +111,7 @@ function SuccessState({ onDashboard, onManage }: { onDashboard: () => void; onMa
         >
           Go to Dashboard
         </Button>
-        <Button
-          onClick={onManage}
-          variant="outline"
-          size="lg"
-        >
+        <Button onClick={onManage} variant="outline" size="lg">
           Manage Subscription
         </Button>
       </div>
@@ -135,8 +143,8 @@ function TimeoutState({ onDashboard }: { onDashboard: () => void }) {
       </h1>
 
       <p className="text-lg text-muted-foreground mb-8">
-        Your payment may still be processing. Please check your dashboard in a few minutes to
-        see your subscription status.
+        Your payment may still be processing. Please check your dashboard in a
+        few minutes to see your subscription status.
       </p>
 
       <Button
@@ -174,8 +182,8 @@ function NoSessionState({ onDashboard }: { onDashboard: () => void }) {
       </h1>
 
       <p className="text-lg text-muted-foreground mb-8">
-        It looks like you reached this page without completing checkout. Please check your dashboard
-        for your subscription status.
+        It looks like you reached this page without completing checkout. Please
+        check your dashboard for your subscription status.
       </p>
 
       <Button
@@ -213,8 +221,8 @@ function ErrorState({ onDashboard }: { onDashboard: () => void }) {
       </h1>
 
       <p className="text-lg text-muted-foreground mb-8">
-        We couldn&apos;t verify your payment status. Your payment may have succeeded —
-        please check your dashboard.
+        We couldn&apos;t verify your payment status. Your payment may have
+        succeeded — please check your dashboard.
       </p>
 
       <Button
@@ -228,13 +236,22 @@ function ErrorState({ onDashboard }: { onDashboard: () => void }) {
   );
 }
 
-export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }) {
+export function SubscriptionSuccessClient({
+  initialUser,
+}: {
+  initialUser: User;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const sessionId = searchParams.get('session_id');
 
-  const { isVerified, isLoading, isTimeout, isError } = useVerifyCheckoutSession(sessionId);
+  const { isVerified, isLoading, isTimeout, isError } =
+    useVerifyCheckoutSession(sessionId);
+
+  // When no session_id, fall back to checking subscription status directly
+  const { data: subscriptionStatus, isLoading: isStatusLoading } =
+    useSubscriptionStatus({ enabled: !sessionId });
 
   // Invalidate subscription queries when verified
   useEffect(() => {
@@ -250,11 +267,21 @@ export function SubscriptionSuccessClient({ initialUser }: { initialUser: User }
   let content: React.ReactNode;
 
   if (!sessionId) {
-    content = <NoSessionState onDashboard={handleDashboard} />;
+    if (isStatusLoading) {
+      content = <LoadingState message="Checking subscription status..." />;
+    } else if (subscriptionStatus?.hasActiveSubscription) {
+      content = (
+        <SuccessState onDashboard={handleDashboard} onManage={handleManage} />
+      );
+    } else {
+      content = <NoSessionState onDashboard={handleDashboard} />;
+    }
   } else if (isLoading) {
     content = <LoadingState />;
   } else if (isVerified) {
-    content = <SuccessState onDashboard={handleDashboard} onManage={handleManage} />;
+    content = (
+      <SuccessState onDashboard={handleDashboard} onManage={handleManage} />
+    );
   } else if (isTimeout) {
     content = <TimeoutState onDashboard={handleDashboard} />;
   } else if (isError) {

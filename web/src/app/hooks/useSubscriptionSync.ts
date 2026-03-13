@@ -15,10 +15,11 @@ import {
   type CheckoutVerification,
 } from '../services/api';
 
-export const useSubscriptionStatus = () => {
+export const useSubscriptionStatus = (options?: { enabled?: boolean }) => {
   return useQuery<SubscriptionStatus>({
     queryKey: ['subscription-status'],
     queryFn: getSubscriptionStatus,
+    enabled: options?.enabled,
   });
 };
 
@@ -31,7 +32,7 @@ export const useCurrentSubscription = () => {
 
 export const useEnableSyncForJob = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation<PlaylistSyncConfig, Error, number>({
     mutationFn: enableSyncForJob,
     onSuccess: () => {
@@ -44,7 +45,7 @@ export const useEnableSyncForJob = () => {
 
 export const useSubscribeToSync = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation<{ checkoutUrl: string }, Error>({
     mutationFn: subscribeToSync,
     onSuccess: (data) => {
@@ -56,7 +57,11 @@ export const useSubscribeToSync = () => {
 
 export const useVerifyCheckoutSession = (sessionId: string | null) => {
   const [attemptCount, setAttemptCount] = useState(0);
-  const maxAttempts = 15;
+  const maxAttempts = 10;
+
+  const getBackoffInterval = (attempt: number): number => {
+    return Math.min(2000 * Math.pow(1.5, attempt), 8000);
+  };
 
   const query = useQuery<CheckoutVerification>({
     queryKey: ['verify-checkout-session', sessionId],
@@ -65,7 +70,7 @@ export const useVerifyCheckoutSession = (sessionId: string | null) => {
     refetchInterval: (query) => {
       if (query.state.data?.verified) return false;
       if (attemptCount >= maxAttempts) return false;
-      return 2000;
+      return getBackoffInterval(attemptCount);
     },
   });
 
@@ -73,7 +78,10 @@ export const useVerifyCheckoutSession = (sessionId: string | null) => {
 
   useEffect(() => {
     // Track actual fetch completions: fetchStatus transitions from 'fetching' to 'idle'
-    if (prevFetchStatusRef.current === 'fetching' && query.fetchStatus === 'idle') {
+    if (
+      prevFetchStatusRef.current === 'fetching' &&
+      query.fetchStatus === 'idle'
+    ) {
       setAttemptCount((prev) => prev + 1);
     }
     prevFetchStatusRef.current = query.fetchStatus;

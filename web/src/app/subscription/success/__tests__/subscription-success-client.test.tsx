@@ -5,9 +5,11 @@ import { SubscriptionSuccessClient } from '../subscription-success-client';
 
 // Mock the useSubscriptionSync hook module
 const mockUseVerifyCheckoutSession = vi.fn();
+const mockUseSubscriptionStatus = vi.fn();
 vi.mock('@/hooks/useSubscriptionSync', () => ({
   useVerifyCheckoutSession: (...args: unknown[]) =>
     mockUseVerifyCheckoutSession(...args),
+  useSubscriptionStatus: () => mockUseSubscriptionStatus(),
 }));
 
 // Mock next/navigation (extends the global mock from setup.ts)
@@ -48,6 +50,10 @@ describe('SubscriptionSuccessClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGet.mockReturnValue('cs_test_session_123');
+    mockUseSubscriptionStatus.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    });
   });
 
   it('renders loading state while verifying', () => {
@@ -92,12 +98,10 @@ describe('SubscriptionSuccessClient', () => {
 
     renderWithProviders(<SubscriptionSuccessClient initialUser={mockUser} />);
 
-    expect(
-      screen.getByText(/could not confirm/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/could not confirm/i)).toBeInTheDocument();
   });
 
-  it('shows fallback UI when no session_id is present', () => {
+  it('shows fallback UI when no session_id and no active subscription', () => {
     mockGet.mockReturnValue(null);
     mockUseVerifyCheckoutSession.mockReturnValue({
       isVerified: false,
@@ -105,11 +109,51 @@ describe('SubscriptionSuccessClient', () => {
       subscription: undefined,
       isTimeout: false,
     });
+    mockUseSubscriptionStatus.mockReturnValue({
+      data: { hasActiveSubscription: false },
+      isLoading: false,
+    });
+
+    renderWithProviders(<SubscriptionSuccessClient initialUser={mockUser} />);
+
+    expect(screen.getByText(/no checkout session found/i)).toBeInTheDocument();
+  });
+
+  it('shows success state when no session_id but user has active subscription', () => {
+    mockGet.mockReturnValue(null);
+    mockUseVerifyCheckoutSession.mockReturnValue({
+      isVerified: false,
+      isLoading: false,
+      subscription: undefined,
+      isTimeout: false,
+    });
+    mockUseSubscriptionStatus.mockReturnValue({
+      data: { hasActiveSubscription: true },
+      isLoading: false,
+    });
+
+    renderWithProviders(<SubscriptionSuccessClient initialUser={mockUser} />);
+
+    expect(screen.getByText(/subscription successful/i)).toBeInTheDocument();
+  });
+
+  it('shows loading state when no session_id and subscription status is loading', () => {
+    mockGet.mockReturnValue(null);
+    mockUseVerifyCheckoutSession.mockReturnValue({
+      isVerified: false,
+      isLoading: false,
+      subscription: undefined,
+      isTimeout: false,
+    });
+    mockUseSubscriptionStatus.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    });
 
     renderWithProviders(<SubscriptionSuccessClient initialUser={mockUser} />);
 
     expect(
-      screen.getByText(/no checkout session found/i)
+      screen.getByText(/checking subscription status/i)
     ).toBeInTheDocument();
   });
 
