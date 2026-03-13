@@ -88,14 +88,14 @@ public class SubscriptionStatusIntegrationTests : SubscriptionTestBase
     [Fact]
     public async Task Status_WithCancelAtPeriodEnd_StillReturnsTrue()
     {
-        // Arrange — create subscription then update to cancel_at_period_end
+        // Arrange — create subscription then update with cancel_at_period_end=true
         var stripeSubId = $"sub_{Guid.NewGuid():N}";
         await CreateSubscriptionViaWebhookAsync(stripeSubId);
 
-        // Update status via webhook
+        // Update status via webhook — Stripe sends status="active" with cancel_at_period_end=true
         var periodEnd = DateTime.UtcNow.AddDays(30);
         var updatePayload = StripeWebhookPayloadBuilder.CreateSubscriptionUpdatedWebhook(
-            stripeSubId, "cancel_at_period_end", DateTime.UtcNow.AddDays(-1), periodEnd);
+            stripeSubId, "active", DateTime.UtcNow.AddDays(-1), periodEnd, cancelAtPeriodEnd: true);
         await PostWebhookAsync(updatePayload);
 
         var client = CreateAuthenticatedClient();
@@ -108,6 +108,12 @@ public class SubscriptionStatusIntegrationTests : SubscriptionTestBase
         var body = await response.Content.ReadFromJsonAsync<StatusResponse>();
         Assert.NotNull(body);
         Assert.True(body.HasActiveSubscription);
+
+        // Verify the DB record has the correct mapped status
+        var dbSubscription = await WithDbContextAsync(async db =>
+            await db.UserSubscriptions.FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubId));
+        Assert.NotNull(dbSubscription);
+        Assert.Equal("cancel_at_period_end", dbSubscription.Status);
     }
 
     #endregion

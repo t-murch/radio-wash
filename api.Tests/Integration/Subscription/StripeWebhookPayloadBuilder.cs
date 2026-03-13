@@ -71,10 +71,33 @@ public static class StripeWebhookPayloadBuilder
         string status,
         DateTime? periodStart = null,
         DateTime? periodEnd = null,
-        string? eventId = null)
+        string? eventId = null,
+        bool cancelAtPeriodEnd = false)
     {
         var start = periodStart ?? DateTime.UtcNow.AddDays(-30);
         var end = periodEnd ?? DateTime.UtcNow.AddDays(30);
+
+        var subscriptionObject = new Dictionary<string, object>
+        {
+            ["id"] = subscriptionId,
+            ["object"] = "subscription",
+            ["status"] = status,
+            ["cancel_at_period_end"] = cancelAtPeriodEnd,
+            ["items"] = new
+            {
+                @object = "list",
+                data = new[]
+                {
+                    new
+                    {
+                        id = $"si_{Guid.NewGuid():N}",
+                        @object = "subscription_item",
+                        current_period_start = ((DateTimeOffset)start).ToUnixTimeSeconds(),
+                        current_period_end = ((DateTimeOffset)end).ToUnixTimeSeconds()
+                    }
+                }
+            }
+        };
 
         var payload = new
         {
@@ -84,26 +107,7 @@ public static class StripeWebhookPayloadBuilder
             created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             data = new
             {
-                @object = new
-                {
-                    id = subscriptionId,
-                    @object = "subscription",
-                    status = status,
-                    items = new
-                    {
-                        @object = "list",
-                        data = new[]
-                        {
-                            new
-                            {
-                                id = $"si_{Guid.NewGuid():N}",
-                                @object = "subscription_item",
-                                current_period_start = ((DateTimeOffset)start).ToUnixTimeSeconds(),
-                                current_period_end = ((DateTimeOffset)end).ToUnixTimeSeconds()
-                            }
-                        }
-                    }
-                }
+                @object = subscriptionObject
             },
             livemode = false,
             pending_webhooks = 1,

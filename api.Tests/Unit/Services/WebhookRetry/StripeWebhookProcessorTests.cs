@@ -1,8 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
@@ -10,12 +7,11 @@ using Stripe;
 
 namespace RadioWash.Api.Tests.Unit.Services.WebhookRetry;
 
-public class StripeWebhookProcessorTests : IDisposable
+public class StripeWebhookProcessorTests
 {
     private readonly Mock<ISubscriptionService> _mockSubscriptionService;
     private readonly Mock<CustomerService> _mockCustomerService;
     private readonly Mock<ILogger<StripeWebhookProcessor>> _mockLogger;
-    private readonly RadioWashDbContext _dbContext;
     private readonly StripeWebhookProcessor _stripeWebhookProcessor;
 
     public StripeWebhookProcessorTests()
@@ -24,17 +20,8 @@ public class StripeWebhookProcessorTests : IDisposable
         _mockCustomerService = new Mock<CustomerService>();
         _mockLogger = new Mock<ILogger<StripeWebhookProcessor>>();
 
-        // Setup in-memory database
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        _dbContext = new RadioWashDbContext(options);
-        _dbContext.Database.EnsureCreated();
-
         _stripeWebhookProcessor = new StripeWebhookProcessor(
             _mockSubscriptionService.Object,
-            _dbContext,
             _mockCustomerService.Object,
             _mockLogger.Object);
     }
@@ -88,6 +75,59 @@ public class StripeWebhookProcessorTests : IDisposable
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionDatesAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookAsync_WithSubscriptionUpdatedCancelAtPeriodEnd_ShouldMapToCancelAtPeriodEndStatus()
+    {
+        // Arrange
+        var subscriptionId = "sub_cancel_at_period_end";
+        var eventId = "evt_test_cancel_at_period_end";
+        var periodStart = DateTime.UtcNow.AddDays(-30);
+        var periodEnd = DateTime.UtcNow.AddDays(30);
+
+        // Stripe sends status="active" with CancelAtPeriodEnd=true
+        var subscription = CreateMockSubscription(subscriptionId, "active", periodStart, periodEnd);
+        subscription.CancelAtPeriodEnd = true;
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
+
+        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.CancelAtPeriodEnd))
+            .ReturnsAsync(CreateMockUserSubscription());
+        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionDatesAsync(subscriptionId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(CreateMockUserSubscription());
+
+        // Act
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
+
+        // Assert — should map to cancel_at_period_end, not "active"
+        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.CancelAtPeriodEnd), Times.Once);
+        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookAsync_WithSubscriptionUpdatedNotCancelAtPeriodEnd_ShouldKeepActiveStatus()
+    {
+        // Arrange
+        var subscriptionId = "sub_not_canceling";
+        var eventId = "evt_test_not_canceling";
+        var periodStart = DateTime.UtcNow.AddDays(-30);
+        var periodEnd = DateTime.UtcNow.AddDays(30);
+
+        // Stripe sends status="active" with CancelAtPeriodEnd=false (normal active)
+        var subscription = CreateMockSubscription(subscriptionId, "active", periodStart, periodEnd);
+        subscription.CancelAtPeriodEnd = false;
+        var stripeEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
+
+        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
+            .ReturnsAsync(CreateMockUserSubscription());
+        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionDatesAsync(subscriptionId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(CreateMockUserSubscription());
+
+        // Act
+        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
+
+        // Assert — should remain "active"
+        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
     }
 
     #endregion
@@ -275,7 +315,7 @@ public class StripeWebhookProcessorTests : IDisposable
     }
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoPlan_ShouldNotCreateSubscription()
+    public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoPlan_ShouldThrow()
     {
         // Arrange
         var subscriptionId = "sub_123";
@@ -290,11 +330,10 @@ public class StripeWebhookProcessorTests : IDisposable
         _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
             .ReturnsAsync((SubscriptionPlan?)null);
 
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent);
-
-        // Assert
-        _mockSubscriptionService.Verify(x => x.GetPlanByStripePriceIdAsync(priceId), Times.Once);
+        // Act & Assert — missing plan should throw so the event gets retried/marked as failed
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _stripeWebhookProcessor.ProcessWebhookAsync(stripeEvent));
+        Assert.Contains("No local plan found", ex.Message);
         _mockSubscriptionService.Verify(x => x.CreateSubscriptionAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
@@ -451,8 +490,4 @@ public class StripeWebhookProcessorTests : IDisposable
 
     #endregion
 
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-    }
 }

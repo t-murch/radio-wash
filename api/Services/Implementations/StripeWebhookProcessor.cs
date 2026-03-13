@@ -1,4 +1,3 @@
-using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
 using Stripe;
@@ -9,18 +8,15 @@ namespace RadioWash.Api.Services.Implementations;
 public class StripeWebhookProcessor : IWebhookProcessor
 {
     private readonly ISubscriptionService _subscriptionService;
-    private readonly RadioWashDbContext _dbContext;
     private readonly CustomerService _customerService;
     private readonly ILogger<StripeWebhookProcessor> _logger;
 
     public StripeWebhookProcessor(
         ISubscriptionService subscriptionService,
-        RadioWashDbContext dbContext,
         CustomerService customerService,
         ILogger<StripeWebhookProcessor> logger)
     {
         _subscriptionService = subscriptionService;
-        _dbContext = dbContext;
         _customerService = customerService;
         _logger = logger;
     }
@@ -87,7 +83,12 @@ public class StripeWebhookProcessor : IWebhookProcessor
             return;
         }
 
-        await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, subscription.Status);
+        var status = subscription.Status;
+        if (subscription.CancelAtPeriodEnd && status == "active")
+        {
+            status = SubscriptionStatus.CancelAtPeriodEnd;
+        }
+        await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, status);
 
         // Get period dates from subscription items (v49 compatibility)
         DateTime? currentPeriodStart = null;
@@ -129,7 +130,7 @@ public class StripeWebhookProcessor : IWebhookProcessor
         }
 
         _logger.LogInformation("Updated subscription {SubscriptionId} status to {Status}",
-            subscription.Id, subscription.Status);
+            subscription.Id, status);
     }
 
     private async Task HandleSubscriptionDeletedAsync(Event stripeEvent)
@@ -212,8 +213,8 @@ public class StripeWebhookProcessor : IWebhookProcessor
             var plan = await _subscriptionService.GetPlanByStripePriceIdAsync(priceId);
             if (plan == null)
             {
-                _logger.LogError("No local plan found for Stripe price ID {PriceId}", priceId);
-                return;
+                throw new InvalidOperationException(
+                    $"No local plan found for Stripe price ID {priceId} — cannot create subscription record");
             }
 
             // Get user ID from subscription metadata
@@ -254,32 +255,14 @@ public class StripeWebhookProcessor : IWebhookProcessor
                     $"Could not determine user ID for subscription {subscription.Id} — cannot create subscription record");
             }
 
-            // Use transaction only for the database write operation to ensure atomicity
-            using var transaction = await _dbContext.Database.BeginTransactionAsync();
-            
-            try
-            {
-                // Create the subscription record within the transaction
-                await _subscriptionService.CreateSubscriptionAsync(
-                    userId.Value, 
-                    plan.Id, 
-                    subscription.Id, 
-                    subscription.CustomerId);
+            await _subscriptionService.CreateSubscriptionAsync(
+                userId.Value,
+                plan.Id,
+                subscription.Id,
+                subscription.CustomerId);
 
-                // Commit the transaction if subscription creation succeeded
-                await transaction.CommitAsync();
-                
-                _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
-                    userId, subscription.Id);
-            }
-            catch (Exception dbEx)
-            {
-                // Rollback the transaction on database operation failure
-                await transaction.RollbackAsync();
-                _logger.LogError(dbEx, "Failed to create subscription record for user {UserId}, subscription {SubscriptionId}. Transaction rolled back.", 
-                    userId, subscription.Id);
-                throw;
-            }
+            _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}",
+                userId, subscription.Id);
         }
         catch (Exception ex)
         {

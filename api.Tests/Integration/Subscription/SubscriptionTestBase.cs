@@ -108,7 +108,7 @@ public abstract class SubscriptionTestBase : IClassFixture<SubscriptionWebApplic
     /// <summary>
     /// POSTs a webhook payload to /api/subscription/webhook with the Stripe-Signature header.
     /// </summary>
-    protected async Task<HttpResponseMessage> PostWebhookAsync(string payload, string? signature = "test")
+    protected async Task<HttpResponseMessage> PostWebhookAsync(string payload, string? signature = "test-bypassed")
     {
         var client = Factory.CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscription/webhook")
