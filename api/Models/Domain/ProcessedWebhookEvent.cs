@@ -7,5 +7,6 @@ public class ProcessedWebhookEvent
   public string EventType { get; set; } = null!;
   public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
   public bool IsSuccessful { get; set; } = true;
+  public bool IsPermanentlyFailed { get; set; } = false;
   public string? ErrorMessage { get; set; }
 }

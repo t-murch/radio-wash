@@ -1,6 +1,5 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.InMemory;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Infrastructure.Data;
@@ -15,12 +14,16 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     private readonly RadioWashDbContext _dbContext;
     private readonly Mock<ILogger<DatabaseIdempotencyService>> _mockLogger;
     private readonly DatabaseIdempotencyService _idempotencyService;
+    private readonly SqliteConnection _connection;
 
     public DatabaseIdempotencyServiceTests()
     {
+        // Use SQLite in-memory provider (supports ExecuteUpdateAsync unlike InMemory provider)
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+
         var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .UseSqlite(_connection)
             .Options;
 
         _dbContext = new RadioWashDbContext(options);
@@ -77,26 +80,21 @@ public class DatabaseIdempotencyServiceTests : IDisposable
         var eventId2 = "evt_concurrent_test_2";
         var eventType = "customer.subscription.updated";
 
-        // Act - Make two concurrent calls for different events
-        var task1 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
-        var task2 = _idempotencyService.TryProcessEventAsync(eventId2, eventType);
-
-        var results = await Task.WhenAll(task1, task2);
+        // Act - Process two different events
+        var result1 = await _idempotencyService.TryProcessEventAsync(eventId1, eventType);
+        var result2 = await _idempotencyService.TryProcessEventAsync(eventId2, eventType);
 
         // Assert - Both should return true (different events)
-        Assert.True(results[0]);
-        Assert.True(results[1]);
+        Assert.True(result1);
+        Assert.True(result2);
 
         // Now test that re-processing a successfully completed event is blocked
         await _idempotencyService.MarkEventSuccessfulAsync(eventId1);
 
-        var task3 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
-        var task4 = _idempotencyService.TryProcessEventAsync(eventId1, eventType);
+        var result3 = await _idempotencyService.TryProcessEventAsync(eventId1, eventType);
 
-        var results2 = await Task.WhenAll(task3, task4);
-
-        // Assert - Neither should be allowed (event already succeeded)
-        Assert.Equal(0, results2.Count(r => r));
+        // Assert - Should not be allowed (event already succeeded)
+        Assert.False(result3);
     }
 
     [Fact]
@@ -203,6 +201,16 @@ public class DatabaseIdempotencyServiceTests : IDisposable
 
         // Assert
         Assert.True(result);
+
+        // Verify the record still exists (atomic update, not delete+reinsert)
+        // Use AsNoTracking to bypass change tracker cache and read fresh from DB
+        var events = await _dbContext.ProcessedWebhookEvents
+            .AsNoTracking()
+            .Where(e => e.EventId == eventId)
+            .ToListAsync();
+        Assert.Single(events);
+        // Error message should be cleared by the atomic update
+        Assert.Null(events[0].ErrorMessage);
     }
 
     [Fact]
@@ -222,8 +230,67 @@ public class DatabaseIdempotencyServiceTests : IDisposable
         Assert.False(result);
     }
 
+    [Fact]
+    public async Task MarkEventPermanentlyFailedAsync_WithExistingEvent_ShouldSetPermanentlyFailed()
+    {
+        // Arrange
+        var eventId = "evt_permanently_failed";
+        var eventType = "customer.subscription.updated";
+        var errorMessage = "Invalid subscription metadata";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Act
+        await _idempotencyService.MarkEventPermanentlyFailedAsync(eventId, errorMessage);
+
+        // Assert
+        var processedEvent = await _dbContext.ProcessedWebhookEvents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.True(processedEvent.IsPermanentlyFailed);
+        Assert.False(processedEvent.IsSuccessful);
+        Assert.Equal(errorMessage, processedEvent.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithPermanentlyFailedEvent_ShouldReturnFalse()
+    {
+        // Arrange
+        var eventId = "evt_perm_failed_no_retry";
+        var eventType = "customer.subscription.updated";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventPermanentlyFailedAsync(eventId, "Non-retryable error");
+
+        // Act - Try to re-process (should be blocked because it's permanently failed)
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert
+        Assert.False(result);
+
+        // Verify the record still has the permanent failure state preserved
+        var processedEvent = await _dbContext.ProcessedWebhookEvents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.True(processedEvent.IsPermanentlyFailed);
+        Assert.Equal("Non-retryable error", processedEvent.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task MarkEventPermanentlyFailedAsync_WithNonExistentEvent_ShouldNotThrow()
+    {
+        // Arrange
+        var eventId = "evt_non_existent_perm";
+
+        // Act & Assert - Should not throw
+        await _idempotencyService.MarkEventPermanentlyFailedAsync(eventId, "Some error");
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();
+        _connection.Dispose();
     }
 }

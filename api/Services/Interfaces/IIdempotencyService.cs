@@ -25,4 +25,12 @@ public interface IIdempotencyService
     /// <param name="eventId">Unique identifier for the webhook event</param>
     /// <param name="errorMessage">Error message describing the failure</param>
     Task MarkEventFailedAsync(string eventId, string errorMessage);
+
+    /// <summary>
+    /// Marks an event as permanently failed (non-retryable error).
+    /// Prevents future re-processing while preserving the audit trail.
+    /// </summary>
+    /// <param name="eventId">Unique identifier for the webhook event</param>
+    /// <param name="errorMessage">Error message describing the permanent failure</param>
+    Task MarkEventPermanentlyFailedAsync(string eventId, string errorMessage);
 }
