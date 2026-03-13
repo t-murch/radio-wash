@@ -22,4 +22,15 @@ public class StripeSubscriptionClient : IStripeSubscriptionClient
 
     return await service.UpdateAsync(stripeSubscriptionId, options);
   }
+
+  public async Task<Subscription> ResumeAtPeriodEndAsync(string stripeSubscriptionId)
+  {
+    var service = new Stripe.SubscriptionService(_stripeClient);
+    var options = new SubscriptionUpdateOptions
+    {
+      CancelAtPeriodEnd = false
+    };
+
+    return await service.UpdateAsync(stripeSubscriptionId, options);
+  }
 }

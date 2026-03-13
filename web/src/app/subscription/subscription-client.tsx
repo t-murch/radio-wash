@@ -7,7 +7,11 @@ import {
   useSubscriptionStatus,
   useSubscribeToSync,
 } from '@/hooks/useSubscriptionSync';
-import { cancelSubscription, type User } from '../services/api';
+import {
+  cancelSubscription,
+  resumeSubscription,
+  type User,
+} from '../services/api';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -20,22 +24,34 @@ const formatDateTime = (dateString: string) => {
 
 const getStatusLabel = (status: string): string => {
   switch (status) {
-    case 'active': return 'Active';
-    case 'canceled': return 'Canceled';
-    case 'past_due': return 'Past Due';
-    case 'trialing': return 'Trialing';
-    case 'incomplete': return 'Incomplete';
-    case 'cancel_at_period_end': return 'Canceling';
-    default: return status;
+    case 'active':
+      return 'Active';
+    case 'canceled':
+      return 'Canceled';
+    case 'past_due':
+      return 'Past Due';
+    case 'trialing':
+      return 'Trialing';
+    case 'incomplete':
+      return 'Incomplete';
+    case 'cancel_at_period_end':
+      return 'Canceling';
+    default:
+      return status;
   }
 };
 
 const getStatusColor = (status: string): string => {
   switch (status) {
-    case 'active': return 'text-success';
-    case 'canceled': return 'text-error';
-    case 'past_due': case 'cancel_at_period_end': return 'text-warning';
-    default: return 'text-muted-foreground';
+    case 'active':
+      return 'text-success';
+    case 'canceled':
+      return 'text-error';
+    case 'past_due':
+    case 'cancel_at_period_end':
+      return 'text-warning';
+    default:
+      return 'text-muted-foreground';
   }
 };
 
@@ -58,6 +74,19 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     onError: (error) => {
       toast.error('Failed to cancel subscription');
       console.error('Cancel subscription error:', error);
+    },
+  });
+
+  const resumeSubscriptionMutation = useMutation<{ message: string }, Error>({
+    mutationFn: resumeSubscription,
+    onSuccess: () => {
+      toast.success('Subscription resumed successfully');
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-configs'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to resume subscription');
+      console.error('Resume subscription error:', error);
     },
   });
 
@@ -141,7 +170,11 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Status:</span>
-                      <span className={`ml-2 font-medium ${getStatusColor(subscriptionStatus.status || 'active')}`}>
+                      <span
+                        className={`ml-2 font-medium ${getStatusColor(
+                          subscriptionStatus.status || 'active'
+                        )}`}
+                      >
                         {getStatusLabel(subscriptionStatus.status || 'active')}
                       </span>
                     </div>
@@ -183,9 +216,25 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   Back to Dashboard
                 </Button>
                 {subscriptionStatus.status === 'cancel_at_period_end' ? (
-                  <span className="text-sm text-warning font-medium px-3 py-2">
-                    Cancellation pending — access until end of billing period
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => resumeSubscriptionMutation.mutate()}
+                      disabled={resumeSubscriptionMutation.isPending}
+                    >
+                      {resumeSubscriptionMutation.isPending
+                        ? 'Resuming...'
+                        : 'Resume Subscription'}
+                    </Button>
+                    <span className="text-sm text-warning font-medium">
+                      Cancellation pending
+                      {subscriptionStatus.currentPeriodEnd
+                        ? ` — access until ${formatDateTime(
+                            subscriptionStatus.currentPeriodEnd
+                          )}`
+                        : ' — access until end of billing period'}
+                    </span>
+                  </div>
                 ) : (
                   <Button
                     variant="destructive"
@@ -356,4 +405,3 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     </div>
   );
 }
-

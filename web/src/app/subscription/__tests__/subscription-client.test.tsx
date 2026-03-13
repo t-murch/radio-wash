@@ -248,4 +248,91 @@ describe('SubscriptionClient', () => {
       });
     });
   });
+
+  describe('resume subscription flow', () => {
+    it('shows Resume Subscription button when status is cancel_at_period_end', async () => {
+      mockSubscriptionStatusResponse({
+        hasActiveSubscription: true,
+        planName: 'Sync Plan',
+        status: 'cancel_at_period_end',
+        currentPeriodEnd: '2026-04-09T00:00:00Z',
+      });
+
+      renderWithProviders(<SubscriptionClient initialUser={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Resume Subscription')).toBeInTheDocument();
+      });
+
+      // Should also show the cancellation pending message
+      expect(screen.getByText(/cancellation pending/i)).toBeInTheDocument();
+    });
+
+    it('does not show Cancel Subscription button when status is cancel_at_period_end', async () => {
+      mockSubscriptionStatusResponse({
+        hasActiveSubscription: true,
+        planName: 'Sync Plan',
+        status: 'cancel_at_period_end',
+        currentPeriodEnd: '2026-04-09T00:00:00Z',
+      });
+
+      renderWithProviders(<SubscriptionClient initialUser={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Resume Subscription')).toBeInTheDocument();
+      });
+
+      // Cancel Subscription button should NOT be present
+      expect(
+        screen.queryByRole('button', { name: /cancel subscription/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls resume API when Resume Subscription button is clicked', async () => {
+      const user = userEvent.setup();
+
+      mockSubscriptionStatusResponse({
+        hasActiveSubscription: true,
+        planName: 'Sync Plan',
+        status: 'cancel_at_period_end',
+        currentPeriodEnd: '2026-04-09T00:00:00Z',
+      });
+
+      renderWithProviders(<SubscriptionClient initialUser={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Resume Subscription')).toBeInTheDocument();
+      });
+
+      // Mock the resume API call
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () =>
+          Promise.resolve({ message: 'Subscription resumed successfully' }),
+      });
+
+      // Mock the subscription status refetch
+      mockSubscriptionStatusResponse({
+        hasActiveSubscription: true,
+        planName: 'Sync Plan',
+        status: 'active',
+        currentPeriodEnd: '2026-04-09T00:00:00Z',
+      });
+
+      await user.click(screen.getByText('Resume Subscription'));
+
+      await waitFor(() => {
+        const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock
+          .calls;
+        const resumeCall = fetchCalls.find(
+          (call: string[]) =>
+            typeof call[0] === 'string' &&
+            call[0].includes('/subscription/resume')
+        );
+        expect(resumeCall).toBeDefined();
+        expect(resumeCall![1]).toMatchObject({ method: 'POST' });
+      });
+    });
+  });
 });

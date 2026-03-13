@@ -129,6 +129,50 @@ public class SubscriptionService : ISubscriptionService
     }
   }
 
+  public async Task<UserSubscription> ResumeSubscriptionAsync(int userId)
+  {
+    var subscription = await _unitOfWork.UserSubscriptions.GetByUserIdAsync(userId);
+    if (subscription == null)
+    {
+      throw new InvalidOperationException($"No subscription found for user {userId}");
+    }
+
+    if (subscription.Status == SubscriptionStatus.Canceled)
+    {
+      throw new InvalidOperationException("Subscription is fully canceled. Please create a new subscription.");
+    }
+
+    if (subscription.Status != SubscriptionStatus.CancelAtPeriodEnd)
+    {
+      throw new InvalidOperationException($"Subscription is not pending cancellation (status: {subscription.Status})");
+    }
+
+    if (string.IsNullOrEmpty(subscription.StripeSubscriptionId))
+    {
+      throw new InvalidOperationException("No Stripe subscription ID found");
+    }
+
+    _logger.LogInformation("Resuming subscription {SubscriptionId} for user {UserId}", subscription.Id, userId);
+
+    await _unitOfWork.BeginTransactionAsync();
+    try
+    {
+      await _stripeSubscriptionClient.ResumeAtPeriodEndAsync(subscription.StripeSubscriptionId);
+
+      subscription.Status = SubscriptionStatus.Active;
+      subscription.CanceledAt = null;
+
+      var result = await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
+      await _unitOfWork.CommitTransactionAsync();
+      return result;
+    }
+    catch (Exception)
+    {
+      await _unitOfWork.RollbackTransactionAsync();
+      throw;
+    }
+  }
+
   public async Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync()
   {
     return await _unitOfWork.SubscriptionPlans.GetActiveAsync();

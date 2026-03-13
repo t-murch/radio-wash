@@ -275,9 +275,10 @@ export const getSubscriptionStatus = (): Promise<SubscriptionStatus> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/status`);
 };
 
-export const getCurrentSubscription = (): Promise<UserSubscriptionDto | null> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
-};
+export const getCurrentSubscription =
+  (): Promise<UserSubscriptionDto | null> => {
+    return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
+  };
 
 export interface SubscriptionPlanDto {
   id: number;
@@ -296,7 +297,9 @@ export const getAvailablePlans = (): Promise<SubscriptionPlanDto[]> => {
 
 export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
   // Get available plans first
-  const plans: SubscriptionPlanDto[] = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
+  const plans: SubscriptionPlanDto[] = await fetchWithSupabaseAuth(
+    `${API_BASE_URL}/subscription/plans`
+  );
   if (!plans || plans.length === 0) {
     throw new Error('No subscription plans available');
   }
@@ -320,9 +323,13 @@ export interface CheckoutVerification {
   subscription?: UserSubscriptionDto;
 }
 
-export const verifyCheckoutSession = (sessionId: string): Promise<CheckoutVerification> => {
+export const verifyCheckoutSession = (
+  sessionId: string
+): Promise<CheckoutVerification> => {
   return fetchWithSupabaseAuth(
-    `${API_BASE_URL}/subscription/verify-session?sessionId=${encodeURIComponent(sessionId)}`
+    `${API_BASE_URL}/subscription/verify-session?sessionId=${encodeURIComponent(
+      sessionId
+    )}`
   );
 };
 
@@ -332,15 +339,25 @@ export const cancelSubscription = (): Promise<{ message: string }> => {
   });
 };
 
+export const resumeSubscription = (): Promise<{ message: string }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/resume`, {
+    method: 'POST',
+  });
+};
+
 // --- Sync Management API Functions ---
-export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
+export const enableSyncForJob = (
+  jobId: number
+): Promise<PlaylistSyncConfig> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/enable`, {
     method: 'POST',
     body: JSON.stringify({ jobId }),
   });
 };
 
-export const disableSync = (syncConfigId: number): Promise<{ success: boolean }> => {
+export const disableSync = (
+  syncConfigId: number
+): Promise<{ success: boolean }> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}`, {
     method: 'DELETE',
   });
@@ -354,16 +371,24 @@ export const updateSyncFrequency = (
   syncConfigId: number,
   frequency: string
 ): Promise<PlaylistSyncConfig> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`, {
-    method: 'PATCH',
-    body: JSON.stringify({ frequency }),
-  });
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ frequency }),
+    }
+  );
 };
 
-export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/sync`, {
-    method: 'POST',
-  });
+export const triggerManualSync = (
+  syncConfigId: number
+): Promise<SyncResult> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/sync`,
+    {
+      method: 'POST',
+    }
+  );
 };
 
 export const getSyncHistory = (

@@ -10,6 +10,7 @@ public interface ISubscriptionService
   Task<UserSubscription> UpdateSubscriptionStatusAsync(string stripeSubscriptionId, string status);
   Task<UserSubscription> UpdateSubscriptionDatesAsync(string stripeSubscriptionId, DateTime currentPeriodStart, DateTime currentPeriodEnd);
   Task<UserSubscription> CancelSubscriptionAsync(int userId);
+  Task<UserSubscription> ResumeSubscriptionAsync(int userId);
   Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();
   Task<SubscriptionPlan?> GetPlanByIdAsync(int planId);
   Task<SubscriptionPlan?> GetPlanByStripePriceIdAsync(string stripePriceId);
