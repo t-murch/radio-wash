@@ -13,16 +13,19 @@ public class SubscriptionController : AuthenticatedControllerBase
 {
   private readonly ISubscriptionService _subscriptionService;
   private readonly IPaymentService _paymentService;
+  private readonly IWebhookOrchestrator _webhookOrchestrator;
   private readonly ILogger<SubscriptionController> _logger;
 
   public SubscriptionController(
       RadioWashDbContext dbContext,
       ISubscriptionService subscriptionService,
       IPaymentService paymentService,
+      IWebhookOrchestrator webhookOrchestrator,
       ILogger<SubscriptionController> logger) : base(dbContext, logger)
   {
     _subscriptionService = subscriptionService;
     _paymentService = paymentService;
+    _webhookOrchestrator = webhookOrchestrator;
     _logger = logger;
   }
 
@@ -165,6 +168,42 @@ public class SubscriptionController : AuthenticatedControllerBase
     }
   }
 
+  [HttpPost("resume")]
+  public async Task<ActionResult> ResumeSubscription()
+  {
+    var userId = GetCurrentUserId();
+
+    try
+    {
+      await _subscriptionService.ResumeSubscriptionAsync(userId);
+      return Ok(new { message = "Subscription resumed successfully" });
+    }
+    catch (InvalidOperationException ex)
+    {
+      _logger.LogWarning(ex, "Cannot resume subscription for user {UserId}", userId);
+      return Problem(
+        detail: ex.Message,
+        statusCode: StatusCodes.Status400BadRequest
+      );
+    }
+    catch (Stripe.StripeException ex)
+    {
+      _logger.LogWarning(ex, "Stripe error resuming subscription for user {UserId}", userId);
+      return Problem(
+        detail: "Upstream payment service error",
+        statusCode: StatusCodes.Status502BadGateway
+      );
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Failed to resume subscription for user {UserId}", userId);
+      return Problem(
+        detail: "Failed to resume subscription",
+        statusCode: StatusCodes.Status500InternalServerError
+      );
+    }
+  }
+
   [HttpPost("webhook")]
   [AllowAnonymous]
   public async Task<ActionResult> HandleStripeWebhook()
@@ -179,7 +218,7 @@ public class SubscriptionController : AuthenticatedControllerBase
         return BadRequest("Missing Stripe signature");
       }
 
-      await _paymentService.HandleWebhookAsync(json, signature);
+      await _webhookOrchestrator.HandleWebhookAsync(json, signature);
       return Ok();
     }
     catch (Stripe.StripeException ex)

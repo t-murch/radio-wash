@@ -17,6 +17,7 @@ public class SubscriptionControllerTests : IDisposable
 {
   private readonly Mock<ISubscriptionService> _mockSubscriptionService;
   private readonly Mock<IPaymentService> _mockPaymentService;
+  private readonly Mock<IWebhookOrchestrator> _mockWebhookOrchestrator;
   private readonly Mock<ILogger<SubscriptionController>> _mockLogger;
   private readonly RadioWashDbContext _context;
   private readonly SubscriptionController _controller;
@@ -30,12 +31,14 @@ public class SubscriptionControllerTests : IDisposable
 
     _mockSubscriptionService = new Mock<ISubscriptionService>();
     _mockPaymentService = new Mock<IPaymentService>();
+    _mockWebhookOrchestrator = new Mock<IWebhookOrchestrator>();
     _mockLogger = new Mock<ILogger<SubscriptionController>>();
 
     _controller = new SubscriptionController(
         _context,
         _mockSubscriptionService.Object,
         _mockPaymentService.Object,
+        _mockWebhookOrchestrator.Object,
         _mockLogger.Object
     );
 
@@ -257,7 +260,7 @@ public class SubscriptionControllerTests : IDisposable
     context.Request.Headers["Stripe-Signature"] = signature;
     _controller.ControllerContext.HttpContext = context;
 
-    _mockPaymentService.Setup(x => x.HandleWebhookAsync(payload, signature))
+    _mockWebhookOrchestrator.Setup(x => x.HandleWebhookAsync(payload, signature))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -265,7 +268,7 @@ public class SubscriptionControllerTests : IDisposable
 
     // Assert
     Assert.IsType<OkResult>(result);
-    _mockPaymentService.Verify(x => x.HandleWebhookAsync(payload, signature), Times.Once);
+    _mockWebhookOrchestrator.Verify(x => x.HandleWebhookAsync(payload, signature), Times.Once);
   }
 
   [Fact]
@@ -281,7 +284,7 @@ public class SubscriptionControllerTests : IDisposable
     context.Request.Headers["Stripe-Signature"] = signature;
     _controller.ControllerContext.HttpContext = context;
 
-    _mockPaymentService.Setup(x => x.HandleWebhookAsync(payload, signature))
+    _mockWebhookOrchestrator.Setup(x => x.HandleWebhookAsync(payload, signature))
         .ThrowsAsync(new Exception("Invalid webhook"));
 
     // Act
@@ -568,4 +571,72 @@ public class SubscriptionControllerTests : IDisposable
     var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
     Assert.Equal("Missing Stripe signature", badRequestResult.Value);
   }
+
+  #region ResumeSubscription Tests
+
+  [Fact]
+  public async Task ResumeSubscription_WithValidUserId_ShouldReturnOk()
+  {
+    // Arrange
+    var resumedSubscription = CreateUserSubscription(1, SubscriptionStatus.Active);
+    _mockSubscriptionService.Setup(x => x.ResumeSubscriptionAsync(1))
+        .ReturnsAsync(resumedSubscription);
+
+    // Act
+    var result = await _controller.ResumeSubscription();
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    var response = okResult.Value;
+    Assert.NotNull(response);
+    var messageProperty = response.GetType().GetProperty("message");
+    Assert.Equal("Subscription resumed successfully", messageProperty?.GetValue(response));
+  }
+
+  [Fact]
+  public async Task ResumeSubscription_WhenInvalidOperation_ShouldReturnBadRequest()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.ResumeSubscriptionAsync(1))
+        .ThrowsAsync(new InvalidOperationException("Subscription is fully canceled. Please create a new subscription."));
+
+    // Act
+    var result = await _controller.ResumeSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+  }
+
+  [Fact]
+  public async Task ResumeSubscription_WhenStripeThrows_ShouldReturn502()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.ResumeSubscriptionAsync(1))
+        .ThrowsAsync(new Stripe.StripeException("Stripe error"));
+
+    // Act
+    var result = await _controller.ResumeSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status502BadGateway, objectResult.StatusCode);
+  }
+
+  [Fact]
+  public async Task ResumeSubscription_WhenServiceThrows_ShouldReturn500()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.ResumeSubscriptionAsync(1))
+        .ThrowsAsync(new Exception("Resume failed"));
+
+    // Act
+    var result = await _controller.ResumeSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+  }
+
+  #endregion
 }

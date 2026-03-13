@@ -85,6 +85,7 @@ builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
 builder.Services.AddScoped<IWebhookRetryService, WebhookRetryService>();
 builder.Services.AddScoped<IWebhookProcessor, StripeWebhookProcessor>();
 builder.Services.AddScoped<IErrorClassifier, ErrorClassifier>();
+builder.Services.AddScoped<IWebhookOrchestrator, StripeWebhookOrchestrator>();
 
 // Time and random abstractions
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
@@ -179,8 +180,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
             // Lazy-resolve dependencies from the app's service provider (available at request time)
-            resolvedHttpClientFactory ??= appServices!.GetRequiredService<IHttpClientFactory>();
-            resolvedLogger ??= appServices!.GetRequiredService<ILogger<Program>>();
+            var services = appServices
+                ?? throw new InvalidOperationException(
+                    "Service provider not yet initialized. JWT validation cannot occur before app.Build().");
+            resolvedHttpClientFactory ??= services.GetRequiredService<IHttpClientFactory>();
+            resolvedLogger ??= services.GetRequiredService<ILogger<Program>>();
 
             // Double-checked locking: check cache without lock first for performance
             if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
