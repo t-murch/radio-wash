@@ -155,6 +155,37 @@ public class GlobalExceptionMiddlewareTests
   }
 
   [Fact]
+  public async Task InvokeAsync_InProduction_LogsErrorWithExceptionDetails()
+  {
+    // The Production environment must NOT be a log blackout — Sentry is not the only consumer
+    // of structured logs. Prior to this fix, GlobalExceptionMiddleware guarded LogError with
+    // `if (!_environment.IsProduction())` and swallowed the error path in prod entirely.
+    var context = CreateHttpContext();
+    var exception = new InvalidOperationException("Production failure");
+
+    // Force IsProduction() == true by reporting EnvironmentName = "Production".
+    _mockEnvironment.SetupGet(e => e.EnvironmentName).Returns("Production");
+
+    _mockNext.Setup(x => x(It.IsAny<HttpContext>())).ThrowsAsync(exception);
+
+    // Act
+    await _middleware.InvokeAsync(context);
+
+    // Assert — LogError must fire with the exception regardless of environment.
+    _mockLogger.Verify(
+        x => x.Log(
+            LogLevel.Error,
+            It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("An unhandled exception occurred")),
+            exception,
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+        Times.Once);
+
+    // And the response still returns 500 with the generic error body.
+    Assert.Equal(500, context.Response.StatusCode);
+  }
+
+  [Fact]
   public async Task InvokeAsync_WithSuccessfulResponse_DoesNotLogWarning()
   {
     // Arrange

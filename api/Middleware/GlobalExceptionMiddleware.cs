@@ -24,11 +24,8 @@ public class GlobalExceptionMiddleware
         }
         catch (Exception ex)
         {
-            if (!_environment.IsProduction())
-            {
-                _logger.LogError(ex, "An unhandled exception occurred for {Method} {Path}", 
-                    context.Request.Method, context.Request.Path);
-            }
+            _logger.LogError(ex, "An unhandled exception occurred for {Method} {Path}",
+                context.Request.Method, context.Request.Path);
             await HandleExceptionAsync(context, ex);
         }
         finally
