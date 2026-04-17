@@ -37,13 +37,16 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
     _batchConfig = batchConfig ?? new BatchConfiguration();
   }
 
-  public async Task<PlaylistCleaningResult> CleanPlaylistAsync(CleanPlaylistJob job, User user)
+  public async Task<PlaylistCleaningResult> CleanPlaylistAsync(
+      CleanPlaylistJob job,
+      User user,
+      CancellationToken cancellationToken = default)
   {
-    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, CancellationToken.None);
+    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, cancellationToken);
     _progressTracker.Initialize(tracks.Count, _batchConfig);
 
-    var processedResult = await ProcessTracks(job, user, tracks);
-    var playlist = await CreateTargetPlaylist(user, job.TargetPlaylistName, processedResult.CleanTrackUris);
+    var processedResult = await ProcessTracks(job, user, tracks, cancellationToken);
+    var playlist = await CreateTargetPlaylist(user, job.TargetPlaylistName, processedResult.CleanTrackUris, cancellationToken);
 
     return new PlaylistCleaningResult
     {
@@ -57,7 +60,8 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   private async Task<TrackProcessingResult> ProcessTracks(
       CleanPlaylistJob job,
       User user,
-      IReadOnlyList<MusicTrack> tracks)
+      IReadOnlyList<MusicTrack> tracks,
+      CancellationToken cancellationToken)
   {
     var result = new TrackProcessingResult();
     var mappingBatch = new List<TrackMapping>();
@@ -72,7 +76,8 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
         continue;
       }
 
-      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, CancellationToken.None);
+      cancellationToken.ThrowIfCancellationRequested();
+      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, cancellationToken);
 
       var mapping = new TrackMapping
       {
@@ -164,18 +169,19 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   private async Task<PlaylistSummary> CreateTargetPlaylist(
       User user,
       string playlistName,
-      List<string> trackIds)
+      List<string> trackIds,
+      CancellationToken cancellationToken)
   {
     var playlist = await _musicService.CreatePlaylistAsync(
         user.Id,
         playlistName,
         "Cleaned by RadioWash.",
-        CancellationToken.None);
+        cancellationToken);
 
     if (trackIds.Any())
     {
       // Pass raw platform IDs; the adapter decides URI format.
-      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, CancellationToken.None);
+      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, cancellationToken);
     }
 
     return playlist;

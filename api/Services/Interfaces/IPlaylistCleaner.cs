@@ -15,5 +15,8 @@ public interface IPlaylistCleanerFactory
 /// </summary>
 public interface IPlaylistCleaner
 {
-  Task<PlaylistCleaningResult> CleanPlaylistAsync(CleanPlaylistJob job, User user);
+  Task<PlaylistCleaningResult> CleanPlaylistAsync(
+    CleanPlaylistJob job,
+    User user,
+    CancellationToken cancellationToken = default);
 }
