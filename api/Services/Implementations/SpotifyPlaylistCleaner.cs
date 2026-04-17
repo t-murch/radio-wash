@@ -1,16 +1,20 @@
+using Microsoft.Extensions.DependencyInjection;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
-using RadioWash.Api.Models.Spotify;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
-/// Spotify-specific implementation of playlist cleaner
+/// Platform-neutral playlist cleaner that drives the track-by-track loop against any
+/// <see cref="IMusicService"/> implementation. The name retains "Spotify" for back-compat
+/// with DI and the factory; it now operates through the provider-agnostic interface and no
+/// longer knows about Spotify-specific types or URI formats.
 /// </summary>
 public class SpotifyPlaylistCleaner : IPlaylistCleaner
 {
-  private readonly ISpotifyService _spotifyService;
+  private readonly IMusicService _musicService;
   private readonly IProgressTracker _progressTracker;
   private readonly IProgressBroadcastService _progressService;
   private readonly IUnitOfWork _unitOfWork;
@@ -18,14 +22,14 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   private readonly BatchConfiguration _batchConfig;
 
   public SpotifyPlaylistCleaner(
-      ISpotifyService spotifyService,
+      [FromKeyedServices(SpotifyMusicService.Provider)] IMusicService musicService,
       IProgressTracker progressTracker,
       IProgressBroadcastService progressService,
       IUnitOfWork unitOfWork,
       ILogger<SpotifyPlaylistCleaner> logger,
       BatchConfiguration? batchConfig = null)
   {
-    _spotifyService = spotifyService;
+    _musicService = musicService;
     _progressTracker = progressTracker;
     _progressService = progressService;
     _unitOfWork = unitOfWork;
@@ -35,12 +39,10 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
 
   public async Task<PlaylistCleaningResult> CleanPlaylistAsync(CleanPlaylistJob job, User user)
   {
-    var tracks = await _spotifyService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId);
-    var trackList = tracks.ToList();
+    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, CancellationToken.None);
+    _progressTracker.Initialize(tracks.Count, _batchConfig);
 
-    _progressTracker.Initialize(trackList.Count, _batchConfig);
-
-    var processedResult = await ProcessTracks(job, user, trackList);
+    var processedResult = await ProcessTracks(job, user, tracks);
     var playlist = await CreateTargetPlaylist(user, job.TargetPlaylistName, processedResult.CleanTrackUris);
 
     return new PlaylistCleaningResult
@@ -55,7 +57,7 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   private async Task<TrackProcessingResult> ProcessTracks(
       CleanPlaylistJob job,
       User user,
-      List<SpotifyTrack> tracks)
+      IReadOnlyList<MusicTrack> tracks)
   {
     var result = new TrackProcessingResult();
     var mappingBatch = new List<TrackMapping>();
@@ -70,23 +72,22 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
         continue;
       }
 
-      // Find clean version using SpotifyService directly
-      var cleanVersion = await _spotifyService.FindCleanVersionAsync(user.Id, track);
-      
+      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, CancellationToken.None);
+
       var mapping = new TrackMapping
       {
         JobId = job.Id,
         SourceTrackId = track.Id,
         SourceTrackName = track.Name ?? "Unknown",
-        SourceArtistName = track.Artists?.Length > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
-        IsExplicit = track.Explicit,
+        SourceArtistName = track.Artists.Count > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
+        IsExplicit = track.IsExplicit,
         HasCleanMatch = cleanVersion != null,
         TargetTrackId = cleanVersion?.Id,
         TargetTrackName = cleanVersion?.Name,
-        TargetArtistName = cleanVersion?.Artists?.Length > 0 ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null,
+        TargetArtistName = cleanVersion?.Artists.Count > 0 ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null,
         CreatedAt = DateTime.UtcNow
       };
-      
+
       mappingBatch.Add(mapping);
 
       if (mapping.HasCleanMatch)
@@ -101,7 +102,6 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
       await HandleBatchPersistence(job.Id, i + 1, mappingBatch);
     }
 
-    // Save any remaining mappings
     if (mappingBatch.Any())
     {
       await PersistMappings(mappingBatch);
@@ -110,10 +110,7 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
     return result;
   }
 
-  private bool IsValidTrack(SpotifyTrack track)
-  {
-    return !string.IsNullOrEmpty(track.Id);
-  }
+  private static bool IsValidTrack(MusicTrack track) => !string.IsNullOrEmpty(track.Id);
 
   private async Task HandleProgressReporting(int jobId, int processedCount, string? trackName)
   {
@@ -164,20 +161,21 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
     }
   }
 
-  private async Task<SpotifyPlaylist> CreateTargetPlaylist(
+  private async Task<PlaylistSummary> CreateTargetPlaylist(
       User user,
       string playlistName,
-      List<string> trackUris)
+      List<string> trackIds)
   {
-    var playlist = await _spotifyService.CreatePlaylistAsync(
+    var playlist = await _musicService.CreatePlaylistAsync(
         user.Id,
         playlistName,
-        "Cleaned by RadioWash.");
+        "Cleaned by RadioWash.",
+        CancellationToken.None);
 
-    if (trackUris.Any())
+    if (trackIds.Any())
     {
-      var uris = trackUris.Select(id => $"spotify:track:{id}");
-      await _spotifyService.AddTracksToPlaylistAsync(user.Id, playlist.Id, uris);
+      // Pass raw platform IDs; the adapter decides URI format.
+      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, CancellationToken.None);
     }
 
     return playlist;
