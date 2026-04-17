@@ -11,7 +11,7 @@ namespace RadioWash.Api.Tests.Integration.TestHelpers;
 /// </summary>
 public abstract class PostgreSqlIntegrationTestBase : IAsyncDisposable
 {
-    private readonly PostgreSqlContainer _postgresContainer;
+    protected readonly PostgreSqlContainer _postgresContainer;
     protected readonly RadioWashDbContext _dbContext;
     protected readonly IServiceProvider _serviceProvider;
 
