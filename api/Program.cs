@@ -296,6 +296,16 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
         .UseRecommendedSerializerSettings()
         .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
     builder.Services.AddHangfireServer();
+
+    // Dashboard authorization: allowlist of Supabase user IDs from configuration. Accepts
+    // either a string[] (Hangfire:AdminUserIds:0..n) or a comma-separated string
+    // (Hangfire:AdminUserIds). An empty/missing list means the dashboard rejects every user.
+    var adminIdsSection = builder.Configuration.GetSection("Hangfire:AdminUserIds");
+    var adminIds = adminIdsSection.Get<string[]>()
+        ?? (adminIdsSection.Value ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    builder.Services.AddSingleton(new RadioWash.Api.Infrastructure.Hangfire.SupabaseAdminAuthorization(adminIds));
+    builder.Services.AddSingleton<RadioWash.Api.Infrastructure.Hangfire.SupabaseAdminAuthorizationFilter>();
 }
 
 // Background services
@@ -448,7 +458,11 @@ logger.LogInformation("SignalR Hub mapped at /hubs/playlist-progress with transp
 var skipHangfireDashboard = app.Configuration.GetValue<bool>("SkipMigrations"); // Use same flag for consistency
 if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfireDashboard)
 {
-    app.UseHangfireDashboard();
+    var dashboardFilter = app.Services.GetRequiredService<RadioWash.Api.Infrastructure.Hangfire.SupabaseAdminAuthorizationFilter>();
+    app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+    {
+        AsyncAuthorization = new[] { dashboardFilter }
+    });
 
     // Initialize scheduled sync jobs
     using (var scope = app.Services.CreateScope())
