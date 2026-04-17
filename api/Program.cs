@@ -158,6 +158,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     var jwksCacheLock = new object();
     var jwksCacheDuration = TimeSpan.FromHours(1); // Cache JWKS for 1 hour
 
+    // HS256 symmetric key used by self-hosted/local GoTrue which signs with GOTRUE_JWT_SECRET.
+    // Production Supabase Cloud uses ES256/RS256 via JWKS, but local `supabase start` still issues
+    // HS256 tokens because the CLI has not yet enabled asymmetric signing keys. We register the
+    // symmetric key alongside the JWKS-derived keys so the same validation code path handles both.
+    var hs256Secret = builder.Configuration["Supabase:JwtSecret"];
+    SecurityKey? symmetricSigningKey = string.IsNullOrEmpty(hs256Secret)
+        ? null
+        : new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(hs256Secret));
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -170,41 +179,56 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Use IssuerSigningKeyResolver with caching to avoid fetching JWKS on every request
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
+            IEnumerable<SecurityKey> keys;
+
             // Double-checked locking: check cache without lock first for performance
             if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
             {
-                return cachedJwks.GetSigningKeys();
+                keys = cachedJwks.GetSigningKeys();
             }
-
-            lock (jwksCacheLock)
+            else
             {
-                // Double-check after acquiring lock
-                if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
+                lock (jwksCacheLock)
                 {
-                    return cachedJwks.GetSigningKeys();
-                }
-
-                try
-                {
-                    var jwksJson = jwksHttpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
-                    cachedJwks = new JsonWebKeySet(jwksJson);
-                    cacheExpiry = DateTime.UtcNow.Add(jwksCacheDuration);
-                }
-                catch (Exception ex)
-                {
-                    jwksLogger.LogError(ex, "Failed to fetch JWKS from {Url}", jwksUrl);
-
-                    // Use expired cache as fallback if available
-                    if (cachedJwks != null)
+                    if (cachedJwks != null && DateTime.UtcNow < cacheExpiry)
                     {
-                        jwksLogger.LogWarning("Using expired JWKS cache as fallback");
-                        return cachedJwks.GetSigningKeys();
+                        keys = cachedJwks.GetSigningKeys();
                     }
-                    throw;
-                }
+                    else
+                    {
+                        try
+                        {
+                            var jwksJson = jwksHttpClient.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
+                            cachedJwks = new JsonWebKeySet(jwksJson);
+                            cacheExpiry = DateTime.UtcNow.Add(jwksCacheDuration);
+                            keys = cachedJwks.GetSigningKeys();
+                        }
+                        catch (Exception ex)
+                        {
+                            jwksLogger.LogError(ex, "Failed to fetch JWKS from {Url}", jwksUrl);
 
-                return cachedJwks.GetSigningKeys();
+                            if (cachedJwks != null)
+                            {
+                                jwksLogger.LogWarning("Using expired JWKS cache as fallback");
+                                keys = cachedJwks.GetSigningKeys();
+                            }
+                            else if (symmetricSigningKey != null)
+                            {
+                                // JWKS unreachable and no cache — fall through to HS256-only validation
+                                // (covers local dev where JWKS endpoint is empty/unreachable).
+                                jwksLogger.LogWarning("JWKS unavailable; validating with HS256 symmetric key only");
+                                keys = Array.Empty<SecurityKey>();
+                            }
+                            else
+                            {
+                                throw;
+                            }
+                        }
+                    }
+                }
             }
+
+            return symmetricSigningKey != null ? keys.Append(symmetricSigningKey) : keys;
         }
     };
 
