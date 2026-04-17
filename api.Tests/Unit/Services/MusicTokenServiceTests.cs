@@ -262,6 +262,162 @@ public class MusicTokenServiceTests
   }
 
   [Fact]
+  public async Task RefreshTokensAsync_ConcurrentCallsForSameUser_OnlyOneDispatchedRefreshFires()
+  {
+    // Two requests arrive at roughly the same instant for the same (user, provider) with an
+    // expired access token. Before the fix, both threads pass the IsExpired check, both call
+    // into RefreshSpotifyTokenAsync, and both POST the same refresh token to Spotify. Spotify
+    // invalidates refresh tokens on first use, so the slower thread locks the user out until
+    // they re-authenticate.
+    //
+    // After the fix, the second caller blocks on a per-user semaphore. When it acquires the
+    // lock, it re-reads the token, sees a fresh expiry, and returns true without dispatching
+    // another Spotify OAuth call.
+    var userId = 42;
+    var provider = "spotify";
+    var expiredToken = new UserMusicToken
+    {
+      Id = 1,
+      UserId = userId,
+      Provider = provider,
+      EncryptedAccessToken = "old-access",
+      EncryptedRefreshToken = "old-refresh",
+      ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
+    };
+    var freshToken = new UserMusicToken
+    {
+      Id = 1,
+      UserId = userId,
+      Provider = provider,
+      EncryptedAccessToken = "new-access",
+      EncryptedRefreshToken = "old-refresh",
+      ExpiresAt = DateTime.UtcNow.AddMinutes(55)
+    };
+
+    // First read returns expired. Every subsequent read returns the fresh token (simulating
+    // that the first refresh updated the record).
+    _mockTokenRepository.SetupSequence(x => x.GetByUserAndProviderAsync(userId, provider))
+      .ReturnsAsync(expiredToken)
+      .ReturnsAsync(expiredToken) // second caller's initial probe; may race with the first
+      .ReturnsAsync(freshToken)
+      .ReturnsAsync(freshToken);
+
+    // Gate the refresh dispatch so we can force the two callers to overlap inside the lock.
+    var gate = new TaskCompletionSource<bool>();
+    var refreshCalls = 0;
+    var service = new TestableMusicTokenService(
+      _mockTokenRepository.Object,
+      _mockEncryptionService.Object,
+      _mockConfiguration.Object,
+      _mockLogger.Object,
+      _mockHttpClient.Object,
+      async (_) =>
+      {
+        Interlocked.Increment(ref refreshCalls);
+        // Hold inside the lock so the second caller is guaranteed to arrive while we are still
+        // "refreshing" and must wait on the semaphore.
+        await gate.Task;
+        return true;
+      });
+
+    // Act — two concurrent refresh attempts
+    var task1 = Task.Run(() => service.RefreshTokensAsync(userId, provider));
+    // Small yield so task1 enters the lock first; not required for correctness, but makes the
+    // intent explicit.
+    await Task.Yield();
+    var task2 = Task.Run(() => service.RefreshTokensAsync(userId, provider));
+
+    // Let both callers queue, then release the first.
+    await Task.Delay(50);
+    gate.SetResult(true);
+
+    var results = await Task.WhenAll(task1, task2);
+
+    // Assert — exactly one dispatch; both callers succeed.
+    Assert.Equal(1, refreshCalls);
+    Assert.All(results, r => Assert.True(r));
+  }
+
+  [Fact]
+  public async Task RefreshTokensAsync_ConcurrentCallsForDifferentUsers_ProceedInParallel()
+  {
+    // Different (userId, provider) pairs must not block each other. The lock is per-user,
+    // not global.
+    var provider = "spotify";
+    var userA = 1;
+    var userB = 2;
+
+    UserMusicToken MakeExpiredToken(int id, int userId) => new()
+    {
+      Id = id,
+      UserId = userId,
+      Provider = provider,
+      EncryptedAccessToken = "old",
+      EncryptedRefreshToken = "r",
+      ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
+    };
+
+    _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userA, provider))
+      .ReturnsAsync(MakeExpiredToken(1, userA));
+    _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userB, provider))
+      .ReturnsAsync(MakeExpiredToken(2, userB));
+
+    var bothStartedGate = new TaskCompletionSource<bool>();
+    var startedCount = 0;
+    var releaseGate = new TaskCompletionSource<bool>();
+
+    var service = new TestableMusicTokenService(
+      _mockTokenRepository.Object,
+      _mockEncryptionService.Object,
+      _mockConfiguration.Object,
+      _mockLogger.Object,
+      _mockHttpClient.Object,
+      async (_) =>
+      {
+        if (Interlocked.Increment(ref startedCount) == 2)
+        {
+          bothStartedGate.SetResult(true);
+        }
+        await releaseGate.Task;
+        return true;
+      });
+
+    var taskA = Task.Run(() => service.RefreshTokensAsync(userA, provider));
+    var taskB = Task.Run(() => service.RefreshTokensAsync(userB, provider));
+
+    // If the lock were global, only one would start; this would time out.
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    await bothStartedGate.Task.WaitAsync(cts.Token);
+
+    releaseGate.SetResult(true);
+    await Task.WhenAll(taskA, taskB);
+
+    Assert.Equal(2, startedCount);
+  }
+
+  // Subclass exposing a seam for the refresh dispatch. Production code routes via
+  // RefreshSpotifyTokenAsync which hits Spotify's OAuth endpoint; tests override.
+  private sealed class TestableMusicTokenService : MusicTokenService
+  {
+    private readonly Func<UserMusicToken, Task<bool>> _refreshDispatch;
+
+    public TestableMusicTokenService(
+      IUserMusicTokenRepository tokenRepository,
+      ITokenEncryptionService encryptionService,
+      IConfiguration configuration,
+      ILogger<MusicTokenService> logger,
+      HttpClient httpClient,
+      Func<UserMusicToken, Task<bool>> refreshDispatch)
+      : base(tokenRepository, encryptionService, configuration, logger, httpClient)
+    {
+      _refreshDispatch = refreshDispatch;
+    }
+
+    protected override Task<bool> RefreshSpotifyTokenAsync(UserMusicToken tokenRecord) =>
+      _refreshDispatch(tokenRecord);
+  }
+
+  [Fact]
   public async Task RefreshTokensAsync_WithNoToken_ReturnsFalse()
   {
     // Arrange

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
@@ -11,6 +12,12 @@ namespace RadioWash.Api.Services.Implementations;
 /// </summary>
 public class MusicTokenService : IMusicTokenService
 {
+  // Per-(user, provider) semaphore to serialize concurrent refresh attempts. Without this, two
+  // concurrent requests that both see an expired token will both POST the refresh_token to the
+  // provider; Spotify invalidates it after first use, locking the user out. This is in-process
+  // only (single-server deployment); a distributed lock would be needed for horizontal scaling.
+  private static readonly ConcurrentDictionary<(int UserId, string Provider), SemaphoreSlim> RefreshLocks = new();
+
   private readonly IUserMusicTokenRepository _tokenRepository;
   private readonly ITokenEncryptionService _encryptionService;
   private readonly IConfiguration _configuration;
@@ -123,8 +130,39 @@ public class MusicTokenService : IMusicTokenService
       return false;
     }
 
+    var lockKey = (userId, provider);
+    var semaphore = RefreshLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+
+    // If we enter the lock immediately, we're the first caller and must dispatch. If we had to
+    // wait, another caller was dispatching concurrently — re-read the stored token and skip
+    // our own dispatch if that caller's refresh produced a fresher token than what we started
+    // with. This avoids re-POSTing a refresh_token that the provider may have already rotated.
+    var preLockExpiresAt = tokenRecord.ExpiresAt;
+    var waited = !await semaphore.WaitAsync(0);
+    if (waited)
+    {
+      await semaphore.WaitAsync();
+    }
+
     try
     {
+      if (waited)
+      {
+        var latest = await GetTokenInfoAsync(userId, provider);
+        if (latest == null)
+        {
+          return false;
+        }
+        if (latest.ExpiresAt > preLockExpiresAt)
+        {
+          _logger.LogDebug(
+            "Token for user {UserId} provider {Provider} was refreshed by another request; skipping duplicate dispatch",
+            userId, provider);
+          return true;
+        }
+        tokenRecord = latest;
+      }
+
       if (provider.ToLower() == "spotify")
       {
         return await RefreshSpotifyTokenAsync(tokenRecord);
@@ -137,6 +175,10 @@ public class MusicTokenService : IMusicTokenService
     {
       _logger.LogError(ex, "Failed to refresh tokens for user {UserId} provider {Provider}", userId, provider);
       return false;
+    }
+    finally
+    {
+      semaphore.Release();
     }
   }
 
@@ -170,7 +212,7 @@ public class MusicTokenService : IMusicTokenService
     }
   }
 
-  private async Task<bool> RefreshSpotifyTokenAsync(UserMusicToken tokenRecord)
+  protected virtual async Task<bool> RefreshSpotifyTokenAsync(UserMusicToken tokenRecord)
   {
     var clientId = _configuration["Spotify:ClientId"];
     var clientSecret = _configuration["Spotify:ClientSecret"];
