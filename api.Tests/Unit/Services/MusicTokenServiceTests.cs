@@ -35,7 +35,8 @@ public class MusicTokenServiceTests
         _mockEncryptionService.Object,
         _mockConfiguration.Object,
         _mockLogger.Object,
-        _mockHttpClient.Object);
+        _mockHttpClient.Object,
+        Array.Empty<IMusicTokenRefresher>());
   }
 
   [Fact]
@@ -305,20 +306,21 @@ public class MusicTokenServiceTests
     // Gate the refresh dispatch so we can force the two callers to overlap inside the lock.
     var gate = new TaskCompletionSource<bool>();
     var refreshCalls = 0;
-    var service = new TestableMusicTokenService(
+    var fakeRefresher = new FakeSpotifyRefresher(async () =>
+    {
+      Interlocked.Increment(ref refreshCalls);
+      // Hold inside the lock so the second caller is guaranteed to arrive while we are still
+      // "refreshing" and must wait on the semaphore.
+      await gate.Task;
+      return true;
+    });
+    var service = new MusicTokenService(
       _mockTokenRepository.Object,
       _mockEncryptionService.Object,
       _mockConfiguration.Object,
       _mockLogger.Object,
       _mockHttpClient.Object,
-      async (_) =>
-      {
-        Interlocked.Increment(ref refreshCalls);
-        // Hold inside the lock so the second caller is guaranteed to arrive while we are still
-        // "refreshing" and must wait on the semaphore.
-        await gate.Task;
-        return true;
-      });
+      new IMusicTokenRefresher[] { fakeRefresher });
 
     // Act — two concurrent refresh attempts
     var task1 = Task.Run(() => service.RefreshTokensAsync(userId, provider));
@@ -366,21 +368,22 @@ public class MusicTokenServiceTests
     var startedCount = 0;
     var releaseGate = new TaskCompletionSource<bool>();
 
-    var service = new TestableMusicTokenService(
+    var fakeRefresher = new FakeSpotifyRefresher(async () =>
+    {
+      if (Interlocked.Increment(ref startedCount) == 2)
+      {
+        bothStartedGate.SetResult(true);
+      }
+      await releaseGate.Task;
+      return true;
+    });
+    var service = new MusicTokenService(
       _mockTokenRepository.Object,
       _mockEncryptionService.Object,
       _mockConfiguration.Object,
       _mockLogger.Object,
       _mockHttpClient.Object,
-      async (_) =>
-      {
-        if (Interlocked.Increment(ref startedCount) == 2)
-        {
-          bothStartedGate.SetResult(true);
-        }
-        await releaseGate.Task;
-        return true;
-      });
+      new IMusicTokenRefresher[] { fakeRefresher });
 
     var taskA = Task.Run(() => service.RefreshTokensAsync(userA, provider));
     var taskB = Task.Run(() => service.RefreshTokensAsync(userB, provider));
@@ -395,26 +398,22 @@ public class MusicTokenServiceTests
     Assert.Equal(2, startedCount);
   }
 
-  // Subclass exposing a seam for the refresh dispatch. Production code routes via
-  // RefreshSpotifyTokenAsync which hits Spotify's OAuth endpoint; tests override.
-  private sealed class TestableMusicTokenService : MusicTokenService
+  // Fake refresher keyed to "spotify" so MusicTokenService resolves it from the injected
+  // collection. Each call awaits a caller-provided delegate so concurrency tests can gate
+  // the refresh dispatch precisely.
+  private sealed class FakeSpotifyRefresher : IMusicTokenRefresher
   {
-    private readonly Func<UserMusicToken, Task<bool>> _refreshDispatch;
+    private readonly Func<Task<bool>> _dispatch;
 
-    public TestableMusicTokenService(
-      IUserMusicTokenRepository tokenRepository,
-      ITokenEncryptionService encryptionService,
-      IConfiguration configuration,
-      ILogger<MusicTokenService> logger,
-      HttpClient httpClient,
-      Func<UserMusicToken, Task<bool>> refreshDispatch)
-      : base(tokenRepository, encryptionService, configuration, logger, httpClient)
+    public FakeSpotifyRefresher(Func<Task<bool>> dispatch)
     {
-      _refreshDispatch = refreshDispatch;
+      _dispatch = dispatch;
     }
 
-    protected override Task<bool> RefreshSpotifyTokenAsync(UserMusicToken tokenRecord) =>
-      _refreshDispatch(tokenRecord);
+    public string ProviderName => "spotify";
+
+    public Task<bool> RefreshAsync(UserMusicToken token, CancellationToken cancellationToken) =>
+      _dispatch();
   }
 
   [Fact]

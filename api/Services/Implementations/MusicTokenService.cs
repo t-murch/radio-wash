@@ -3,7 +3,6 @@ using System.Text.Json;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
-using SpotifyAPI.Web;
 
 namespace RadioWash.Api.Services.Implementations;
 
@@ -23,19 +22,24 @@ public class MusicTokenService : IMusicTokenService
   private readonly IConfiguration _configuration;
   private readonly ILogger<MusicTokenService> _logger;
   private readonly HttpClient _httpClient;
+  private readonly IReadOnlyDictionary<string, IMusicTokenRefresher> _refreshersByProvider;
 
   public MusicTokenService(
       IUserMusicTokenRepository tokenRepository,
       ITokenEncryptionService encryptionService,
       IConfiguration configuration,
       ILogger<MusicTokenService> logger,
-      HttpClient httpClient)
+      HttpClient httpClient,
+      IEnumerable<IMusicTokenRefresher> refreshers)
   {
     _tokenRepository = tokenRepository;
     _encryptionService = encryptionService;
     _configuration = configuration;
     _logger = logger;
     _httpClient = httpClient;
+    _refreshersByProvider = refreshers.ToDictionary(
+      r => r.ProviderName,
+      StringComparer.OrdinalIgnoreCase);
   }
 
   public async Task<UserMusicToken> StoreTokensAsync(int userId, string provider, string accessToken,
@@ -163,13 +167,13 @@ public class MusicTokenService : IMusicTokenService
         tokenRecord = latest;
       }
 
-      if (provider.ToLower() == "spotify")
+      if (!_refreshersByProvider.TryGetValue(provider, out var refresher))
       {
-        return await RefreshSpotifyTokenAsync(tokenRecord);
+        _logger.LogWarning("Refresh not implemented for provider {Provider}", provider);
+        return false;
       }
 
-      _logger.LogWarning("Refresh not implemented for provider {Provider}", provider);
-      return false;
+      return await refresher.RefreshAsync(tokenRecord, CancellationToken.None);
     }
     catch (Exception ex)
     {
@@ -212,47 +216,4 @@ public class MusicTokenService : IMusicTokenService
     }
   }
 
-  protected virtual async Task<bool> RefreshSpotifyTokenAsync(UserMusicToken tokenRecord)
-  {
-    var clientId = _configuration["Spotify:ClientId"];
-    var clientSecret = _configuration["Spotify:ClientSecret"];
-    var refreshToken = _encryptionService.DecryptToken(tokenRecord.EncryptedRefreshToken!);
-
-    try
-    {
-      var request = new AuthorizationCodeRefreshRequest(clientId!, clientSecret!, refreshToken);
-      var response = await new OAuthClient().RequestToken(request);
-
-      if (response.AccessToken != null)
-      {
-        tokenRecord.EncryptedAccessToken = _encryptionService.EncryptToken(response.AccessToken);
-        tokenRecord.ExpiresAt = DateTime.UtcNow.AddSeconds(response.ExpiresIn);
-
-        // Spotify may provide a new refresh token
-        if (!string.IsNullOrEmpty(response.RefreshToken))
-        {
-          tokenRecord.EncryptedRefreshToken = _encryptionService.EncryptToken(response.RefreshToken);
-        }
-
-        tokenRecord.MarkRefreshSuccess();
-        await _tokenRepository.UpdateAsync(tokenRecord);
-
-        _logger.LogInformation("Successfully refreshed Spotify token for user {UserId}", tokenRecord.UserId);
-        return true;
-      }
-      else
-      {
-        tokenRecord.MarkRefreshFailure();
-        await _tokenRepository.UpdateAsync(tokenRecord);
-        return false;
-      }
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(ex, "Failed to refresh Spotify token for user {UserId}", tokenRecord.UserId);
-      tokenRecord.MarkRefreshFailure();
-      await _tokenRepository.UpdateAsync(tokenRecord);
-      return false;
-    }
-  }
 }

@@ -39,6 +39,10 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
+// Per-provider token refreshers. MusicTokenService takes IEnumerable<IMusicTokenRefresher>
+// and routes by ProviderName, so adding Apple Music is a single AddScoped here — no
+// MusicTokenService edits required.
+builder.Services.AddScoped<IMusicTokenRefresher, SpotifyTokenRefresher>();
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
