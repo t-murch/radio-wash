@@ -309,6 +309,11 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
         .UsePostgreSqlStorage(config => config.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
     builder.Services.AddHangfireServer();
 
+    // Global lifecycle logging filter. Registered via the DI container so the filter can
+    // consume ILogger<T> like any other service. The resolution runs once here at startup —
+    // Hangfire keeps the same instance for every job.
+    builder.Services.AddSingleton<RadioWash.Api.Infrastructure.Hangfire.LogJobLifecycleAttribute>();
+
     // Dashboard authorization: allowlist of Supabase user IDs from configuration. Accepts
     // either a string[] (Hangfire:AdminUserIds:0..n) or a comma-separated string
     // (Hangfire:AdminUserIds). An empty/missing list means the dashboard rejects every user.
@@ -392,6 +397,15 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 });
 
 var app = builder.Build();
+
+// Register the lifecycle-logging filter globally. Must happen after Build() so DI can
+// resolve the ILogger<T> dependency. Guarded by the same skipHangfire flag used for server
+// registration above so test environments don't need to wire the filter.
+if (!app.Environment.IsEnvironment("Testing") && !app.Environment.IsEnvironment("Test") && !skipHangfire)
+{
+    var lifecycleFilter = app.Services.GetRequiredService<RadioWash.Api.Infrastructure.Hangfire.LogJobLifecycleAttribute>();
+    global::Hangfire.GlobalJobFilters.Filters.Add(lifecycleFilter);
+}
 
 if (app.Environment.IsDevelopment())
 {

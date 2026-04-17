@@ -28,7 +28,10 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
     _logger = logger;
   }
 
-  [AutomaticRetry(Attempts = 2)]
+  // Exponential retry: 30s, 120s. Better than Hangfire's immediate-retry default when the
+  // most likely cause of failure is a Spotify hiccup or a token-refresh race — a little
+  // back-off gives the upstream time to recover before we spend the whole attempt budget.
+  [AutomaticRetry(Attempts = 2, DelaysInSeconds = new[] { 30, 120 })]
   public async Task ProcessJobAsync(int jobId, IJobCancellationToken cancellationToken)
   {
     var job = await _unitOfWork.Jobs.GetByIdAsync(jobId);
