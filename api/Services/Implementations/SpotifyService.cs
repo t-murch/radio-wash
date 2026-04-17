@@ -11,21 +11,30 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class SpotifyService : ISpotifyService
 {
+  // Cap Retry-After at 60s. Spotify has sent hour-long Retry-After values in edge cases; we
+  // would rather fail fast and let Hangfire reschedule than block a worker thread for an hour.
+  private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(60);
+  // Fallback delay when a 429 response omits Retry-After.
+  private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(5);
+
   private readonly HttpClient _httpClient;
   private readonly SpotifySettings _spotifySettings;
   private readonly IMusicTokenService _musicTokenService;
   private readonly ILogger<SpotifyService> _logger;
+  private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
   public SpotifyService(
       HttpClient httpClient,
       IOptions<SpotifySettings> spotifySettings,
       IMusicTokenService musicTokenService,
-      ILogger<SpotifyService> logger)
+      ILogger<SpotifyService> logger,
+      Func<TimeSpan, CancellationToken, Task>? delay = null)
   {
     _httpClient = httpClient;
     _spotifySettings = spotifySettings.Value;
     _musicTokenService = musicTokenService;
     _logger = logger;
+    _delay = delay ?? Task.Delay;
   }
 
   // Secure token retrieval with automatic refresh and retry logic
@@ -45,6 +54,28 @@ public class SpotifyService : ISpotifyService
       try
       {
         var response = await _httpClient.SendAsync(request);
+
+        // Rate-limit: honor Retry-After when present, otherwise a bounded fallback, and never
+        // block for longer than MaxRetryAfter no matter what the server returns.
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxRetries)
+        {
+          var retryAfter = response.Headers.RetryAfter?.Delta ?? DefaultRetryAfter;
+          if (retryAfter > MaxRetryAfter)
+          {
+            _logger.LogWarning(
+              "Spotify 429 Retry-After {Requested}s exceeds cap; clamping to {Cap}s",
+              retryAfter.TotalSeconds, MaxRetryAfter.TotalSeconds);
+            retryAfter = MaxRetryAfter;
+          }
+          _logger.LogWarning(
+            "Spotify rate-limited (429); waiting {Delay}s before retry {Attempt}/{MaxRetries}",
+            retryAfter.TotalSeconds, attempt + 1, maxRetries);
+
+          await _delay(retryAfter, CancellationToken.None);
+
+          request = CloneRequestForRetry(request);
+          continue;
+        }
 
         // If unauthorized or forbidden, try to refresh token and retry once more
         // Spotify sometimes returns 403 instead of 401 for expired/revoked tokens
@@ -95,21 +126,32 @@ public class SpotifyService : ISpotifyService
         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
         _logger.LogWarning(ex, "HTTP request failed (attempt {Attempt}/{MaxRetries}), retrying after {Delay}s",
           attempt, maxRetries, delay.TotalSeconds);
-        await Task.Delay(delay);
+        await _delay(delay, CancellationToken.None);
 
-        // Recreate request for retry (HttpRequestMessage can only be sent once)
-        request = new HttpRequestMessage(request.Method, request.RequestUri)
-        {
-          Content = request.Content
-        };
-        foreach (var header in request.Headers)
-        {
-          request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
+        request = CloneRequestForRetry(request);
       }
     }
 
     throw new HttpRequestException($"Failed to complete Spotify API request after {maxRetries} attempts");
+  }
+
+  // HttpRequestMessage can only be sent once; clone it (method, URI, content, non-auth headers)
+  // so the retry loop can re-issue the same request.
+  private static HttpRequestMessage CloneRequestForRetry(HttpRequestMessage original)
+  {
+    var clone = new HttpRequestMessage(original.Method, original.RequestUri)
+    {
+      Content = original.Content
+    };
+    foreach (var header in original.Headers.Where(h => h.Key != "Authorization"))
+    {
+      clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
+    }
+    if (original.Headers.Authorization != null)
+    {
+      clone.Headers.Authorization = original.Headers.Authorization;
+    }
+    return clone;
   }
 
   public async Task<SpotifyUserProfile> GetUserProfileAsync(int userId)
