@@ -16,6 +16,13 @@ public class CleanPlaylistJob
 
   public User User { get; set; } = null!;
 
+  /// <summary>
+  /// Music-provider discriminator ("spotify", "apple_music", ...). Used by the processor to
+  /// resolve the right IPlaylistCleaner from the factory. Defaults to "spotify" for existing
+  /// jobs and for callers that don't specify explicitly.
+  /// </summary>
+  public string Provider { get; set; } = "spotify";
+
   public string SourcePlaylistId { get; set; } = null!;
   public string SourcePlaylistName { get; set; } = null!;
   public string? TargetPlaylistId { get; set; }

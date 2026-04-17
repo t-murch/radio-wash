@@ -3,6 +3,7 @@ namespace RadioWash.Api.Models.DTO;
 public class CleanPlaylistJobDto
 {
   public int Id { get; set; }
+  public string Provider { get; set; } = "spotify";
   public string SourcePlaylistId { get; set; } = null!;
   public string SourcePlaylistName { get; set; } = null!;
   public string? TargetPlaylistId { get; set; }

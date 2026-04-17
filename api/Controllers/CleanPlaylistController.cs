@@ -58,6 +58,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(job => new CleanPlaylistJobDto
         {
           Id = job.Id,
+          Provider = job.Provider,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -85,6 +86,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(job => new CleanPlaylistJobDto
         {
           Id = job.Id,
+          Provider = job.Provider,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -117,6 +119,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(j => new CleanPlaylistJobDto
         {
           Id = j.Id,
+          Provider = j.Provider,
           SourcePlaylistId = j.SourcePlaylistId,
           SourcePlaylistName = j.SourcePlaylistName,
           TargetPlaylistId = j.TargetPlaylistId,

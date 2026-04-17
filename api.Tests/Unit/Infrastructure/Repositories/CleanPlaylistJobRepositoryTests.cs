@@ -98,6 +98,48 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
   }
 
   [Fact]
+  public async Task CreateAsync_JobWithoutExplicitProvider_DefaultsToSpotify()
+  {
+    // New jobs must carry a Provider discriminator so the processor can route to the right
+    // IPlaylistCleaner (currently always SpotifyPlaylistCleaner). Existing callers do not set
+    // Provider explicitly — they should get "spotify" for back-compat with the current
+    // Spotify-only flow.
+    var user = CreateTestUser();
+    await SeedAsync(user);
+    var job = CreateTestCleanPlaylistJob(user.Id);
+
+    var created = await _jobRepository.CreateAsync(job);
+
+    Assert.Equal("spotify", created.Provider);
+
+    // Round-trip through the DB — the default must be persisted, not just applied in memory.
+    DetachAllEntities();
+    var fetched = await _context.CleanPlaylistJobs.FindAsync(created.Id);
+    Assert.NotNull(fetched);
+    Assert.Equal("spotify", fetched.Provider);
+  }
+
+  [Fact]
+  public async Task CreateAsync_JobWithExplicitProvider_PreservesProviderValue()
+  {
+    // When the caller passes a non-default Provider (e.g., "apple_music" once the second
+    // platform lands), the repository must not override it.
+    var user = CreateTestUser();
+    await SeedAsync(user);
+    var job = CreateTestCleanPlaylistJob(user.Id);
+    job.Provider = "apple_music";
+
+    var created = await _jobRepository.CreateAsync(job);
+
+    Assert.Equal("apple_music", created.Provider);
+
+    DetachAllEntities();
+    var fetched = await _context.CleanPlaylistJobs.FindAsync(created.Id);
+    Assert.NotNull(fetched);
+    Assert.Equal("apple_music", fetched.Provider);
+  }
+
+  [Fact]
   public async Task UpdateAsync_WithValidJob_UpdatesJobAndTimestamp()
   {
     // Arrange
