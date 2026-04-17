@@ -57,6 +57,14 @@ builder.Services.AddScoped<IPlaylistSyncHistoryRepository, PlaylistSyncHistoryRe
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
 builder.Services.AddScoped<ISpotifyService, SpotifyService>();
+// Provider-agnostic music-service adapter. Registered as a keyed IMusicService so the
+// IPlaylistCleanerFactory can resolve the right adapter per job.Provider, and as the
+// default unkeyed IMusicService for callers that don't yet pick by key.
+builder.Services.AddScoped<SpotifyMusicService>();
+builder.Services.AddKeyedScoped<IMusicService>(
+    SpotifyMusicService.Provider,
+    (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
+builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMusicService>());
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
 
