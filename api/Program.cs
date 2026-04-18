@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RadioWash.Api.Configuration;
+using RadioWash.Api.Infrastructure.Authentication;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Services.Implementations;
@@ -173,11 +174,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     // HS256 symmetric key used by self-hosted/local GoTrue which signs with GOTRUE_JWT_SECRET.
     // Production Supabase Cloud uses ES256/RS256 via JWKS, but local `supabase start` still issues
     // HS256 tokens because the CLI has not yet enabled asymmetric signing keys. We register the
-    // symmetric key alongside the JWKS-derived keys so the same validation code path handles both.
+    // symmetric key alongside JWKS-derived keys in non-production only. In Production we also
+    // pin ValidAlgorithms to RS256/ES256 so that a leaked JWT secret cannot forge tokens and
+    // algorithm-confusion attacks are ruled out at the validator.
     var hs256Secret = builder.Configuration["Supabase:JwtSecret"];
-    SecurityKey? symmetricSigningKey = string.IsNullOrEmpty(hs256Secret)
-        ? null
-        : new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(hs256Secret));
+    SecurityKey? symmetricSigningKey = SupabaseJwtPolicy.AllowHs256(builder.Environment) && !string.IsNullOrEmpty(hs256Secret)
+        ? new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(hs256Secret))
+        : null;
 
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -188,6 +191,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         ValidIssuer = issuer,
         ValidAudience = "authenticated",
         ClockSkew = TimeSpan.FromMinutes(1),
+        ValidAlgorithms = SupabaseJwtPolicy.ValidAlgorithmsFor(builder.Environment),
         // Use IssuerSigningKeyResolver with caching to avoid fetching JWKS on every request
         IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
         {
@@ -317,6 +321,14 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
     // Dashboard authorization: allowlist of Supabase user IDs from configuration. Accepts
     // either a string[] (Hangfire:AdminUserIds:0..n) or a comma-separated string
     // (Hangfire:AdminUserIds). An empty/missing list means the dashboard rejects every user.
+    //
+    // Access pattern: the filter checks the authenticated Supabase JWT principal, so a browser
+    // navigation to /hangfire will fail — browsers do not attach bearer tokens. To triage jobs
+    // in production, front the dashboard with a short-lived bearer-injecting proxy (e.g. an
+    // ops-only reverse proxy that signs requests with a Supabase service token), or tunnel the
+    // port and attach the Authorization header via curl/httpie. Cookie-based access for
+    // dashboards is intentionally out of scope — too easy to get CSRF wrong when real money
+    // flows through the jobs queue.
     var adminIdsSection = builder.Configuration.GetSection("Hangfire:AdminUserIds");
     var adminIds = adminIdsSection.Get<string[]>()
         ?? (adminIdsSection.Value ?? string.Empty)
