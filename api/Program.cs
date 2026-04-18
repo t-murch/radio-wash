@@ -340,6 +340,47 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
 // Background services
 builder.Services.AddHostedService<WebhookRetryBackgroundService>();
 builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
+builder.Services.AddHostedService<WebhookTableRetentionBackgroundService>();
+
+// Rate limiting: per-authenticated-user bucket for subscription checkout/portal endpoints.
+// The Stripe webhook endpoint is deliberately NOT rate-limited — Stripe retries aggressively
+// during outage recovery from a small pool of egress IPs, and a 429 would cause Stripe to
+// eventually give up within its retry window, creating the silent state drift we're trying
+// to prevent. Signature verification + idempotency already gate that endpoint.
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("checkout", httpContext =>
+    {
+        var userId = httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? httpContext.User?.FindFirst("sub")?.Value;
+        var partitionKey = string.IsNullOrEmpty(userId) ? "__anonymous__" : userId;
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            });
+    });
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.ContentType = "application/json";
+        var problem = new
+        {
+            type = "https://radiowash.app/problems/rate-limit-exceeded",
+            title = "Too many requests",
+            status = StatusCodes.Status429TooManyRequests,
+            detail = "You've issued too many requests in a short period. Please wait a moment and try again."
+        };
+        await context.HttpContext.Response.WriteAsync(
+            System.Text.Json.JsonSerializer.Serialize(problem),
+            cancellationToken);
+    };
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -476,6 +517,7 @@ app.UseMiddleware<RadioWash.Api.Middleware.GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<RadioWash.Api.Middleware.TokenRefreshMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 app.MapHub<PlaylistProgressHub>("/hubs/playlist-progress", options =>
 {

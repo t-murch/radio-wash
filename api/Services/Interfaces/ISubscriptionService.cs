@@ -21,4 +21,10 @@ public interface ISubscriptionService
   // inactivity. Called by the webhook processor when a user's subscription transitions back
   // to Active so their syncs resume without manual intervention.
   Task ReactivateSyncConfigsAsync(int userId);
+  // Verifies the user's enabled sync-config count is strictly less than their plan's
+  // MaxPlaylists before creating another one. Throws PlanLimitExceededException when at
+  // or above the limit. A null MaxPlaylists means unlimited and is always allowed. No
+  // active subscription leaves this method as a no-op; callers gate that separately with
+  // HasActiveSubscriptionAsync so the two error paths stay distinct at the HTTP boundary.
+  Task EnforcePlanLimitAsync(int userId);
 }

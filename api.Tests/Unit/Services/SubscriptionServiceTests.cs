@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Implementations;
 using Xunit;
 
@@ -425,6 +426,96 @@ public class SubscriptionServiceTests
 
     // Assert
     _mockUnitOfWork.Verify(x => x.SyncConfigs.EnableConfigAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task EnforcePlanLimitAsync_AtLimit_Throws()
+  {
+    // Arrange
+    var userId = 10;
+    var subscription = CreateUserSubscription(userId);
+    subscription.Plan = CreateSubscriptionPlanWithLimit(1, "Pro", maxPlaylists: 3);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.CountEnabledByUserIdAsync(userId))
+        .ReturnsAsync(3);
+
+    // Act + Assert
+    var ex = await Assert.ThrowsAsync<PlanLimitExceededException>(
+        () => _subscriptionService.EnforcePlanLimitAsync(userId));
+    Assert.Equal("playlists", ex.LimitType);
+    Assert.Equal(3, ex.Limit);
+    Assert.Equal(3, ex.Current);
+  }
+
+  [Fact]
+  public async Task EnforcePlanLimitAsync_BelowLimit_DoesNotThrow()
+  {
+    // Arrange
+    var userId = 11;
+    var subscription = CreateUserSubscription(userId);
+    subscription.Plan = CreateSubscriptionPlanWithLimit(1, "Pro", maxPlaylists: 3);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.CountEnabledByUserIdAsync(userId))
+        .ReturnsAsync(2);
+
+    // Act
+    await _subscriptionService.EnforcePlanLimitAsync(userId);
+
+    // Assert: no exception means success; also confirm the count was queried
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.CountEnabledByUserIdAsync(userId), Times.Once);
+  }
+
+  [Fact]
+  public async Task EnforcePlanLimitAsync_UnlimitedPlan_DoesNotQueryCount()
+  {
+    // Arrange: MaxPlaylists = null means unlimited
+    var userId = 12;
+    var subscription = CreateUserSubscription(userId);
+    subscription.Plan = CreateSubscriptionPlanWithLimit(1, "Unlimited", maxPlaylists: null);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync(subscription);
+
+    // Act
+    await _subscriptionService.EnforcePlanLimitAsync(userId);
+
+    // Assert: count query should not fire when the plan is unlimited
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.CountEnabledByUserIdAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task EnforcePlanLimitAsync_NoSubscription_DoesNotThrow()
+  {
+    // Arrange: gate is HasActiveSubscriptionAsync (caller's responsibility) — EnforcePlanLimit
+    // intentionally no-ops when there's no subscription so the two error paths stay distinct
+    // at the HTTP boundary. Without this behavior the test for "at limit" can't exist as
+    // written because the code would throw for a different reason.
+    var userId = 13;
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+        .ReturnsAsync((UserSubscription?)null);
+
+    // Act + Assert: no exception
+    await _subscriptionService.EnforcePlanLimitAsync(userId);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.CountEnabledByUserIdAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  private static SubscriptionPlan CreateSubscriptionPlanWithLimit(int id, string name, int? maxPlaylists)
+  {
+    return new SubscriptionPlan
+    {
+      Id = id,
+      Name = name,
+      PriceInCents = 299,
+      BillingPeriod = "monthly",
+      IsActive = true,
+      MaxPlaylists = maxPlaylists,
+      CreatedAt = DateTime.UtcNow,
+      UpdatedAt = DateTime.UtcNow
+    };
   }
 
   private static UserSubscription CreateUserSubscription(int userId)
