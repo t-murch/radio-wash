@@ -65,7 +65,7 @@ public class PlaylistSyncServiceTests
     _mockUnitOfWork.Setup(x => x.SyncConfigs.UpdateNextScheduledSyncAsync(It.IsAny<int>(), It.IsAny<DateTime>()))
         .Returns(Task.CompletedTask);
 
-    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>()))
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()))
         .Returns(Task.CompletedTask);
 
     _mockUnitOfWork.Setup(x => x.TrackMappings.AddAsync(It.IsAny<TrackMapping>()))
@@ -89,7 +89,7 @@ public class PlaylistSyncServiceTests
     Assert.False(result.Success);
     Assert.Contains("subscription", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
 
-    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(config.Id), Times.Once);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(config.Id, AutoDisableReason.SubscriptionInactive), Times.Once);
   }
 
   [Fact]
@@ -318,7 +318,7 @@ public class PlaylistSyncServiceTests
 
     // Assert
     Assert.True(result);
-    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(configId), Times.Once);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(configId, null), Times.Once);
   }
 
   [Fact]

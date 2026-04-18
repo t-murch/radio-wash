@@ -89,6 +89,19 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
         .ToListAsync();
   }
 
+  // Returns Active subscriptions whose CurrentPeriodEnd is strictly before the given cutoff —
+  // callers pass UtcNow - graceWindow to avoid racing with Stripe's renewal webhook which may
+  // arrive minutes after CurrentPeriodEnd. Subscriptions with a null CurrentPeriodEnd are
+  // skipped because they represent an incomplete state Stripe hasn't finalized.
+  public async Task<IEnumerable<UserSubscription>> GetExpiredActiveSubscriptionsAsync(DateTime cutoff)
+  {
+    return await _dbContext.UserSubscriptions
+        .Where(us => us.Status == SubscriptionStatus.Active &&
+                    us.CurrentPeriodEnd.HasValue &&
+                    us.CurrentPeriodEnd.Value < cutoff)
+        .ToListAsync();
+  }
+
   public async Task<UserSubscription> CreateAsync(UserSubscription subscription)
   {
     _dbContext.UserSubscriptions.Add(subscription);

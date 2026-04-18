@@ -114,7 +114,20 @@ public class StripeWebhookProcessor : IWebhookProcessor
         var subscription = stripeEvent.Data.Object as Stripe.Subscription;
         if (subscription == null) return;
 
+        var existing = await _dbContext.UserSubscriptions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(us => us.StripeSubscriptionId == subscription.Id);
+        var previousStatus = existing?.Status;
+        var userId = existing?.UserId;
+
         await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, subscription.Status);
+
+        if (userId.HasValue
+            && subscription.Status == SubscriptionStatus.Active
+            && IsInactiveStatus(previousStatus))
+        {
+            await _subscriptionService.ReactivateSyncConfigsAsync(userId.Value);
+        }
 
         // Get period dates from subscription items (v49 compatibility)
         DateTime? currentPeriodStart = null;
@@ -358,11 +371,22 @@ public class StripeWebhookProcessor : IWebhookProcessor
 
             if (!string.IsNullOrEmpty(subscriptionId))
             {
-                _logger.LogInformation("Payment succeeded for subscription {SubscriptionId}, invoice {InvoiceId}", 
+                _logger.LogInformation("Payment succeeded for subscription {SubscriptionId}, invoice {InvoiceId}",
                     subscriptionId, invoice.Id);
-                
-                // Update subscription status to active (in case it was incomplete)
+
+                var existing = await _dbContext.UserSubscriptions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(us => us.StripeSubscriptionId == subscriptionId);
+                var previousStatus = existing?.Status;
+                var userId = existing?.UserId;
+
+                // Update subscription status to active (in case it was incomplete or past_due)
                 await _subscriptionService.UpdateSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.Active);
+
+                if (userId.HasValue && IsInactiveStatus(previousStatus))
+                {
+                    await _subscriptionService.ReactivateSyncConfigsAsync(userId.Value);
+                }
             }
             else
             {
@@ -376,5 +400,12 @@ public class StripeWebhookProcessor : IWebhookProcessor
         }
 
         await Task.CompletedTask;
+    }
+
+    private static bool IsInactiveStatus(string? status)
+    {
+        return status == SubscriptionStatus.PastDue
+            || status == SubscriptionStatus.Canceled
+            || status == SubscriptionStatus.Incomplete;
     }
 }

@@ -276,6 +276,7 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
 
 // Background services
 builder.Services.AddHostedService<WebhookRetryBackgroundService>();
+builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
