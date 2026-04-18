@@ -135,6 +135,95 @@ public class CleanPlaylistServiceTests
   }
 
   [Fact]
+  public async Task CreateJobAsync_WithNoProvider_DefaultsToSpotify()
+  {
+    var userId = 1;
+    var playlistId = "playlist123";
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = playlistId
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+    var playlists = new List<PlaylistDto>
+    {
+      new()
+      {
+        Id = playlistId,
+        Name = "Original Playlist",
+        TrackCount = 50
+      }
+    };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId)).ReturnsAsync(playlists);
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("spotify", result.Provider);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "spotify")), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithMixedCaseSpotifyProvider_NormalizesProvider()
+  {
+    var userId = 1;
+    var playlistId = "playlist123";
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = playlistId,
+      Provider = "Spotify"
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+    var playlists = new List<PlaylistDto>
+    {
+      new()
+      {
+        Id = playlistId,
+        Name = "Original Playlist",
+        TrackCount = 50
+      }
+    };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId)).ReturnsAsync(playlists);
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("spotify", result.Provider);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "spotify")), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithUnsupportedProvider_ThrowsArgumentExceptionBeforeCreatingJob()
+  {
+    var userId = 1;
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist123",
+      Provider = "apple_music"
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+
+    var exception = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateJobAsync(userId, createDto));
+
+    Assert.Equal("Provider 'apple_music' is not supported.", exception.Message);
+    _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Never);
+    _mockSpotifyService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>()), Times.Never);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.SaveChangesAsync(), Times.Never);
+    _mockJobOrchestrator.Verify(x => x.EnqueueJobAsync(It.IsAny<int>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Never);
+  }
+
+  [Fact]
   public async Task GetJobProgressAsync_WithValidJob_ReturnsProgress()
   {
     // Arrange

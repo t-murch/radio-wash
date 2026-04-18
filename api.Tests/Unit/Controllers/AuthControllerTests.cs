@@ -490,6 +490,27 @@ public class AuthControllerTests
   }
 
   [Fact]
+  public async Task StoreTokens_WithMixedCaseProvider_NormalizesProviderBeforePersisting()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    var request = new SpotifyTokenRequest { AccessToken = "at", RefreshToken = "rt" };
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService
+      .Setup(x => x.StoreTokensAsync(user.Id, "spotify", "at", "rt", It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()))
+      .ReturnsAsync(CreateTestUserMusicToken());
+
+    var result = await _authController.StoreTokens("Spotify", request);
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(
+      x => x.StoreTokensAsync(user.Id, "spotify", "at", "rt", It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()),
+      Times.Once);
+  }
+
+  [Fact]
   public async Task StoreTokens_WithUnknownProvider_ReturnsBadRequest()
   {
     var userId = Guid.NewGuid();
@@ -526,6 +547,25 @@ public class AuthControllerTests
 
     Assert.IsType<OkObjectResult>(result);
     _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(user.Id, "spotify"), Times.Once);
+  }
+
+  [Fact]
+  public async Task ConnectionStatus_WithMixedCaseProvider_NormalizesProviderBeforeLookup()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService.Setup(x => x.HasValidTokensAsync(user.Id, "spotify")).ReturnsAsync(true);
+    _mockMusicTokenService.Setup(x => x.GetTokenInfoAsync(user.Id, "spotify"))
+      .ReturnsAsync(CreateTestUserMusicToken());
+
+    var result = await _authController.ConnectionStatus("Spotify");
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(user.Id, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.GetTokenInfoAsync(user.Id, "spotify"), Times.Once);
   }
 
   [Fact]
