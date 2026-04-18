@@ -25,13 +25,13 @@ public class SpotifyMusicService : IMusicService
 
   public async Task<MusicUserProfile> GetUserProfileAsync(int userId, CancellationToken cancellationToken)
   {
-    var profile = await _spotify.GetUserProfileAsync(userId);
+    var profile = await _spotify.GetUserProfileAsync(userId, cancellationToken);
     return new MusicUserProfile(profile.Id, profile.DisplayName, profile.Email);
   }
 
   public async Task<IReadOnlyList<PlaylistSummary>> GetUserPlaylistsAsync(int userId, CancellationToken cancellationToken)
   {
-    var playlists = await _spotify.GetUserPlaylistsAsync(userId);
+    var playlists = await _spotify.GetUserPlaylistsAsync(userId, cancellationToken);
     return playlists.Select(p => new PlaylistSummary(
       p.Id, p.Name, p.Description, p.ImageUrl, p.TrackCount, p.OwnerId, p.OwnerName)).ToList();
   }
@@ -41,7 +41,7 @@ public class SpotifyMusicService : IMusicService
     string playlistId,
     CancellationToken cancellationToken)
   {
-    var tracks = await _spotify.GetPlaylistTracksAsync(userId, playlistId);
+    var tracks = await _spotify.GetPlaylistTracksAsync(userId, playlistId, cancellationToken);
     return tracks.Select(MapTrack).ToList();
   }
 
@@ -51,7 +51,7 @@ public class SpotifyMusicService : IMusicService
     CancellationToken cancellationToken)
   {
     var spotifyInput = ToSpotifyTrack(explicitTrack);
-    var cleanVersion = await _spotify.FindCleanVersionAsync(userId, spotifyInput);
+    var cleanVersion = await _spotify.FindCleanVersionAsync(userId, spotifyInput, cancellationToken);
     return cleanVersion is null ? null : MapTrack(cleanVersion);
   }
 
@@ -61,7 +61,7 @@ public class SpotifyMusicService : IMusicService
     string? description,
     CancellationToken cancellationToken)
   {
-    var playlist = await _spotify.CreatePlaylistAsync(userId, name, description);
+    var playlist = await _spotify.CreatePlaylistAsync(userId, name, description, cancellationToken);
     return new PlaylistSummary(
       playlist.Id,
       playlist.Name,
@@ -81,7 +81,7 @@ public class SpotifyMusicService : IMusicService
     // Spotify expects URIs shaped spotify:track:<id>. Callers pass raw platform IDs so the
     // cleaner stays provider-neutral.
     var uris = trackIds.Select(id => $"spotify:track:{id}");
-    return _spotify.AddTracksToPlaylistAsync(userId, playlistId, uris);
+    return _spotify.AddTracksToPlaylistAsync(userId, playlistId, uris, cancellationToken);
   }
 
   private static MusicTrack MapTrack(SpotifyTrack t) => new(

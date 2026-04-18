@@ -33,7 +33,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task GetUserProfileAsync_MapsSpotifyUserProfileFields()
   {
-    _spotify.Setup(x => x.GetUserProfileAsync(7)).ReturnsAsync(new SpotifyUserProfile
+    _spotify.Setup(x => x.GetUserProfileAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(new SpotifyUserProfile
     {
       Id = "spotify_user_42",
       DisplayName = "Ada",
@@ -50,7 +50,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task GetUserPlaylistsAsync_ProjectsPlaylistDtoIntoPlaylistSummary()
   {
-    _spotify.Setup(x => x.GetUserPlaylistsAsync(7)).ReturnsAsync(new[]
+    _spotify.Setup(x => x.GetUserPlaylistsAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(new[]
     {
       new PlaylistDto
       {
@@ -79,7 +79,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task GetPlaylistTracksAsync_MapsSpotifyTracksIncludingExplicitAndArtists()
   {
-    _spotify.Setup(x => x.GetPlaylistTracksAsync(7, "pl-abc")).ReturnsAsync(new[]
+    _spotify.Setup(x => x.GetPlaylistTracksAsync(7, "pl-abc", It.IsAny<CancellationToken>())).ReturnsAsync(new[]
     {
       new SpotifyTrack
       {
@@ -111,8 +111,8 @@ public class SpotifyMusicServiceTests
   public async Task FindCleanVersionAsync_OnExplicitTrackWithMatch_ReturnsMappedCleanVersion()
   {
     SpotifyTrack? observedInput = null;
-    _spotify.Setup(x => x.FindCleanVersionAsync(7, It.IsAny<SpotifyTrack>()))
-      .Callback<int, SpotifyTrack>((_, t) => observedInput = t)
+    _spotify.Setup(x => x.FindCleanVersionAsync(7, It.IsAny<SpotifyTrack>(), It.IsAny<CancellationToken>()))
+      .Callback<int, SpotifyTrack, CancellationToken>((_, t, _) => observedInput = t)
       .ReturnsAsync(new SpotifyTrack
       {
         Id = "clean-t1",
@@ -147,7 +147,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task FindCleanVersionAsync_WhenUpstreamReturnsNull_ReturnsNull()
   {
-    _spotify.Setup(x => x.FindCleanVersionAsync(7, It.IsAny<SpotifyTrack>()))
+    _spotify.Setup(x => x.FindCleanVersionAsync(7, It.IsAny<SpotifyTrack>(), It.IsAny<CancellationToken>()))
       .ReturnsAsync((SpotifyTrack?)null);
 
     var explicitTrack = new MusicTrack("t1", "Song", IsExplicit: true,
@@ -161,7 +161,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task CreatePlaylistAsync_MapsSpotifyPlaylistIntoSummary()
   {
-    _spotify.Setup(x => x.CreatePlaylistAsync(7, "Clean - My Jams", "desc"))
+    _spotify.Setup(x => x.CreatePlaylistAsync(7, "Clean - My Jams", "desc", It.IsAny<CancellationToken>()))
       .ReturnsAsync(new SpotifyPlaylist
       {
         Id = "new-pl",
@@ -189,8 +189,8 @@ public class SpotifyMusicServiceTests
     // This is the behavior that moved from SpotifyPlaylistCleaner into the adapter. Callers
     // pass raw IDs; the adapter owns the spotify:track:<id> transformation.
     IEnumerable<string>? observed = null;
-    _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>()))
-      .Callback<int, string, IEnumerable<string>>((_, _, uris) => observed = uris.ToList())
+    _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+      .Callback<int, string, IEnumerable<string>, CancellationToken>((_, _, uris, _) => observed = uris.ToList())
       .Returns(Task.CompletedTask);
 
     await _adapter.AddTracksToPlaylistAsync(7, "pl", new[] { "abc", "def" }, CancellationToken.None);
@@ -203,8 +203,8 @@ public class SpotifyMusicServiceTests
   public async Task AddTracksToPlaylistAsync_WithEmptyInput_ForwardsEmptyList()
   {
     IEnumerable<string>? observed = null;
-    _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>()))
-      .Callback<int, string, IEnumerable<string>>((_, _, uris) => observed = uris.ToList())
+    _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+      .Callback<int, string, IEnumerable<string>, CancellationToken>((_, _, uris, _) => observed = uris.ToList())
       .Returns(Task.CompletedTask);
 
     await _adapter.AddTracksToPlaylistAsync(7, "pl", Array.Empty<string>(), CancellationToken.None);

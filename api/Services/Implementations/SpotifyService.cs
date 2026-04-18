@@ -47,13 +47,17 @@ public class SpotifyService : ISpotifyService
   }
 
   // Retry wrapper for API calls with exponential backoff
-  private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int userId, int maxRetries = 3)
+  private async Task<HttpResponseMessage> SendWithRetryAsync(
+    HttpRequestMessage request,
+    int userId,
+    CancellationToken cancellationToken,
+    int maxRetries = 3)
   {
     for (int attempt = 1; attempt <= maxRetries; attempt++)
     {
       try
       {
-        var response = await _httpClient.SendAsync(request);
+        var response = await _httpClient.SendAsync(request, cancellationToken);
 
         // Rate-limit: honor Retry-After when present, otherwise a bounded fallback, and never
         // block for longer than MaxRetryAfter no matter what the server returns.
@@ -71,7 +75,7 @@ public class SpotifyService : ISpotifyService
             "Spotify rate-limited (429); waiting {Delay}s before retry {Attempt}/{MaxRetries}",
             retryAfter.TotalSeconds, attempt + 1, maxRetries);
 
-          await _delay(retryAfter, CancellationToken.None);
+          await _delay(retryAfter, cancellationToken);
 
           request = CloneRequestForRetry(request);
           continue;
@@ -126,7 +130,7 @@ public class SpotifyService : ISpotifyService
         var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
         _logger.LogWarning(ex, "HTTP request failed (attempt {Attempt}/{MaxRetries}), retrying after {Delay}s",
           attempt, maxRetries, delay.TotalSeconds);
-        await _delay(delay, CancellationToken.None);
+        await _delay(delay, cancellationToken);
 
         request = CloneRequestForRetry(request);
       }
@@ -154,17 +158,17 @@ public class SpotifyService : ISpotifyService
     return clone;
   }
 
-  public async Task<SpotifyUserProfile> GetUserProfileAsync(int userId)
+  public async Task<SpotifyUserProfile> GetUserProfileAsync(int userId, CancellationToken cancellationToken = default)
   {
     var request = await CreateSpotifyRequestAsync(HttpMethod.Get, $"{_spotifySettings.ApiBaseUrl}/me", userId);
-    var response = await SendWithRetryAsync(request, userId);
+    var response = await SendWithRetryAsync(request, userId, cancellationToken);
     response.EnsureSuccessStatusCode();
-    var jsonResponse = await response.Content.ReadAsStringAsync();
+    var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
     return JsonSerializer.Deserialize<SpotifyUserProfile>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
         ?? throw new Exception("Failed to deserialize user profile.");
   }
 
-  public async Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(int userId)
+  public async Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(int userId, CancellationToken cancellationToken = default)
   {
     var playlists = new List<SpotifyPlaylist>();
     var url = $"{_spotifySettings.ApiBaseUrl}/me/playlists?limit=50";
@@ -172,10 +176,10 @@ public class SpotifyService : ISpotifyService
     while (!string.IsNullOrEmpty(url))
     {
       var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, userId);
-      var response = await SendWithRetryAsync(request, userId);
+      var response = await SendWithRetryAsync(request, userId, cancellationToken);
       response.EnsureSuccessStatusCode();
 
-      var jsonResponse = await response.Content.ReadAsStringAsync();
+      var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
       var playlistsResponse = JsonSerializer.Deserialize<SpotifyPlaylistsResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
       if (playlistsResponse?.Items == null) throw new Exception("Failed to deserialize playlists response.");
@@ -196,7 +200,7 @@ public class SpotifyService : ISpotifyService
     });
   }
 
-  public async Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId)
+  public async Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId, CancellationToken cancellationToken = default)
   {
     var tracks = new List<SpotifyTrack>();
     var url = $"{_spotifySettings.ApiBaseUrl}/playlists/{playlistId}/tracks?limit=100";
@@ -204,10 +208,10 @@ public class SpotifyService : ISpotifyService
     while (!string.IsNullOrEmpty(url))
     {
       var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, userId);
-      var response = await SendWithRetryAsync(request, userId);
+      var response = await SendWithRetryAsync(request, userId, cancellationToken);
       response.EnsureSuccessStatusCode();
 
-      var jsonResponse = await response.Content.ReadAsStringAsync();
+      var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
       var tracksResponse = JsonSerializer.Deserialize<SpotifyPlaylistTracksResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
       if (tracksResponse?.Items == null) throw new Exception("Failed to deserialize tracks response.");
@@ -221,24 +225,24 @@ public class SpotifyService : ISpotifyService
     return tracks;
   }
 
-  public async Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null)
+  public async Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null, CancellationToken cancellationToken = default)
   {
-    var userProfile = await GetUserProfileAsync(userId);
+    var userProfile = await GetUserProfileAsync(userId, cancellationToken);
     var url = $"{_spotifySettings.ApiBaseUrl}/users/{userProfile.Id}/playlists";
     var request = await CreateSpotifyRequestAsync(HttpMethod.Post, url, userId);
 
     var payload = new { name, description = description ?? $"Clean version of {name} created by RadioWash", @public = false };
     request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
-    var response = await SendWithRetryAsync(request, userId);
+    var response = await SendWithRetryAsync(request, userId, cancellationToken);
     response.EnsureSuccessStatusCode();
 
-    var jsonResponse = await response.Content.ReadAsStringAsync();
+    var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
     return JsonSerializer.Deserialize<SpotifyPlaylist>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
         ?? throw new Exception("Failed to deserialize created playlist.");
   }
 
-  public async Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris)
+  public async Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default)
   {
     if (!trackUris.Any()) return;
 
@@ -248,12 +252,12 @@ public class SpotifyService : ISpotifyService
       var request = await CreateSpotifyRequestAsync(HttpMethod.Post, url, userId);
       var payload = new { uris = uriChunk };
       request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-      var response = await SendWithRetryAsync(request, userId);
+      var response = await SendWithRetryAsync(request, userId, cancellationToken);
       response.EnsureSuccessStatusCode();
     }
   }
 
-  public async Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris)
+  public async Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default)
   {
     if (!trackUris.Any()) return;
 
@@ -264,12 +268,12 @@ public class SpotifyService : ISpotifyService
       var tracks = uriChunk.Select(uri => new { uri }).ToArray();
       var payload = new { tracks };
       request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-      var response = await SendWithRetryAsync(request, userId);
+      var response = await SendWithRetryAsync(request, userId, cancellationToken);
       response.EnsureSuccessStatusCode();
     }
   }
 
-  public async Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack)
+  public async Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack, CancellationToken cancellationToken = default)
   {
     if (!explicitTrack.Explicit) return explicitTrack;
 
@@ -280,10 +284,10 @@ public class SpotifyService : ISpotifyService
     var url = $"{_spotifySettings.ApiBaseUrl}/search?q={encodedQuery}&type=track&limit=5";
 
     var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, userId);
-    var response = await SendWithRetryAsync(request, userId);
+    var response = await SendWithRetryAsync(request, userId, cancellationToken);
     response.EnsureSuccessStatusCode();
 
-    var jsonResponse = await response.Content.ReadAsStringAsync();
+    var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
     var searchResponse = JsonSerializer.Deserialize<SpotifySearchResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
     // Find the best non-explicit match with same artist(s)

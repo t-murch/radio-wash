@@ -738,6 +738,68 @@ public class SpotifyServiceTests
         });
   }
 
+  [Fact]
+  public async Task GetUserProfileAsync_WhenCancellationRequested_PropagatesCancellationToHttpSend()
+  {
+    // Guards against a regression where a Hangfire job cancellation could not stop an in-flight
+    // Spotify request. SendAsync must observe the token and throw OperationCanceledException.
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(1, "spotify")).ReturnsAsync("t");
+
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .Returns(async (HttpRequestMessage _, CancellationToken ct) =>
+        {
+          // Simulate a real HTTP call that observes the token.
+          await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+          return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+    using var cts = new CancellationTokenSource();
+    cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        () => _spotifyService.GetUserProfileAsync(1, cts.Token));
+  }
+
+  [Fact]
+  public async Task SendWithRetry_RateLimitDelay_IsCancellable()
+  {
+    // When a 429 comes in and the retry delay is long, shutdown must not wait the full
+    // Retry-After duration. The delay callback must observe the shared cancellation token.
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(1, "spotify")).ReturnsAsync("t");
+
+    var response429 = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    response429.Headers.Add("Retry-After", "60");
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(response429);
+
+    using var cts = new CancellationTokenSource();
+    cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+    var tokenObservedInDelay = CancellationToken.None;
+    var service = new SpotifyService(
+        _httpClient,
+        _mockSpotifySettings.Object,
+        _mockMusicTokenService.Object,
+        _mockLogger.Object,
+        delay: (_, ct) =>
+        {
+          tokenObservedInDelay = ct;
+          return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        });
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        () => service.GetUserProfileAsync(1, cts.Token));
+    Assert.Equal(cts.Token, tokenObservedInDelay);
+  }
+
   private void SetupHttpResponse(HttpStatusCode statusCode, string content)
   {
     _mockHttpMessageHandler.Protected()

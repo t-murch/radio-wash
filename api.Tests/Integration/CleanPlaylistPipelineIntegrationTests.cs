@@ -258,16 +258,16 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
 
     public List<AddTracksInvocation> AddTracksInvocations { get; } = new();
 
-    public Task<SpotifyUserProfile> GetUserProfileAsync(int userId) =>
+    public Task<SpotifyUserProfile> GetUserProfileAsync(int userId, CancellationToken cancellationToken = default) =>
       Task.FromResult(UserProfile[userId]);
 
-    public Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(int userId) =>
+    public Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(int userId, CancellationToken cancellationToken = default) =>
       Task.FromResult(UserPlaylists[userId]);
 
-    public Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId) =>
+    public Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId, CancellationToken cancellationToken = default) =>
       Task.FromResult(SourcePlaylistTracks[playlistId]);
 
-    public Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null) =>
+    public Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null, CancellationToken cancellationToken = default) =>
       Task.FromResult(new SpotifyPlaylist
       {
         Id = CreatedPlaylistId,
@@ -277,16 +277,16 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
         Owner = new SpotifyUser { Id = "sp-owner", DisplayName = "Owner" }
       });
 
-    public Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris)
+    public Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default)
     {
       AddTracksInvocations.Add(new AddTracksInvocation(userId, playlistId, trackUris.ToArray()));
       return Task.CompletedTask;
     }
 
-    public Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris) =>
+    public Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default) =>
       Task.CompletedTask;
 
-    public Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack)
+    public Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack, CancellationToken cancellationToken = default)
     {
       if (!explicitTrack.Explicit) return Task.FromResult<SpotifyTrack?>(explicitTrack);
       return Task.FromResult(CleanVersionsBySourceId.TryGetValue(explicitTrack.Id, out var clean) ? clean : null);

@@ -67,7 +67,7 @@ public class CleanPlaylistServiceTests
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId))
         .ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId))
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(playlists);
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
         .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
@@ -124,7 +124,7 @@ public class CleanPlaylistServiceTests
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId))
         .ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId))
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(playlists);
 
     // Act & Assert
@@ -155,7 +155,7 @@ public class CleanPlaylistServiceTests
     };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId)).ReturnsAsync(playlists);
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(playlists);
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
       .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
     _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
@@ -188,7 +188,7 @@ public class CleanPlaylistServiceTests
     };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId)).ReturnsAsync(playlists);
+    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(playlists);
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
       .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
     _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
@@ -216,7 +216,7 @@ public class CleanPlaylistServiceTests
 
     Assert.Equal("Provider 'apple_music' is not supported.", exception.Message);
     _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Never);
-    _mockSpotifyService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>()), Times.Never);
+    _mockSpotifyService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     _mockJobRepo.Verify(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
     _mockUnitOfWork.Verify(x => x.SaveChangesAsync(), Times.Never);
     _mockJobOrchestrator.Verify(x => x.EnqueueJobAsync(It.IsAny<int>()), Times.Never);

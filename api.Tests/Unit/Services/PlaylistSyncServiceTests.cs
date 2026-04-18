@@ -112,9 +112,9 @@ public class PlaylistSyncServiceTests
 
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(config.UserId))
         .ReturnsAsync(true);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(sourceTracks);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(targetTracks);
     _mockUnitOfWork.Setup(x => x.TrackMappings.GetByJobIdAsync(config.OriginalJobId))
         .ReturnsAsync(mappings);
@@ -164,9 +164,9 @@ public class PlaylistSyncServiceTests
 
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(config.UserId))
         .ReturnsAsync(true);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(sourceTracks);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(targetTracks);
     _mockUnitOfWork.Setup(x => x.TrackMappings.GetByJobIdAsync(config.OriginalJobId))
         .ReturnsAsync(mappings);
@@ -175,7 +175,7 @@ public class PlaylistSyncServiceTests
         It.IsAny<List<SpotifyTrack>>(),
         It.IsAny<List<TrackMapping>>()))
         .ReturnsAsync(delta);
-    _mockSpotifyService.Setup(x => x.FindCleanVersionAsync(config.UserId, newTrack))
+    _mockSpotifyService.Setup(x => x.FindCleanVersionAsync(config.UserId, newTrack, It.IsAny<CancellationToken>()))
         .ReturnsAsync(cleanTrack);
     _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
         .Returns(DateTime.UtcNow.AddDays(1));
@@ -187,11 +187,12 @@ public class PlaylistSyncServiceTests
     Assert.True(result.Success);
     Assert.Equal(1, result.TracksAdded);
 
-    _mockSpotifyService.Verify(x => x.FindCleanVersionAsync(config.UserId, newTrack), Times.Once);
+    _mockSpotifyService.Verify(x => x.FindCleanVersionAsync(config.UserId, newTrack, It.IsAny<CancellationToken>()), Times.Once);
     _mockSpotifyService.Verify(x => x.AddTracksToPlaylistAsync(
         config.UserId,
         config.TargetPlaylistId,
-        It.Is<IEnumerable<string>>(tracks => tracks.Contains($"spotify:track:{cleanTrack.Id}"))), Times.Once);
+        It.Is<IEnumerable<string>>(tracks => tracks.Contains($"spotify:track:{cleanTrack.Id}")),
+        It.IsAny<CancellationToken>()), Times.Once);
   }
 
   [Fact]
@@ -214,9 +215,9 @@ public class PlaylistSyncServiceTests
 
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(config.UserId))
         .ReturnsAsync(true);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.SourcePlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(sourceTracks);
-    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId))
+    _mockSpotifyService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, config.TargetPlaylistId, It.IsAny<CancellationToken>()))
         .ReturnsAsync(targetTracks);
     _mockUnitOfWork.Setup(x => x.TrackMappings.GetByJobIdAsync(config.OriginalJobId))
         .ReturnsAsync(mappings);
@@ -238,7 +239,8 @@ public class PlaylistSyncServiceTests
     _mockSpotifyService.Verify(x => x.RemoveTracksFromPlaylistAsync(
         config.UserId,
         config.TargetPlaylistId,
-        It.Is<IEnumerable<string>>(tracks => tracks.Contains("spotify:track:clean-1"))), Times.Once);
+        It.Is<IEnumerable<string>>(tracks => tracks.Contains("spotify:track:clean-1")),
+        It.IsAny<CancellationToken>()), Times.Once);
   }
 
   [Fact]
