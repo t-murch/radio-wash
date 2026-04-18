@@ -45,6 +45,7 @@ public class MusicTokenService : IMusicTokenService
   public async Task<UserMusicToken> StoreTokensAsync(int userId, string provider, string accessToken,
       string? refreshToken, int expiresInSeconds, string[]? scopes = null, object? metadata = null)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     var existingToken = await _tokenRepository.GetByUserAndProviderAsync(userId, provider);
 
     var encryptedAccessToken = _encryptionService.EncryptToken(accessToken);
@@ -87,6 +88,7 @@ public class MusicTokenService : IMusicTokenService
 
   public async Task<string> GetValidAccessTokenAsync(int userId, string provider)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     var tokenRecord = await GetTokenInfoAsync(userId, provider);
     if (tokenRecord == null)
     {
@@ -117,16 +119,19 @@ public class MusicTokenService : IMusicTokenService
 
   public async Task<UserMusicToken?> GetTokenInfoAsync(int userId, string provider)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     return await _tokenRepository.GetByUserAndProviderAsync(userId, provider);
   }
 
   public async Task<bool> HasValidTokensAsync(int userId, string provider)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     return await _tokenRepository.HasValidTokensAsync(userId, provider);
   }
 
   public async Task<bool> RefreshTokensAsync(int userId, string provider)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     var tokenRecord = await GetTokenInfoAsync(userId, provider);
     if (tokenRecord?.EncryptedRefreshToken == null)
     {
@@ -188,6 +193,7 @@ public class MusicTokenService : IMusicTokenService
 
   public async Task RevokeTokensAsync(int userId, string provider)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     var tokenRecord = await GetTokenInfoAsync(userId, provider);
     if (tokenRecord != null)
     {
@@ -198,6 +204,7 @@ public class MusicTokenService : IMusicTokenService
 
   public async Task<bool> HasRequiredScopesAsync(int userId, string provider, string[] requiredScopes)
   {
+    provider = MusicProviders.NormalizeKeyOrThrow(provider);
     var tokenRecord = await GetTokenInfoAsync(userId, provider);
     if (tokenRecord?.Scopes == null)
     {

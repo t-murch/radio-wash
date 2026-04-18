@@ -30,6 +30,8 @@ public class CleanPlaylistService : ICleanPlaylistService
 
   public async Task<CleanPlaylistJobDto> CreateJobAsync(int userId, CreateCleanPlaylistJobDto jobDto)
   {
+    var normalizedProvider = MusicProviders.NormalizeOrDefault(jobDto.Provider);
+
     await _unitOfWork.BeginTransactionAsync();
     try
     {
@@ -37,7 +39,7 @@ public class CleanPlaylistService : ICleanPlaylistService
         ?? throw new KeyNotFoundException($"User {userId} not found");
 
       var sourcePlaylist = await ValidateAndGetPlaylistAsync(user.Id, jobDto.SourcePlaylistId);
-      var job = CreateJob(userId, sourcePlaylist, jobDto.TargetPlaylistName, jobDto.Provider);
+      var job = CreateJob(userId, sourcePlaylist, jobDto.TargetPlaylistName, normalizedProvider);
 
       await _unitOfWork.Jobs.CreateAsync(job);
       await _unitOfWork.SaveChangesAsync();
@@ -77,12 +79,12 @@ public class CleanPlaylistService : ICleanPlaylistService
     return playlist;
   }
 
-  private CleanPlaylistJob CreateJob(int userId, PlaylistDto sourcePlaylist, string? targetName, string? provider)
+  private CleanPlaylistJob CreateJob(int userId, PlaylistDto sourcePlaylist, string? targetName, string provider)
   {
     return new CleanPlaylistJob
     {
       UserId = userId,
-      Provider = string.IsNullOrWhiteSpace(provider) ? "spotify" : provider,
+      Provider = provider,
       SourcePlaylistId = sourcePlaylist.Id,
       SourcePlaylistName = sourcePlaylist.Name,
       TargetPlaylistName = string.IsNullOrWhiteSpace(targetName)

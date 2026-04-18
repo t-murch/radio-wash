@@ -40,6 +40,10 @@ public class CleanPlaylistController : AuthenticatedControllerBase
     {
       return NotFound(new { message = ex.Message });
     }
+    catch (ArgumentException ex)
+    {
+      return BadRequest(new { error = ex.Message });
+    }
     catch (Exception ex)
     {
       Logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
