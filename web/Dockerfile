@@ -28,21 +28,24 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_WEB_URL
 ARG NEXT_PUBLIC_SERVICE_AVAILABLE
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_DSN
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_WEB_URL=$NEXT_PUBLIC_WEB_URL
 ENV NEXT_PUBLIC_SERVICE_AVAILABLE=$NEXT_PUBLIC_SERVICE_AVAILABLE
-ENV NEXT_PUBLIC_SENTRY_DSN=https://8f721e77caccd1f5e3dacd84af24c4a7@o4510213599330305.ingest.us.sentry.io/4510228229980160
-ENV NEXT_PUBLIC_SENTRY_AUTH_TOKEN=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
-ENV SENTRY_DSN=https://8f721e77caccd1f5e3dacd84af24c4a7@o4510213599330305.ingest.us.sentry.io/4510228229980160
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV SENTRY_DSN=$SENTRY_DSN
 
 # Remove dotnet plugin for web build
 RUN apk update && apk add jq
 RUN jq 'del(.plugins[] | select(.plugin == "@nx-dotnet/core"))' nx.json > nx-web.json && mv nx-web.json nx.json
 
-# Build the web application using NX with production config
-RUN corepack enable pnpm && pnpm nx build web --configuration=production
+# SENTRY_AUTH_TOKEN is mounted as a BuildKit secret, exposed only for the duration
+# of the build command, and never written to an image layer.
+RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
+    corepack enable pnpm && pnpm nx build web --configuration=production
 
 # Production image, copy all the files and run next
 FROM base AS runner
