@@ -724,6 +724,41 @@ public class SpotifyServiceTests
     Assert.Equal(TimeSpan.FromSeconds(60), observedDelays[0]);
   }
 
+  [Fact]
+  public async Task SendWithRetry_On429_DisposesThrottledResponseBeforeRetrying()
+  {
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    var throttledContent = new TrackingStringContent("{}");
+    var throttledResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+    {
+      Content = throttledContent
+    };
+    throttledResponse.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+
+    var profileJson = JsonSerializer.Serialize(new SpotifyUserProfile { Id = "user_123" });
+
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(throttledResponse)
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(profileJson, Encoding.UTF8, "application/json")
+        });
+
+    var service = CreateServiceWithDelayCapture([]);
+
+    var result = await service.GetUserProfileAsync(userId);
+
+    Assert.Equal("user_123", result.Id);
+    Assert.True(throttledContent.Disposed);
+  }
+
   private SpotifyService CreateServiceWithDelayCapture(List<TimeSpan> observedDelays)
   {
     return new SpotifyService(
@@ -863,5 +898,16 @@ public class SpotifyServiceTests
       },
       Popularity = 75
     };
+  }
+
+  private sealed class TrackingStringContent(string content) : StringContent(content, Encoding.UTF8, "application/json")
+  {
+    public bool Disposed { get; private set; }
+
+    protected override void Dispose(bool disposing)
+    {
+      Disposed = true;
+      base.Dispose(disposing);
+    }
   }
 }

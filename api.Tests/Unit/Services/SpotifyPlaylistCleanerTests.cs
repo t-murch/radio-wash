@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Hangfire;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models;
@@ -298,6 +299,38 @@ public class SpotifyPlaylistCleanerTests
         It.IsAny<Exception?>(),
         It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
       Times.AtLeastOnce);
+  }
+
+  [Fact]
+  public async Task CleanPlaylistAsync_WhenHangfireJobIsAborted_StopsBeforeProcessingNextTrack()
+  {
+    var job = MakeJob(id: 7, userId: 7, sourceId: "src");
+    var user = new User { Id = 7, SupabaseId = "sb" };
+    var tracks = new[]
+    {
+      MakeTrack("t1", "S1", isExplicit: true),
+      MakeTrack("t2", "S2", isExplicit: true)
+    };
+    var hangfireToken = new StubJobCancellationToken();
+
+    _mockMusic
+      .Setup(x => x.GetPlaylistTracksAsync(user.Id, "src", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(tracks);
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t1"), It.IsAny<CancellationToken>()))
+      .Callback(() => hangfireToken.Cancel())
+      .ReturnsAsync(MakeTrack("c1", "S1", isExplicit: false));
+
+    await Assert.ThrowsAsync<OperationCanceledException>(
+      () => _cleaner.CleanPlaylistAsync(job, user, hangfireToken));
+
+    _mockMusic.Verify(
+      x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t1"), It.IsAny<CancellationToken>()),
+      Times.Once);
+    _mockMusic.Verify(
+      x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t2"), It.IsAny<CancellationToken>()),
+      Times.Never);
+    Assert.True(hangfireToken.IsCancellationRequested);
   }
 
   // --- Helpers ---

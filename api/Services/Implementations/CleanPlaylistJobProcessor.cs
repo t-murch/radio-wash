@@ -1,5 +1,4 @@
 using Hangfire;
-using Hangfire.Server;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
@@ -51,7 +50,7 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
       // Route to the right cleaner based on the job's Provider. Unknown providers will throw
       // from the factory before any API call is made.
       var cleaner = _cleanerFactory.CreateCleaner(job.Provider);
-      var result = await cleaner.CleanPlaylistAsync(job, user, ResolveShutdownToken(cancellationToken));
+      var result = await cleaner.CleanPlaylistAsync(job, user, cancellationToken);
 
       await CompleteJob(job, result);
       await _progressService.BroadcastJobCompleted(jobId,
@@ -61,22 +60,6 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
     {
       _logger.LogError(ex, "Failed to process job {JobId}", jobId);
       await HandleJobFailure(jobId, ex);
-    }
-  }
-
-  // JobCancellationToken.Null (the sentinel used at enqueue time and in unit tests) has no
-  // backing ShutdownToken property, so accessing it throws NullReferenceException. Swallow
-  // that here and fall back to a non-cancellable token so tests and degenerate enqueues don't
-  // crash; real Hangfire-provided ServerJobCancellationToken always has a valid ShutdownToken.
-  private static CancellationToken ResolveShutdownToken(IJobCancellationToken token)
-  {
-    try
-    {
-      return token.ShutdownToken;
-    }
-    catch (NullReferenceException)
-    {
-      return CancellationToken.None;
     }
   }
 

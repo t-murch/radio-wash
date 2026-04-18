@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
@@ -40,13 +41,22 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   public async Task<PlaylistCleaningResult> CleanPlaylistAsync(
       CleanPlaylistJob job,
       User user,
-      CancellationToken cancellationToken = default)
+      IJobCancellationToken? cancellationToken = null)
   {
-    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, cancellationToken);
+    var hangfireCancellationToken = cancellationToken ?? JobCancellationToken.Null;
+    var shutdownToken = ResolveShutdownToken(hangfireCancellationToken);
+
+    ThrowIfCancellationRequested(hangfireCancellationToken);
+    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, shutdownToken);
     _progressTracker.Initialize(tracks.Count, _batchConfig);
 
-    var processedResult = await ProcessTracks(job, user, tracks, cancellationToken);
-    var playlist = await CreateTargetPlaylist(user, job.TargetPlaylistName, processedResult.CleanTrackUris, cancellationToken);
+    var processedResult = await ProcessTracks(job, user, tracks, hangfireCancellationToken, shutdownToken);
+    var playlist = await CreateTargetPlaylist(
+        user,
+        job.TargetPlaylistName,
+        processedResult.CleanTrackUris,
+        hangfireCancellationToken,
+        shutdownToken);
 
     return new PlaylistCleaningResult
     {
@@ -61,7 +71,8 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
       CleanPlaylistJob job,
       User user,
       IReadOnlyList<MusicTrack> tracks,
-      CancellationToken cancellationToken)
+      IJobCancellationToken cancellationToken,
+      CancellationToken shutdownToken)
   {
     var result = new TrackProcessingResult();
     var mappingBatch = new List<TrackMapping>();
@@ -76,8 +87,8 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
         continue;
       }
 
-      cancellationToken.ThrowIfCancellationRequested();
-      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, cancellationToken);
+      ThrowIfCancellationRequested(cancellationToken);
+      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, shutdownToken);
 
       var mapping = new TrackMapping
       {
@@ -170,20 +181,52 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
       User user,
       string playlistName,
       List<string> trackIds,
-      CancellationToken cancellationToken)
+      IJobCancellationToken cancellationToken,
+      CancellationToken shutdownToken)
   {
+    ThrowIfCancellationRequested(cancellationToken);
     var playlist = await _musicService.CreatePlaylistAsync(
         user.Id,
         playlistName,
         "Cleaned by RadioWash.",
-        cancellationToken);
+        shutdownToken);
 
     if (trackIds.Any())
     {
+      ThrowIfCancellationRequested(cancellationToken);
       // Pass raw platform IDs; the adapter decides URI format.
-      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, cancellationToken);
+      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, shutdownToken);
     }
 
     return playlist;
+  }
+
+  // JobCancellationToken.Null (the sentinel used at enqueue time and in direct unit tests) has
+  // no backing ShutdownToken property, so accessing it throws NullReferenceException. Swallow
+  // that here and fall back to a non-cancellable token; real Hangfire runtime tokens expose a
+  // valid ShutdownToken for cooperative server-shutdown cancellation.
+  private static CancellationToken ResolveShutdownToken(IJobCancellationToken token)
+  {
+    try
+    {
+      return token.ShutdownToken;
+    }
+    catch (NullReferenceException)
+    {
+      return CancellationToken.None;
+    }
+  }
+
+  private static void ThrowIfCancellationRequested(IJobCancellationToken token)
+  {
+    try
+    {
+      token.ThrowIfCancellationRequested();
+    }
+    catch (NullReferenceException)
+    {
+      // JobCancellationToken.Null also throws here; treat it as a non-cancellable sentinel for
+      // direct unit tests and enqueue-time placeholders.
+    }
   }
 }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Hangfire;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
@@ -77,7 +78,7 @@ public class CleanPlaylistJobProcessorTests
     _mockJobRepo.Setup(x => x.GetByIdAsync(jobId)).ReturnsAsync(job);
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
     _mockCleaner
-      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<CancellationToken>()))
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
       .ReturnsAsync(cleaningResult);
 
     var observedStatuses = new List<string>();
@@ -128,7 +129,7 @@ public class CleanPlaylistJobProcessorTests
     _mockJobRepo.Verify(x => x.UpdateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
     _mockCleanerFactory.Verify(x => x.CreateCleaner(It.IsAny<string>()), Times.Never);
     _mockCleaner.Verify(
-      x => x.CleanPlaylistAsync(It.IsAny<CleanPlaylistJob>(), It.IsAny<User>(), It.IsAny<CancellationToken>()),
+      x => x.CleanPlaylistAsync(It.IsAny<CleanPlaylistJob>(), It.IsAny<User>(), It.IsAny<IJobCancellationToken>()),
       Times.Never);
     _mockProgressService.Verify(
       x => x.BroadcastJobCompleted(It.IsAny<int>(), It.IsAny<string>()),
@@ -170,7 +171,7 @@ public class CleanPlaylistJobProcessorTests
     _mockJobRepo.Setup(x => x.GetByIdAsync(jobId)).ReturnsAsync(job);
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
     _mockCleaner
-      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<CancellationToken>()))
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
       .ThrowsAsync(new InvalidOperationException("Spotify exploded"));
 
     // Act — must not rethrow; Hangfire retry policy owns retries via [AutomaticRetry]
@@ -213,7 +214,7 @@ public class CleanPlaylistJobProcessorTests
     _mockJobRepo.Setup(x => x.GetByIdAsync(jobId)).ReturnsAsync(job);
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
     _mockCleaner
-      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<CancellationToken>()))
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
       .ReturnsAsync(new PlaylistCleaningResult
       {
         ProcessedTracks = 0,
@@ -254,10 +255,10 @@ public class CleanPlaylistJobProcessorTests
       .Setup(x => x.UpdateAsync(It.IsAny<CleanPlaylistJob>()))
       .ReturnsAsync((CleanPlaylistJob j) => j);
 
-    CancellationToken observedToken = default;
+    IJobCancellationToken? observedToken = null;
     _mockCleaner
-      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<CancellationToken>()))
-      .Callback<CleanPlaylistJob, User, CancellationToken>((_, _, ct) => observedToken = ct)
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
+      .Callback<CleanPlaylistJob, User, IJobCancellationToken>((_, _, ct) => observedToken = ct)
       .ReturnsAsync(new PlaylistCleaningResult
       {
         ProcessedTracks = 0,
@@ -266,13 +267,11 @@ public class CleanPlaylistJobProcessorTests
         CleanTrackUris = new List<string>()
       });
 
-    await _processor.ProcessJobAsync(jobId, Hangfire.JobCancellationToken.Null);
+    var hangfireToken = new StubJobCancellationToken();
 
-    // The default Hangfire-provided token is a real CancellationToken instance; we only need
-    // to confirm the cleaner received a token parameter (i.e., the processor's CleanPlaylistAsync
-    // overload threads it through). That it is CanBeCanceled=false here is fine — production
-    // binds Hangfire's ShutdownToken.
-    Assert.True(true, $"cleaner invoked with token CanBeCanceled={observedToken.CanBeCanceled}");
+    await _processor.ProcessJobAsync(jobId, hangfireToken);
+
+    Assert.Same(hangfireToken, observedToken);
   }
 
   [Fact]
@@ -295,7 +294,7 @@ public class CleanPlaylistJobProcessorTests
     _mockJobRepo.Setup(x => x.GetByIdAsync(jobId)).ReturnsAsync(job);
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
     _mockCleaner
-      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<CancellationToken>()))
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
       .ThrowsAsync(new InvalidOperationException("Primary failure"));
 
     // The error-persist path throws — simulates a transient DB failure during failure handling
@@ -315,5 +314,22 @@ public class CleanPlaylistJobProcessorTests
         It.IsAny<Exception?>(),
         It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
       Times.AtLeast(2));
+  }
+}
+
+internal sealed class StubJobCancellationToken : IJobCancellationToken
+{
+  public CancellationToken ShutdownToken { get; init; } = CancellationToken.None;
+
+  public bool IsCancellationRequested { get; private set; }
+
+  public void Cancel() => IsCancellationRequested = true;
+
+  public void ThrowIfCancellationRequested()
+  {
+    if (IsCancellationRequested)
+    {
+      throw new OperationCanceledException();
+    }
   }
 }

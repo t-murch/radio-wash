@@ -1,3 +1,4 @@
+using Hangfire;
 using RadioWash.Api.Models.Domain;
 
 namespace RadioWash.Api.Services.Interfaces;
@@ -18,5 +19,5 @@ public interface IPlaylistCleaner
   Task<PlaylistCleaningResult> CleanPlaylistAsync(
     CleanPlaylistJob job,
     User user,
-    CancellationToken cancellationToken = default);
+    IJobCancellationToken? cancellationToken = null);
 }

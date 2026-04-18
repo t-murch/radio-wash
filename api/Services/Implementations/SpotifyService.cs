@@ -75,6 +75,7 @@ public class SpotifyService : ISpotifyService
             "Spotify rate-limited (429); waiting {Delay}s before retry {Attempt}/{MaxRetries}",
             retryAfter.TotalSeconds, attempt + 1, maxRetries);
 
+          response.Dispose();
           await _delay(retryAfter, cancellationToken);
 
           request = CloneRequestForRetry(request);
@@ -99,6 +100,7 @@ public class SpotifyService : ISpotifyService
           var refreshed = await _musicTokenService.RefreshTokensAsync(userId, "spotify");
           if (refreshed)
           {
+            response.Dispose();
             // Recreate request with new token (HttpRequestMessage can only be sent once)
             var newToken = await _musicTokenService.GetValidAccessTokenAsync(userId, "spotify");
             var originalContent = request.Content;

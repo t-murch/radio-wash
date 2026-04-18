@@ -13,7 +13,8 @@ public interface ICleanPlaylistJobProcessor
   /// <param name="jobId">The persisted job identifier.</param>
   /// <param name="cancellationToken">Hangfire cancellation token; at enqueue time callers pass
   /// <c>JobCancellationToken.Null</c> and Hangfire substitutes a real token at run time. The
-  /// processor translates <see cref="IJobCancellationToken.ShutdownToken"/> into a standard
-  /// <see cref="System.Threading.CancellationToken"/> and threads it through the cleaner.</param>
+  /// processor passes the Hangfire token through so the cleaner can observe both
+  /// per-job aborts via <see cref="IJobCancellationToken.ThrowIfCancellationRequested"/> and
+  /// server shutdown via <see cref="IJobCancellationToken.ShutdownToken"/>.</param>
   Task ProcessJobAsync(int jobId, IJobCancellationToken cancellationToken);
 }
