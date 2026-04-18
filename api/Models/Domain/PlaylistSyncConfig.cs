@@ -15,6 +15,13 @@ public static class SyncStatus
   public const string Failed = "failed";
 }
 
+public static class AutoDisableReason
+{
+  // Set when a subscription transitions away from Active (canceled, expired, past_due).
+  // Configs with this reason are eligible to be re-enabled if the subscription returns to Active.
+  public const string SubscriptionInactive = "subscription_inactive";
+}
+
 public class PlaylistSyncConfig
 {
   public int Id { get; set; }
@@ -29,6 +36,7 @@ public class PlaylistSyncConfig
   public string? LastSyncError { get; set; }
   public DateTime? NextScheduledSync { get; set; }
   public string? SyncStats { get; set; } // JSON stats
+  public string? AutoDisabledReason { get; set; }
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

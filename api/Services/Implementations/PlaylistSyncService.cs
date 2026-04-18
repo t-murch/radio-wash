@@ -61,7 +61,7 @@ public class PlaylistSyncService : IPlaylistSyncService
             {
                 _logger.LogWarning("User {UserId} does not have active subscription, disabling sync config {ConfigId}",
                     config.UserId, config.Id);
-                await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
+                await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id, AutoDisableReason.SubscriptionInactive);
 
                 throw new InvalidOperationException("User does not have an active subscription");
             }

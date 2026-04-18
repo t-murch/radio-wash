@@ -13,6 +13,7 @@ public interface IUserSubscriptionRepository
   Task<IEnumerable<UserSubscription>> GetActiveSubscriptionsWithDetailsAsync();
   Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsAsync(DateTime before);
   Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsWithDetailsAsync(DateTime before);
+  Task<IEnumerable<UserSubscription>> GetExpiredActiveSubscriptionsAsync(DateTime cutoff);
   Task<UserSubscription> CreateAsync(UserSubscription subscription);
   Task<UserSubscription> UpdateAsync(UserSubscription subscription);
   Task<bool> HasActiveSubscriptionAsync(int userId);

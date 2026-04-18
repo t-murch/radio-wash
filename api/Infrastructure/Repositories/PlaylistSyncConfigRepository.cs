@@ -38,6 +38,24 @@ public class PlaylistSyncConfigRepository : IPlaylistSyncConfigRepository
         .ToListAsync();
   }
 
+  public async Task<IEnumerable<PlaylistSyncConfig>> GetEnabledByUserIdAsync(int userId)
+  {
+    return await _dbContext.PlaylistSyncConfigs
+        .Include(psc => psc.OriginalJob)
+        .Where(psc => psc.UserId == userId && psc.IsActive)
+        .OrderByDescending(psc => psc.CreatedAt)
+        .ToListAsync();
+  }
+
+  public async Task<IEnumerable<PlaylistSyncConfig>> GetAutoDisabledByUserIdAsync(int userId, string reason)
+  {
+    return await _dbContext.PlaylistSyncConfigs
+        .Where(psc => psc.UserId == userId
+                      && !psc.IsActive
+                      && psc.AutoDisabledReason == reason)
+        .ToListAsync();
+  }
+
   public async Task<IEnumerable<PlaylistSyncConfig>> GetDueForSyncAsync(DateTime currentTime)
   {
     return await _dbContext.PlaylistSyncConfigs
@@ -97,12 +115,25 @@ public class PlaylistSyncConfigRepository : IPlaylistSyncConfigRepository
     }
   }
 
-  public async Task DisableConfigAsync(int configId)
+  public async Task DisableConfigAsync(int configId, string? autoDisabledReason = null)
   {
     var config = await _dbContext.PlaylistSyncConfigs.FindAsync(configId);
     if (config != null)
     {
       config.IsActive = false;
+      config.AutoDisabledReason = autoDisabledReason;
+      config.UpdatedAt = DateTime.UtcNow;
+      await _dbContext.SaveChangesAsync();
+    }
+  }
+
+  public async Task EnableConfigAsync(int configId)
+  {
+    var config = await _dbContext.PlaylistSyncConfigs.FindAsync(configId);
+    if (config != null)
+    {
+      config.IsActive = true;
+      config.AutoDisabledReason = null;
       config.UpdatedAt = DateTime.UtcNow;
       await _dbContext.SaveChangesAsync();
     }

@@ -6,6 +6,10 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class SubscriptionService : ISubscriptionService
 {
+  // Renewal webhooks from Stripe can land minutes after CurrentPeriodEnd, so the expiry job
+  // only transitions subscriptions that are past the end of their period by this window.
+  private static readonly TimeSpan ExpiryGraceWindow = TimeSpan.FromHours(24);
+
   private readonly IUnitOfWork _unitOfWork;
   private readonly ILogger<SubscriptionService> _logger;
 
@@ -100,14 +104,18 @@ public class SubscriptionService : ISubscriptionService
     subscription.Status = SubscriptionStatus.Canceled;
     subscription.CanceledAt = DateTime.UtcNow;
 
-    // Disable all sync configs for this user
-    var syncConfigs = await _unitOfWork.SyncConfigs.GetByUserIdAsync(userId);
-    foreach (var config in syncConfigs)
-    {
-      await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
-    }
+    await DisableSyncConfigsForUserAsync(userId);
 
     return await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
+  }
+
+  private async Task DisableSyncConfigsForUserAsync(int userId)
+  {
+    var enabledConfigs = await _unitOfWork.SyncConfigs.GetEnabledByUserIdAsync(userId);
+    foreach (var config in enabledConfigs)
+    {
+      await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id, AutoDisableReason.SubscriptionInactive);
+    }
   }
 
   public async Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync()
@@ -127,24 +135,58 @@ public class SubscriptionService : ISubscriptionService
 
   public async Task ValidateSubscriptionsAsync()
   {
-    _logger.LogInformation("Starting subscription validation");
+    var cutoff = DateTime.UtcNow - ExpiryGraceWindow;
+    var expiredSubscriptions = await _unitOfWork.UserSubscriptions.GetExpiredActiveSubscriptionsAsync(cutoff);
+    var expiredList = expiredSubscriptions.ToList();
 
-    var expiredSubscriptions = await _unitOfWork.UserSubscriptions.GetExpiringSubscriptionsAsync(DateTime.UtcNow);
-
-    foreach (var subscription in expiredSubscriptions)
+    if (expiredList.Count == 0)
     {
-      _logger.LogWarning("Subscription {SubscriptionId} for user {UserId} has expired",
-          subscription.Id, subscription.UserId);
-
-      // Disable sync configs for expired subscriptions
-      var syncConfigs = await _unitOfWork.SyncConfigs.GetByUserIdAsync(subscription.UserId);
-      foreach (var config in syncConfigs)
-      {
-        await _unitOfWork.SyncConfigs.DisableConfigAsync(config.Id);
-      }
+      return;
     }
 
-    _logger.LogInformation("Subscription validation completed. {ExpiredCount} subscriptions processed",
-        expiredSubscriptions.Count());
+    _logger.LogInformation("Expiring {Count} subscriptions past the grace window", expiredList.Count);
+
+    foreach (var subscription in expiredList)
+    {
+      try
+      {
+        subscription.Status = SubscriptionStatus.Canceled;
+        subscription.CanceledAt = DateTime.UtcNow;
+        await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
+
+        await DisableSyncConfigsForUserAsync(subscription.UserId);
+
+        _logger.LogInformation(
+          "Expired subscription {SubscriptionId} for user {UserId}; CurrentPeriodEnd was {PeriodEnd}",
+          subscription.Id, subscription.UserId, subscription.CurrentPeriodEnd);
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex,
+          "Failed to expire subscription {SubscriptionId} for user {UserId}; continuing batch",
+          subscription.Id, subscription.UserId);
+      }
+    }
+  }
+
+  public async Task ReactivateSyncConfigsAsync(int userId)
+  {
+    var autoDisabled = await _unitOfWork.SyncConfigs.GetAutoDisabledByUserIdAsync(
+      userId, AutoDisableReason.SubscriptionInactive);
+    var toReenable = autoDisabled.ToList();
+
+    if (toReenable.Count == 0)
+    {
+      return;
+    }
+
+    foreach (var config in toReenable)
+    {
+      await _unitOfWork.SyncConfigs.EnableConfigAsync(config.Id);
+    }
+
+    _logger.LogInformation(
+      "Re-enabled {Count} sync configs for user {UserId} after subscription reactivation",
+      toReenable.Count, userId);
   }
 }

@@ -287,11 +287,11 @@ public class SubscriptionServiceTests
 
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
         .ReturnsAsync(subscription);
-    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByUserIdAsync(userId))
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
         .ReturnsAsync(syncConfigs);
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
-    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>()))
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()))
         .Returns(Task.CompletedTask);
 
     // Act
@@ -302,7 +302,129 @@ public class SubscriptionServiceTests
     Assert.Equal(SubscriptionStatus.Canceled, result.Status);
     Assert.NotNull(result.CanceledAt);
 
-    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(1), Times.Once);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(1, AutoDisableReason.SubscriptionInactive), Times.Once);
+  }
+
+  [Fact]
+  public async Task ValidateSubscriptionsAsync_WithSubscriptionPastGraceWindow_TransitionsToCanceledAndDisablesEnabledConfigs()
+  {
+    // Arrange: subscription expired 48h ago (past the 24h grace window)
+    var userId = 42;
+    var expired = CreateUserSubscription(userId);
+    expired.CurrentPeriodEnd = DateTime.UtcNow.AddHours(-48);
+
+    var enabledConfig = new PlaylistSyncConfig { Id = 7, UserId = userId, IsActive = true };
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetExpiredActiveSubscriptionsAsync(It.IsAny<DateTime>()))
+        .ReturnsAsync(new[] { expired });
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
+        .ReturnsAsync(new[] { enabledConfig });
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    await _subscriptionService.ValidateSubscriptionsAsync();
+
+    // Assert: subscription transitioned to Canceled, CanceledAt stamped, config tagged and disabled
+    Assert.Equal(SubscriptionStatus.Canceled, expired.Status);
+    Assert.NotNull(expired.CanceledAt);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(expired), Times.Once);
+    _mockUnitOfWork.Verify(
+        x => x.SyncConfigs.DisableConfigAsync(enabledConfig.Id, AutoDisableReason.SubscriptionInactive),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task ValidateSubscriptionsAsync_WithSubscriptionInsideGraceWindow_LeavesStateUnchanged()
+  {
+    // Arrange: the repository filter (GetExpiredActiveSubscriptionsAsync) is what enforces the
+    // grace window — verify the service passes the correct cutoff (UtcNow - 24h). If nothing
+    // matches the cutoff, nothing is updated.
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetExpiredActiveSubscriptionsAsync(It.IsAny<DateTime>()))
+        .ReturnsAsync(Array.Empty<UserSubscription>());
+
+    // Act
+    await _subscriptionService.ValidateSubscriptionsAsync();
+
+    // Assert: no writes happened, and the cutoff was at least 23 hours in the past (allows for
+    // clock skew between capture and the assertion)
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()), Times.Never);
+    _mockUnitOfWork.Verify(
+        x => x.UserSubscriptions.GetExpiredActiveSubscriptionsAsync(It.Is<DateTime>(d => d < DateTime.UtcNow.AddHours(-23))),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task ValidateSubscriptionsAsync_WithOneFailingSubscription_ContinuesBatch()
+  {
+    // Arrange: two expired subscriptions; the first UpdateAsync throws
+    var failing = CreateUserSubscription(1);
+    failing.Id = 1;
+    failing.CurrentPeriodEnd = DateTime.UtcNow.AddHours(-48);
+
+    var succeeding = CreateUserSubscription(2);
+    succeeding.Id = 2;
+    succeeding.CurrentPeriodEnd = DateTime.UtcNow.AddHours(-48);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetExpiredActiveSubscriptionsAsync(It.IsAny<DateTime>()))
+        .ReturnsAsync(new[] { failing, succeeding });
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(failing))
+        .ThrowsAsync(new InvalidOperationException("db transient"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(succeeding))
+        .ReturnsAsync(succeeding);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(It.IsAny<int>()))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    await _subscriptionService.ValidateSubscriptionsAsync();
+
+    // Assert: both updates attempted; the second succeeded
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(failing), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(succeeding), Times.Once);
+    Assert.Equal(SubscriptionStatus.Canceled, succeeding.Status);
+  }
+
+  [Fact]
+  public async Task ReactivateSyncConfigsAsync_EnablesOnlyAutoDisabledConfigs()
+  {
+    // Arrange
+    var userId = 5;
+    var autoDisabled = new[]
+    {
+        new PlaylistSyncConfig { Id = 10, UserId = userId, IsActive = false, AutoDisabledReason = AutoDisableReason.SubscriptionInactive },
+        new PlaylistSyncConfig { Id = 11, UserId = userId, IsActive = false, AutoDisabledReason = AutoDisableReason.SubscriptionInactive },
+    };
+
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(autoDisabled);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.EnableConfigAsync(It.IsAny<int>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    await _subscriptionService.ReactivateSyncConfigsAsync(userId);
+
+    // Assert
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.EnableConfigAsync(10), Times.Once);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.EnableConfigAsync(11), Times.Once);
+  }
+
+  [Fact]
+  public async Task ReactivateSyncConfigsAsync_WithNoAutoDisabledConfigs_IsNoop()
+  {
+    // Arrange
+    var userId = 6;
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    await _subscriptionService.ReactivateSyncConfigsAsync(userId);
+
+    // Assert
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.EnableConfigAsync(It.IsAny<int>()), Times.Never);
   }
 
   private static UserSubscription CreateUserSubscription(int userId)
