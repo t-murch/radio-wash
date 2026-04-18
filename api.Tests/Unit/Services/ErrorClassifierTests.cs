@@ -59,17 +59,83 @@ public class ErrorClassifierTests
     }
 
     [Fact]
-    public void IsRetryableError_WithDbUpdateException_ShouldReturnTrue()
+    public void IsRetryableError_WithBareDbUpdateException_ShouldReturnFalse()
     {
-        // Arrange
+        // A DbUpdateException with no inner exception carries no signal about WHY the update
+        // failed. Defaulting to "retryable" risks re-issuing a failing command that will fail
+        // the same way (e.g., logic bug, schema drift). Default-deny; retry only when the
+        // inner exception tells us the failure is transient.
         var exception = new DbUpdateException("Database update failed");
 
-        // Act
         var result = _errorClassifier.IsRetryableError(exception);
 
-        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsRetryableError_WithDbUpdateExceptionWrappingTimeoutException_ShouldReturnTrue()
+    {
+        var exception = new DbUpdateException(
+            "Statement timeout",
+            new TimeoutException("Command timed out"));
+
+        var result = _errorClassifier.IsRetryableError(exception);
+
         Assert.True(result);
     }
+
+    [Theory]
+    [InlineData("40001", "serialization_failure")]
+    [InlineData("40P01", "deadlock_detected")]
+    [InlineData("55P03", "lock_not_available")]
+    [InlineData("57014", "query_canceled (statement_timeout)")]
+    [InlineData("08000", "connection_exception")]
+    [InlineData("08001", "sqlclient_unable_to_establish_sqlconnection")]
+    [InlineData("08006", "connection_failure")]
+    [InlineData("08003", "connection_does_not_exist")]
+    public void IsRetryableError_WithRetryablePostgresSqlState_ShouldReturnTrue(string sqlState, string reason)
+    {
+        var pgEx = MakePostgresException(sqlState);
+        var exception = new DbUpdateException($"Postgres {reason}", pgEx);
+
+        var result = _errorClassifier.IsRetryableError(exception);
+
+        Assert.True(result, $"SQL state {sqlState} ({reason}) should be retryable");
+    }
+
+    [Fact]
+    public void IsRetryableError_WithUniqueViolation_ShouldReturnFalse()
+    {
+        // 23505 (unique_violation) is a correctness failure — retrying will hit the same
+        // constraint. Must never be retried.
+        var pgEx = MakePostgresException("23505");
+        var exception = new DbUpdateException("duplicate key value", pgEx);
+
+        var result = _errorClassifier.IsRetryableError(exception);
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("23503")] // foreign_key_violation
+    [InlineData("23502")] // not_null_violation
+    [InlineData("23514")] // check_violation
+    [InlineData("42P01")] // undefined_table
+    [InlineData("42703")] // undefined_column
+    public void IsRetryableError_WithUnknownOrPermanentPostgresSqlState_ShouldReturnFalse(string sqlState)
+    {
+        // SQL states not on the retryable allowlist — including other integrity violations and
+        // schema errors — must default to non-retryable so we don't waste retries on logic bugs.
+        var pgEx = MakePostgresException(sqlState);
+        var exception = new DbUpdateException($"Postgres error {sqlState}", pgEx);
+
+        var result = _errorClassifier.IsRetryableError(exception);
+
+        Assert.False(result);
+    }
+
+    private static Npgsql.PostgresException MakePostgresException(string sqlState) =>
+        new("test error", "ERROR", "ERROR", sqlState);
 
     #endregion
 
@@ -272,7 +338,9 @@ public class ErrorClassifierTests
     [InlineData(typeof(HttpRequestException), true)]
     [InlineData(typeof(TaskCanceledException), true)]
     [InlineData(typeof(TimeoutException), true)]
-    [InlineData(typeof(DbUpdateException), true)]
+    // A bare DbUpdateException with no inner exception is no longer classified as retryable —
+    // see IsRetryableError_WithBareDbUpdateException_ShouldReturnFalse above.
+    [InlineData(typeof(DbUpdateException), false)]
     [InlineData(typeof(InvalidOperationException), false)]
     [InlineData(typeof(ArgumentException), false)]
     [InlineData(typeof(NullReferenceException), false)]

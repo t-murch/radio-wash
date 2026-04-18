@@ -9,23 +9,36 @@ namespace RadioWash.Api.Middleware;
 /// </summary>
 public class TokenRefreshMiddleware
 {
+  private static readonly IReadOnlyList<string> DefaultPathPrefixes = new[]
+  {
+    "/api/playlist",
+    "/api/jobs",
+    "/api/spotify",
+    "/api/cleanplaylist",
+  };
+
   private readonly RequestDelegate _next;
   private readonly ILogger<TokenRefreshMiddleware> _logger;
+  private readonly IReadOnlyList<string> _pathPrefixes;
 
-  public TokenRefreshMiddleware(RequestDelegate next, ILogger<TokenRefreshMiddleware> logger)
+  public TokenRefreshMiddleware(
+    RequestDelegate next,
+    ILogger<TokenRefreshMiddleware> logger,
+    IReadOnlyList<string>? pathPrefixes = null)
   {
     _next = next;
     _logger = logger;
+    _pathPrefixes = pathPrefixes ?? DefaultPathPrefixes;
   }
 
-  public async Task InvokeAsync(HttpContext context, IMusicTokenService musicTokenService, IUserService userService)
+  public async Task InvokeAsync(HttpContext context, IMusicTokenService musicTokenService, IUserService userService, IEnumerable<IMusicTokenRefresher> refreshers)
   {
     // Only process authenticated requests that might need music service tokens
     if (context.User.Identity?.IsAuthenticated == true && ShouldCheckTokens(context))
     {
       try
       {
-        await RefreshTokensIfNeededAsync(context, musicTokenService, userService);
+        await RefreshTokensIfNeededAsync(context, musicTokenService, userService, refreshers);
       }
       catch (Exception ex)
       {
@@ -37,17 +50,17 @@ public class TokenRefreshMiddleware
     await _next(context);
   }
 
-  private static bool ShouldCheckTokens(HttpContext context)
+  private bool ShouldCheckTokens(HttpContext context)
   {
     var path = context.Request.Path.Value?.ToLower() ?? "";
-
-    // Only check tokens for API endpoints that use music services
-    return path.StartsWith("/api/playlist") ||
-           path.StartsWith("/api/jobs") ||
-           path.StartsWith("/api/spotify");
+    return _pathPrefixes.Any(prefix => path.StartsWith(prefix));
   }
 
-  private async Task RefreshTokensIfNeededAsync(HttpContext context, IMusicTokenService musicTokenService, IUserService userService)
+  private async Task RefreshTokensIfNeededAsync(
+    HttpContext context,
+    IMusicTokenService musicTokenService,
+    IUserService userService,
+    IEnumerable<IMusicTokenRefresher> refreshers)
   {
     var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
     if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var supabaseId))
@@ -61,15 +74,19 @@ public class TokenRefreshMiddleware
       return;
     }
 
-    // Check Spotify tokens
-    var spotifyTokenInfo = await musicTokenService.GetTokenInfoAsync(user.Id, "spotify");
-    if (spotifyTokenInfo != null && spotifyTokenInfo.IsExpired && spotifyTokenInfo.CanRefresh)
+    // Loop over every provider with a registered refresher strategy. Adding Apple Music is a
+    // single IMusicTokenRefresher registration in Program.cs — the middleware picks it up
+    // without code changes here.
+    foreach (var refresher in refreshers)
     {
-      _logger.LogInformation("Proactively refreshing Spotify tokens for user {UserId}", user.Id);
-      await musicTokenService.RefreshTokensAsync(user.Id, "spotify");
+      var tokenInfo = await musicTokenService.GetTokenInfoAsync(user.Id, refresher.ProviderName);
+      if (tokenInfo != null && tokenInfo.IsExpired && tokenInfo.CanRefresh)
+      {
+        _logger.LogInformation(
+          "Proactively refreshing {Provider} tokens for user {UserId}",
+          refresher.ProviderName, user.Id);
+        await musicTokenService.RefreshTokensAsync(user.Id, refresher.ProviderName);
+      }
     }
-
-    // Add other providers here as needed
-    // e.g., Apple Music, YouTube Music, etc.
   }
 }

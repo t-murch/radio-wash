@@ -23,6 +23,9 @@ public class GlobalExceptionMiddlewareTests
     _mockLogger = new Mock<ILogger<GlobalExceptionMiddleware>>();
     _mockNext = new Mock<RequestDelegate>();
     _mockEnvironment = new Mock<IWebHostEnvironment>();
+    // Default most tests to Development so the legacy "details = exception.Message" contract
+    // holds. Tests that care about the Production redaction path override EnvironmentName.
+    _mockEnvironment.SetupGet(e => e.EnvironmentName).Returns("Development");
     _middleware = new GlobalExceptionMiddleware(_mockNext.Object, _mockLogger.Object, _mockEnvironment.Object);
   }
 
@@ -155,6 +158,37 @@ public class GlobalExceptionMiddlewareTests
   }
 
   [Fact]
+  public async Task InvokeAsync_InProduction_LogsErrorWithExceptionDetails()
+  {
+    // The Production environment must NOT be a log blackout — Sentry is not the only consumer
+    // of structured logs. Prior to this fix, GlobalExceptionMiddleware guarded LogError with
+    // `if (!_environment.IsProduction())` and swallowed the error path in prod entirely.
+    var context = CreateHttpContext();
+    var exception = new InvalidOperationException("Production failure");
+
+    // Force IsProduction() == true by reporting EnvironmentName = "Production".
+    _mockEnvironment.SetupGet(e => e.EnvironmentName).Returns("Production");
+
+    _mockNext.Setup(x => x(It.IsAny<HttpContext>())).ThrowsAsync(exception);
+
+    // Act
+    await _middleware.InvokeAsync(context);
+
+    // Assert — LogError must fire with the exception regardless of environment.
+    _mockLogger.Verify(
+        x => x.Log(
+            LogLevel.Error,
+            It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("An unhandled exception occurred")),
+            exception,
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+        Times.Once);
+
+    // And the response still returns 500 with the generic error body.
+    Assert.Equal(500, context.Response.StatusCode);
+  }
+
+  [Fact]
   public async Task InvokeAsync_WithSuccessfulResponse_DoesNotLogWarning()
   {
     // Arrange
@@ -236,14 +270,63 @@ public class GlobalExceptionMiddlewareTests
     // Act
     await _middleware.InvokeAsync(context);
 
-    // Assert
+    // Assert — Development payload carries error + details + traceId.
     var responseBody = GetResponseBody(context);
     var errorResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(responseBody);
 
     Assert.NotNull(errorResponse);
     Assert.True(errorResponse.ContainsKey("error"));
     Assert.True(errorResponse.ContainsKey("details"));
-    Assert.Equal(2, errorResponse.Count);
+    Assert.True(errorResponse.ContainsKey("traceId"));
+    Assert.Equal(3, errorResponse.Count);
+  }
+
+  [Fact]
+  public async Task InvokeAsync_InProduction_RedactsExceptionMessageFromResponseBody()
+  {
+    // Protects against leaking EF/Stripe/internal detail to API consumers. In Production the
+    // response body must contain only a generic error and a trace ID for log correlation.
+    var context = CreateHttpContext();
+    var exception = new InvalidOperationException(
+        "Npgsql.PostgresException (0x80004005): 23505: duplicate key value violates unique constraint \"user_email_key\"");
+
+    _mockEnvironment.SetupGet(e => e.EnvironmentName).Returns("Production");
+    _mockNext.Setup(x => x(It.IsAny<HttpContext>())).ThrowsAsync(exception);
+
+    // Act
+    await _middleware.InvokeAsync(context);
+
+    // Assert
+    Assert.Equal(500, context.Response.StatusCode);
+    var responseBody = GetResponseBody(context);
+    var errorResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(responseBody);
+
+    Assert.NotNull(errorResponse);
+    Assert.Equal("An internal server error occurred", errorResponse["error"].ToString());
+    Assert.True(errorResponse.ContainsKey("traceId"));
+    Assert.False(errorResponse.ContainsKey("details"), "Production must not echo exception.Message to clients");
+    Assert.DoesNotContain("PostgresException", responseBody);
+    Assert.DoesNotContain("duplicate key", responseBody);
+    Assert.DoesNotContain("user_email_key", responseBody);
+  }
+
+  [Fact]
+  public async Task InvokeAsync_InStaging_AlsoRedactsExceptionMessage()
+  {
+    // Staging is a pre-production environment; it must behave like Production for response
+    // redaction. Only Development gets the raw exception.Message in the body.
+    var context = CreateHttpContext();
+    var exception = new InvalidOperationException("sensitive: stripe sk_test_leak_123");
+
+    _mockEnvironment.SetupGet(e => e.EnvironmentName).Returns("Staging");
+    _mockNext.Setup(x => x(It.IsAny<HttpContext>())).ThrowsAsync(exception);
+
+    await _middleware.InvokeAsync(context);
+
+    var responseBody = GetResponseBody(context);
+    Assert.DoesNotContain("sk_test_leak_123", responseBody);
+    Assert.DoesNotContain("details", responseBody);
+    Assert.Contains("traceId", responseBody);
   }
 
   private static HttpContext CreateHttpContext()

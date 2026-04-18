@@ -18,7 +18,7 @@ public class HangfireJobOrchestrator : IJobOrchestrator
   public Task<string> EnqueueJobAsync(int jobId)
   {
     var hangfireId = _backgroundJobClient.Enqueue<ICleanPlaylistJobProcessor>(
-        processor => processor.ProcessJobAsync(jobId));
+        processor => processor.ProcessJobAsync(jobId, JobCancellationToken.Null));
     return Task.FromResult(hangfireId);
   }
 

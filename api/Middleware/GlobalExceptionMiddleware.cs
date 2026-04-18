@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 
@@ -24,12 +25,12 @@ public class GlobalExceptionMiddleware
         }
         catch (Exception ex)
         {
-            if (!_environment.IsProduction())
-            {
-                _logger.LogError(ex, "An unhandled exception occurred for {Method} {Path}", 
-                    context.Request.Method, context.Request.Path);
-            }
-            await HandleExceptionAsync(context, ex);
+            // Include the trace ID so a client-reported "internal error with trace abc123" can be
+            // grepped straight to the structured log.
+            var traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
+            _logger.LogError(ex, "An unhandled exception occurred for {Method} {Path} (trace {TraceId})",
+                context.Request.Method, context.Request.Path, traceId);
+            await HandleExceptionAsync(context, ex, traceId);
         }
         finally
         {
@@ -45,7 +46,7 @@ public class GlobalExceptionMiddleware
         }
     }
 
-    private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private async Task HandleExceptionAsync(HttpContext context, Exception exception, string traceId)
     {
         // Check if response has already been started
         if (context.Response.HasStarted)
@@ -59,11 +60,22 @@ public class GlobalExceptionMiddleware
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            var response = new
-            {
-                error = "An internal server error occurred",
-                details = exception.Message
-            };
+            // Only expose exception.Message to clients in Development. In Production/Staging
+            // it leaks EF constraint names, SQL, Stripe internals, and occasionally user data
+            // through parameter values. Callers get a trace ID instead, which maps back to
+            // structured logs and Sentry without exposing internals.
+            var response = _environment.IsDevelopment()
+                ? (object)new
+                {
+                    error = "An internal server error occurred",
+                    details = exception.Message,
+                    traceId,
+                }
+                : new
+                {
+                    error = "An internal server error occurred",
+                    traceId,
+                };
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }

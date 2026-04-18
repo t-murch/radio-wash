@@ -15,6 +15,11 @@ namespace RadioWash.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+  // Spotify access tokens expire in 3600 seconds. Apple Music user tokens are long-lived and
+  // don't have an exact expiry — once that's wired up, this moves into the provider-specific
+  // handler or a lookup table. For now the only supported provider uses 3600.
+  private const int DefaultExpiresInSeconds = 3600;
+
   private readonly ILogger<AuthController> _logger;
   private readonly IMemoryCache _memoryCache;
   private readonly IConfiguration _configuration;
@@ -40,8 +45,112 @@ public class AuthController : ControllerBase
 
 
   /// <summary>
-  /// Stores Spotify tokens received from the frontend OAuth callback
+  /// Stores OAuth tokens for a music provider received from the frontend OAuth callback.
+  /// Replaces the provider-specific <c>/spotify/tokens</c> route; that route remains as an
+  /// <c>[Obsolete]</c> alias until the frontend migrates.
   /// </summary>
+  [HttpPost("tokens/{provider}")]
+  [Authorize]
+  public async Task<IActionResult> StoreTokens(string provider, [FromBody] SpotifyTokenRequest request)
+  {
+    if (!MusicProviders.TryNormalize(provider, out var normalizedProvider))
+    {
+      return BadRequest(new { error = $"Provider '{provider}' is not supported." });
+    }
+
+    try
+    {
+      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+      if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+      {
+        return Unauthorized(new { error = "User ID not found in token." });
+      }
+
+      var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      if (user == null)
+      {
+        return NotFound(new { error = "User not found." });
+      }
+
+      var scopes = ScopesForProvider(normalizedProvider);
+
+      await _musicTokenService.StoreTokensAsync(
+        user.Id,
+        normalizedProvider,
+        request.AccessToken,
+        request.RefreshToken,
+        DefaultExpiresInSeconds,
+        scopes,
+        null);
+
+      _logger.LogInformation("Successfully stored {Provider} tokens for user {UserId}", normalizedProvider, user.Id);
+      return Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error storing {Provider} tokens", normalizedProvider);
+      return StatusCode(500, new { error = $"Failed to store {normalizedProvider} tokens" });
+    }
+  }
+
+  /// <summary>
+  /// Gets the connection status for the given music provider for the authenticated user.
+  /// </summary>
+  [HttpGet("status/{provider}")]
+  [Authorize]
+  public async Task<IActionResult> ConnectionStatus(string provider)
+  {
+    if (!MusicProviders.TryNormalize(provider, out var normalizedProvider))
+    {
+      return BadRequest(new { error = $"Provider '{provider}' is not supported." });
+    }
+
+    try
+    {
+      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+      if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+      {
+        return Unauthorized(new { error = "User ID not found in token." });
+      }
+
+      var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      if (user == null)
+      {
+        return NotFound(new { error = "User not found." });
+      }
+
+      var hasValidTokens = await _musicTokenService.HasValidTokensAsync(user.Id, normalizedProvider);
+      var tokenInfo = await _musicTokenService.GetTokenInfoAsync(user.Id, normalizedProvider);
+
+      return Ok(new
+      {
+        connected = hasValidTokens,
+        connectedAt = tokenInfo?.CreatedAt,
+        lastRefreshAt = tokenInfo?.LastRefreshAt,
+        canRefresh = tokenInfo?.CanRefresh ?? false
+      });
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error getting {Provider} connection status", normalizedProvider);
+      return StatusCode(500, new { error = "Failed to get connection status" });
+    }
+  }
+
+  private static string[] ScopesForProvider(string provider) => provider.ToLowerInvariant() switch
+  {
+    MusicProviders.Spotify => new[]
+    {
+      "user-read-private", "user-read-email", "playlist-read-private",
+      "playlist-read-collaborative", "playlist-modify-public", "playlist-modify-private"
+    },
+    _ => Array.Empty<string>()
+  };
+
+  /// <summary>
+  /// Stores Spotify tokens received from the frontend OAuth callback.
+  /// </summary>
+  [Obsolete("Use POST /api/auth/tokens/spotify instead.")]
   [HttpPost("spotify/tokens")]
   [Authorize]
   public async Task<IActionResult> StoreSpotifyTokens([FromBody] SpotifyTokenRequest request)
@@ -88,6 +197,7 @@ public class AuthController : ControllerBase
   /// <summary>
   /// Gets Spotify connection status for the authenticated user.
   /// </summary>
+  [Obsolete("Use GET /api/auth/status/spotify instead.")]
   [HttpGet("spotify/status")]
   [Authorize]
   public async Task<IActionResult> SpotifyConnectionStatus()

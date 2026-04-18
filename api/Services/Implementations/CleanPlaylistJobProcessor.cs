@@ -27,8 +27,11 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
     _logger = logger;
   }
 
-  [AutomaticRetry(Attempts = 2)]
-  public async Task ProcessJobAsync(int jobId)
+  // Exponential retry: 30s, 120s. Better than Hangfire's immediate-retry default when the
+  // most likely cause of failure is a Spotify hiccup or a token-refresh race — a little
+  // back-off gives the upstream time to recover before we spend the whole attempt budget.
+  [AutomaticRetry(Attempts = 2, DelaysInSeconds = new[] { 30, 120 })]
+  public async Task ProcessJobAsync(int jobId, IJobCancellationToken cancellationToken)
   {
     var job = await _unitOfWork.Jobs.GetByIdAsync(jobId);
     if (job == null)
@@ -44,9 +47,10 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
       var user = await _unitOfWork.Users.GetByIdAsync(job.UserId)
           ?? throw new InvalidOperationException($"User {job.UserId} not found");
 
-      // Use factory to get appropriate cleaner (currently only Spotify)
-      var cleaner = _cleanerFactory.CreateCleaner("spotify");
-      var result = await cleaner.CleanPlaylistAsync(job, user);
+      // Route to the right cleaner based on the job's Provider. Unknown providers will throw
+      // from the factory before any API call is made.
+      var cleaner = _cleanerFactory.CreateCleaner(job.Provider);
+      var result = await cleaner.CleanPlaylistAsync(job, user, cancellationToken);
 
       await CompleteJob(job, result);
       await _progressService.BroadcastJobCompleted(jobId,

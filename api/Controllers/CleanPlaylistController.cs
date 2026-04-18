@@ -40,6 +40,10 @@ public class CleanPlaylistController : AuthenticatedControllerBase
     {
       return NotFound(new { message = ex.Message });
     }
+    catch (ArgumentException ex)
+    {
+      return BadRequest(new { error = ex.Message });
+    }
     catch (Exception ex)
     {
       Logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
@@ -58,6 +62,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(job => new CleanPlaylistJobDto
         {
           Id = job.Id,
+          Provider = job.Provider,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -85,6 +90,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(job => new CleanPlaylistJobDto
         {
           Id = job.Id,
+          Provider = job.Provider,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -117,6 +123,7 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         .Select(j => new CleanPlaylistJobDto
         {
           Id = j.Id,
+          Provider = j.Provider,
           SourcePlaylistId = j.SourcePlaylistId,
           SourcePlaylistName = j.SourcePlaylistName,
           TargetPlaylistId = j.TargetPlaylistId,

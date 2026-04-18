@@ -613,6 +613,228 @@ public class SpotifyServiceTests
     Assert.Null(result);
   }
 
+  // --- 429 Too Many Requests handling ---
+
+  [Fact]
+  public async Task SendWithRetry_On429WithRetryAfter_DelaysAndRetriesSuccessfully()
+  {
+    // Arrange
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    var profileJson = JsonSerializer.Serialize(new SpotifyUserProfile
+    {
+      Id = "user_123",
+      DisplayName = "Test"
+    });
+
+    var retryAfterResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    retryAfterResponse.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(2));
+
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(retryAfterResponse)
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(profileJson, Encoding.UTF8, "application/json")
+        });
+
+    var observedDelays = new List<TimeSpan>();
+    var service = CreateServiceWithDelayCapture(observedDelays);
+
+    // Act
+    var result = await service.GetUserProfileAsync(userId);
+
+    // Assert
+    Assert.NotNull(result);
+    Assert.Equal("user_123", result.Id);
+    Assert.Single(observedDelays);
+    Assert.Equal(TimeSpan.FromSeconds(2), observedDelays[0]);
+  }
+
+  [Fact]
+  public async Task SendWithRetry_On429WithoutRetryAfter_UsesFallbackDelay()
+  {
+    // Arrange
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    var profileJson = JsonSerializer.Serialize(new SpotifyUserProfile { Id = "user_123" });
+
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.TooManyRequests)) // no Retry-After header
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(profileJson, Encoding.UTF8, "application/json")
+        });
+
+    var observedDelays = new List<TimeSpan>();
+    var service = CreateServiceWithDelayCapture(observedDelays);
+
+    // Act
+    var result = await service.GetUserProfileAsync(userId);
+
+    // Assert — a positive fallback delay was applied when the server omitted Retry-After.
+    Assert.NotNull(result);
+    Assert.Single(observedDelays);
+    Assert.True(observedDelays[0] > TimeSpan.Zero);
+  }
+
+  [Fact]
+  public async Task SendWithRetry_On429WithLargeRetryAfter_CapsDelayAtMaximum()
+  {
+    // Arrange
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    var profileJson = JsonSerializer.Serialize(new SpotifyUserProfile { Id = "user_123" });
+
+    var retryAfterResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    retryAfterResponse.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(300));
+
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(retryAfterResponse)
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(profileJson, Encoding.UTF8, "application/json")
+        });
+
+    var observedDelays = new List<TimeSpan>();
+    var service = CreateServiceWithDelayCapture(observedDelays);
+
+    // Act
+    await service.GetUserProfileAsync(userId);
+
+    // Assert — 300-second Retry-After is clamped to the 60-second cap.
+    Assert.Single(observedDelays);
+    Assert.Equal(TimeSpan.FromSeconds(60), observedDelays[0]);
+  }
+
+  [Fact]
+  public async Task SendWithRetry_On429_DisposesThrottledResponseBeforeRetrying()
+  {
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    var throttledContent = new TrackingStringContent("{}");
+    var throttledResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+    {
+      Content = throttledContent
+    };
+    throttledResponse.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+
+    var profileJson = JsonSerializer.Serialize(new SpotifyUserProfile { Id = "user_123" });
+
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(throttledResponse)
+        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(profileJson, Encoding.UTF8, "application/json")
+        });
+
+    var service = CreateServiceWithDelayCapture([]);
+
+    var result = await service.GetUserProfileAsync(userId);
+
+    Assert.Equal("user_123", result.Id);
+    Assert.True(throttledContent.Disposed);
+  }
+
+  private SpotifyService CreateServiceWithDelayCapture(List<TimeSpan> observedDelays)
+  {
+    return new SpotifyService(
+        _httpClient,
+        _mockSpotifySettings.Object,
+        _mockMusicTokenService.Object,
+        _mockLogger.Object,
+        delay: (ts, _) =>
+        {
+          observedDelays.Add(ts);
+          return Task.CompletedTask;
+        });
+  }
+
+  [Fact]
+  public async Task GetUserProfileAsync_WhenCancellationRequested_PropagatesCancellationToHttpSend()
+  {
+    // Guards against a regression where a Hangfire job cancellation could not stop an in-flight
+    // Spotify request. SendAsync must observe the token and throw OperationCanceledException.
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(1, "spotify")).ReturnsAsync("t");
+
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .Returns(async (HttpRequestMessage _, CancellationToken ct) =>
+        {
+          // Simulate a real HTTP call that observes the token.
+          await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+          return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+    using var cts = new CancellationTokenSource();
+    cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        () => _spotifyService.GetUserProfileAsync(1, cts.Token));
+  }
+
+  [Fact]
+  public async Task SendWithRetry_RateLimitDelay_IsCancellable()
+  {
+    // When a 429 comes in and the retry delay is long, shutdown must not wait the full
+    // Retry-After duration. The delay callback must observe the shared cancellation token.
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(1, "spotify")).ReturnsAsync("t");
+
+    var response429 = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    response429.Headers.Add("Retry-After", "60");
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(response429);
+
+    using var cts = new CancellationTokenSource();
+    cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+    var tokenObservedInDelay = CancellationToken.None;
+    var service = new SpotifyService(
+        _httpClient,
+        _mockSpotifySettings.Object,
+        _mockMusicTokenService.Object,
+        _mockLogger.Object,
+        delay: (_, ct) =>
+        {
+          tokenObservedInDelay = ct;
+          return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        });
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        () => service.GetUserProfileAsync(1, cts.Token));
+    Assert.Equal(cts.Token, tokenObservedInDelay);
+  }
+
   private void SetupHttpResponse(HttpStatusCode statusCode, string content)
   {
     _mockHttpMessageHandler.Protected()
@@ -676,5 +898,16 @@ public class SpotifyServiceTests
       },
       Popularity = 75
     };
+  }
+
+  private sealed class TrackingStringContent(string content) : StringContent(content, Encoding.UTF8, "application/json")
+  {
+    public bool Disposed { get; private set; }
+
+    protected override void Dispose(bool disposing)
+    {
+      Disposed = true;
+      base.Dispose(disposing);
+    }
   }
 }

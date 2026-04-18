@@ -19,6 +19,7 @@ public class TokenRefreshMiddlewareTests
   private readonly Mock<RequestDelegate> _mockNext;
   private readonly Mock<IUserService> _mockUserService;
   private readonly Mock<IMusicTokenService> _mockTokenService;
+  private readonly IEnumerable<IMusicTokenRefresher> _refreshers;
   private readonly TokenRefreshMiddleware _middleware;
 
   public TokenRefreshMiddlewareTests()
@@ -27,6 +28,12 @@ public class TokenRefreshMiddlewareTests
     _mockNext = new Mock<RequestDelegate>();
     _mockUserService = new Mock<IUserService>();
     _mockTokenService = new Mock<IMusicTokenService>();
+
+    // Single Spotify refresher so the middleware's per-provider loop iterates once over
+    // "spotify" — matches the behavior the pre-extraction tests asserted.
+    var spotifyRefresher = new Mock<IMusicTokenRefresher>();
+    spotifyRefresher.SetupGet(r => r.ProviderName).Returns("spotify");
+    _refreshers = new[] { spotifyRefresher.Object };
 
     _middleware = new TokenRefreshMiddleware(_mockNext.Object, _mockLogger.Object);
   }
@@ -39,7 +46,7 @@ public class TokenRefreshMiddlewareTests
     // No authentication claims
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -54,7 +61,7 @@ public class TokenRefreshMiddlewareTests
     AddAuthenticatedUser(context, Guid.Parse("11111111-1111-1111-1111-111111111111"));
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -73,7 +80,7 @@ public class TokenRefreshMiddlewareTests
     AddAuthenticatedUser(context, Guid.Parse("11111111-1111-1111-1111-111111111111"));
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -111,7 +118,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync(true);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -131,7 +138,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync((UserDto?)null);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -155,7 +162,7 @@ public class TokenRefreshMiddlewareTests
         .ThrowsAsync(exception);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -193,7 +200,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync(tokenInfo);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -223,7 +230,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync(tokenInfo);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -242,7 +249,7 @@ public class TokenRefreshMiddlewareTests
     context.User = new ClaimsPrincipal(identity);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -261,7 +268,7 @@ public class TokenRefreshMiddlewareTests
     context.User = new ClaimsPrincipal(identity);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -293,7 +300,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync(true);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
@@ -316,7 +323,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync((UserMusicToken?)null);
 
     // Act
-    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object);
+    await _middleware.InvokeAsync(context, _mockTokenService.Object, _mockUserService.Object, _refreshers);
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
