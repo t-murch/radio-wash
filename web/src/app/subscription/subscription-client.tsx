@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   useSubscriptionStatus,
   useSubscribeToSync,
+  useCreatePortalSession,
 } from '@/hooks/useSubscriptionSync';
 import { cancelSubscription, type User } from '../services/api';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
 
   const { data: subscriptionStatus, isLoading } = useSubscriptionStatus();
   const subscribeToSyncMutation = useSubscribeToSync();
+  const portalSessionMutation = useCreatePortalSession();
 
   const cancelSubscriptionMutation = useMutation<{ success: boolean }, Error>({
     mutationFn: cancelSubscription,
@@ -35,6 +37,22 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
       console.error('Cancel subscription error:', error);
     },
   });
+
+  const handleManageBilling = async () => {
+    try {
+      await portalSessionMutation.mutateAsync();
+      // The mutation redirects on success; this line is unreachable in the happy path.
+    } catch (error) {
+      // The checkout/portal endpoints are rate-limited server-side (5/min/user); surface
+      // that specifically so users know to wait rather than assume something is broken.
+      if (error instanceof Error && error.message.includes('429')) {
+        toast.error('Too many requests. Please wait a moment and try again.');
+      } else {
+        toast.error('Unable to open billing portal. Please try again.');
+      }
+      console.error('Portal session error:', error);
+    }
+  };
 
   const handleSubscribe = async () => {
     try {
@@ -158,6 +176,15 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   onClick={() => router.push('/dashboard')}
                 >
                   Back to Dashboard
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleManageBilling}
+                  disabled={portalSessionMutation.isPending}
+                >
+                  {portalSessionMutation.isPending
+                    ? 'Opening portal...'
+                    : 'Manage Billing'}
                 </Button>
                 <Button
                   variant="destructive"

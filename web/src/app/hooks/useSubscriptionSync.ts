@@ -1,15 +1,16 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  getSubscriptionStatus, 
+import {
+  getSubscriptionStatus,
   getCurrentSubscription,
-  enableSyncForJob, 
+  enableSyncForJob,
   subscribeToSync,
+  createPortalSession,
   getSyncConfigs,
   type SubscriptionStatus,
   type UserSubscriptionDto,
-  type PlaylistSyncConfig 
+  type PlaylistSyncConfig
 } from '../services/api';
 
 export const useSubscriptionStatus = () => {
@@ -41,12 +42,25 @@ export const useEnableSyncForJob = () => {
 
 export const useSubscribeToSync = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation<{ checkoutUrl: string }, Error>({
     mutationFn: subscribeToSync,
     onSuccess: (data) => {
       // Redirect to Stripe checkout
       window.location.href = data.checkoutUrl;
+    },
+  });
+};
+
+// Opens the Stripe Customer Portal so users can update payment methods, download
+// invoices, and cancel the subscription outside of our own cancel flow. The API
+// returns a one-time portal URL; we navigate away immediately so React Query
+// cache invalidation isn't needed — the subscription page will refetch on return.
+export const useCreatePortalSession = () => {
+  return useMutation<{ portalUrl: string }, Error>({
+    mutationFn: createPortalSession,
+    onSuccess: (data) => {
+      window.location.assign(data.portalUrl);
     },
   });
 };

@@ -316,6 +316,12 @@ export const cancelSubscription = (): Promise<{ success: boolean }> => {
   });
 };
 
+export const createPortalSession = (): Promise<{ portalUrl: string }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/portal`, {
+    method: 'POST',
+  });
+};
+
 // --- Sync Management API Functions ---
 export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/enable`, {
