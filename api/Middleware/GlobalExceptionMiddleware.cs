@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using RadioWash.Api.Services.Exceptions;
 
 namespace RadioWash.Api.Middleware;
 
@@ -58,6 +59,28 @@ public class GlobalExceptionMiddleware
         {
             context.Response.Clear();
             context.Response.ContentType = "application/json";
+
+            // Expected business-rule exception: return a 403 Problem Details body with the
+            // limit fields populated so the UI can render a specific message. These fields
+            // are the whole purpose of the exception — safe to expose in all environments.
+            if (exception is PlanLimitExceededException planLimit)
+            {
+                context.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+                var problem = new
+                {
+                    type = "https://radiowash.app/problems/plan-limit-exceeded",
+                    title = "Plan limit exceeded",
+                    status = (int)HttpStatusCode.Forbidden,
+                    detail = planLimit.Message,
+                    limitType = planLimit.LimitType,
+                    limit = planLimit.Limit,
+                    current = planLimit.Current,
+                    traceId,
+                };
+                await context.Response.WriteAsync(JsonSerializer.Serialize(problem));
+                return;
+            }
+
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
             // Only expose exception.Message to clients in Development. In Production/Staging

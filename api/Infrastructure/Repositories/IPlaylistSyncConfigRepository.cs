@@ -8,6 +8,7 @@ public interface IPlaylistSyncConfigRepository
   Task<PlaylistSyncConfig?> GetByJobIdAsync(int jobId);
   Task<IEnumerable<PlaylistSyncConfig>> GetByUserIdAsync(int userId);
   Task<IEnumerable<PlaylistSyncConfig>> GetEnabledByUserIdAsync(int userId);
+  Task<int> CountEnabledByUserIdAsync(int userId);
   Task<IEnumerable<PlaylistSyncConfig>> GetAutoDisabledByUserIdAsync(int userId, string reason);
   Task<IEnumerable<PlaylistSyncConfig>> GetDueForSyncAsync(DateTime currentTime);
   Task<IEnumerable<PlaylistSyncConfig>> GetActiveConfigsAsync();

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
@@ -85,6 +86,7 @@ public class SubscriptionController : AuthenticatedControllerBase
   }
 
   [HttpPost("checkout")]
+  [EnableRateLimiting("checkout")]
   public async Task<ActionResult> CreateCheckoutSession([FromBody] CreateCheckoutDto dto)
   {
     var userId = GetCurrentUserId();
@@ -102,6 +104,7 @@ public class SubscriptionController : AuthenticatedControllerBase
   }
 
   [HttpPost("portal")]
+  [EnableRateLimiting("checkout")]
   public async Task<ActionResult> CreatePortalSession()
   {
     var userId = GetCurrentUserId();

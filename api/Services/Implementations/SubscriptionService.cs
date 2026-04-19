@@ -1,5 +1,6 @@
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
@@ -188,5 +189,26 @@ public class SubscriptionService : ISubscriptionService
     _logger.LogInformation(
       "Re-enabled {Count} sync configs for user {UserId} after subscription reactivation",
       toReenable.Count, userId);
+  }
+
+  public async Task EnforcePlanLimitAsync(int userId)
+  {
+    var subscription = await _unitOfWork.UserSubscriptions.GetByUserIdAsync(userId);
+    if (subscription?.Plan == null)
+    {
+      return;
+    }
+
+    var maxPlaylists = subscription.Plan.MaxPlaylists;
+    if (!maxPlaylists.HasValue)
+    {
+      return;
+    }
+
+    var current = await _unitOfWork.SyncConfigs.CountEnabledByUserIdAsync(userId);
+    if (current >= maxPlaylists.Value)
+    {
+      throw new PlanLimitExceededException("playlists", maxPlaylists.Value, current);
+    }
   }
 }

@@ -47,6 +47,12 @@ public class PlaylistSyncConfigRepository : IPlaylistSyncConfigRepository
         .ToListAsync();
   }
 
+  public async Task<int> CountEnabledByUserIdAsync(int userId)
+  {
+    return await _dbContext.PlaylistSyncConfigs
+        .CountAsync(psc => psc.UserId == userId && psc.IsActive);
+  }
+
   public async Task<IEnumerable<PlaylistSyncConfig>> GetAutoDisabledByUserIdAsync(int userId, string reason)
   {
     return await _dbContext.PlaylistSyncConfigs

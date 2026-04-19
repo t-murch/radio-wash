@@ -64,6 +64,9 @@ public class PlaylistSyncController : AuthenticatedControllerBase
       return BadRequest(new { error = "Active subscription required to enable sync" });
     }
 
+    // Plan-limit check: throws PlanLimitExceededException, mapped to 403 by GlobalExceptionMiddleware
+    await _subscriptionService.EnforcePlanLimitAsync(userId);
+
     try
     {
       var config = await _syncService.EnableSyncForJobAsync(dto.JobId, userId);
