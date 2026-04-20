@@ -1,0 +1,22 @@
+# Never bake local secrets into the container image. Azure App Service (or any
+# host) must inject these as environment variables at runtime.
+appsettings.*.json
+!appsettings.example.json
+
+# Build outputs (already in the container's /app from `dotnet publish`).
+bin/
+obj/
+
+# Tests don't belong in the runtime image.
+**/*.Tests/
+**/*.Tests.*/
+
+# IDE / tooling
+.vs/
+.vscode/
+*.user
+.idea/
+
+# Local runtime state
+.env
+.env.*
