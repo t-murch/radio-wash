@@ -3,10 +3,12 @@ namespace RadioWash.Api.Models.Domain;
 public static class MusicProviders
 {
   public const string Spotify = "spotify";
+  public const string AppleMusic = "apple_music";
 
   private static readonly Dictionary<string, string> SupportedProviders = new(StringComparer.OrdinalIgnoreCase)
   {
-    [Spotify] = Spotify
+    [Spotify] = Spotify,
+    [AppleMusic] = AppleMusic
   };
 
   public static bool TryNormalize(string provider, out string normalizedProvider)

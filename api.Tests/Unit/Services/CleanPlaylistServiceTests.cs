@@ -206,7 +206,7 @@ public class CleanPlaylistServiceTests
     var createDto = new CreateCleanPlaylistJobDto
     {
       SourcePlaylistId = "playlist123",
-      Provider = "apple_music"
+      Provider = "tidal"
     };
     var user = new User { Id = userId, SupabaseId = "sb123" };
 
@@ -214,7 +214,7 @@ public class CleanPlaylistServiceTests
 
     var exception = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateJobAsync(userId, createDto));
 
-    Assert.Equal("Provider 'apple_music' is not supported.", exception.Message);
+    Assert.Equal("Provider 'tidal' is not supported.", exception.Message);
     _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Never);
     _mockSpotifyService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     _mockJobRepo.Verify(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
