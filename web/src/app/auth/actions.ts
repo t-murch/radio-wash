@@ -4,6 +4,12 @@ import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+const SPOTIFY_SCOPES =
+  'user-read-email playlist-read-private playlist-modify-private playlist-modify-public';
+// Apple sign-in is identity-only; Apple Music access is granted separately via MusicKit
+// from the dashboard (Supabase's Apple provider can never yield a Music User Token).
+const APPLE_SCOPES = 'name email';
+
 const signInWithPlatform = async (
   platform: 'spotify' | 'apple' = 'spotify'
 ) => {
@@ -11,18 +17,12 @@ const signInWithPlatform = async (
   const headerList = await headers();
   const origin = headerList.get('origin');
 
-  console.log(`auth/page origin: ${origin}`);
-
-  // If connectSpotify is true, add spotify=true parameter to callback
   const callbackUrl = `${origin}/api/auth/callback?platform=${platform}`;
-
-  console.log(`auth/page redirectTo: ${callbackUrl}`);
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: platform,
     options: {
-      scopes:
-        'user-read-email playlist-read-private playlist-modify-private playlist-modify-public',
+      scopes: platform === 'apple' ? APPLE_SCOPES : SPOTIFY_SCOPES,
       redirectTo: callbackUrl,
     },
   });
@@ -37,4 +37,8 @@ const signInWithPlatform = async (
 
 export const signInWithSpotify = async () => {
   return signInWithPlatform('spotify');
+};
+
+export const signInWithApple = async () => {
+  return signInWithPlatform('apple');
 };

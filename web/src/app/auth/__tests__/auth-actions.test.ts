@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { createClient } from '../../lib/supabase/server';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { signInWithSpotify } from '../actions';
+import { signInWithApple, signInWithSpotify } from '../actions';
 
 // Mock dependencies
 vi.mock('@/lib/supabase/server');
@@ -119,6 +119,41 @@ describe('Auth Actions', () => {
       await signInWithSpotify();
 
       expect(redirect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signInWithApple', () => {
+    it('should request identity-only scopes, never Spotify scopes', async () => {
+      // Sending Spotify playlist scopes to Apple would fail the OAuth request; Apple
+      // sign-in is identity only (Apple Music connects separately via MusicKit).
+      mockSupabase.auth.signInWithOAuth.mockResolvedValue({
+        data: { url: 'https://apple.oauth.url' },
+        error: null,
+      });
+
+      await expect(signInWithApple()).rejects.toThrow('Redirect called');
+
+      expect(mockSupabase.auth.signInWithOAuth).toHaveBeenCalledWith({
+        provider: 'apple',
+        options: {
+          scopes: 'name email',
+          redirectTo: 'http://localhost:3000/api/auth/callback?platform=apple',
+        },
+      });
+      expect(redirect).toHaveBeenCalledWith('https://apple.oauth.url');
+    });
+
+    it('should handle OAuth errors by redirecting to error page', async () => {
+      mockSupabase.auth.signInWithOAuth.mockResolvedValue({
+        data: { url: null },
+        error: { message: 'OAuth failed' },
+      });
+
+      await expect(signInWithApple()).rejects.toThrow('Redirect called');
+
+      expect(redirect).toHaveBeenCalledWith(
+        '/auth?error=Could not authenticate user'
+      );
     });
   });
 });

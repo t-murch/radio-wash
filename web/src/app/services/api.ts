@@ -223,17 +223,34 @@ export const getMe = async (): Promise<User> => {
   return result;
 };
 
-export const getSpotifyConnectionStatus = async (): Promise<{
+export type MusicProvider = 'spotify' | 'apple_music';
+
+export interface ConnectionStatus {
+  provider: MusicProvider;
   connected: boolean;
   connectedAt?: string;
   lastRefreshAt?: string;
   canRefresh: boolean;
-}> => {
-  const result = await fetchWithSupabaseAuth(
-    `${API_BASE_URL}/auth/spotify/status`
-  );
-  return result;
-};
+  expiresAt?: string;
+}
+
+export const getConnectionStatus = (
+  provider: MusicProvider
+): Promise<ConnectionStatus> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/auth/status/${provider}`);
+
+export const storeProviderTokens = (
+  provider: MusicProvider,
+  accessToken: string,
+  refreshToken?: string
+): Promise<{ success: boolean }> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/auth/tokens/${provider}`, {
+    method: 'POST',
+    body: JSON.stringify({ accessToken, refreshToken: refreshToken ?? null }),
+  });
+
+export const getMusicKitDeveloperToken = (): Promise<{ token: string }> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/auth/musickit/devtoken`);
 
 export const getUserPlaylists = (): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
