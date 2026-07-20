@@ -115,6 +115,8 @@ builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor
 builder.Services.AddScoped<IJobOrchestrator, HangfireJobOrchestrator>();
 builder.Services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
 builder.Services.AddScoped<IMusicServiceFactory, MusicServiceFactory>();
+builder.Services.AddScoped<ITrackMatcher, TrackMatcher>();
+builder.Services.AddScoped<IPlaylistCopier, PlaylistCopier>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {

@@ -12,6 +12,16 @@ public class TrackMapping
   public string? TargetTrackName { get; set; }
   public string? TargetArtistName { get; set; }
   public bool HasCleanMatch { get; set; }
+
+  /// <summary>Source track's ISRC when known — the cross-catalog identity used for matching.</summary>
+  public string? Isrc { get; set; }
+
+  /// <summary>
+  /// How the target track was found ("clean-search" for clean jobs; "isrc", "isrc-clean",
+  /// "search", "search-clean", or "none" for copy jobs). Diagnostics for the job-details UI.
+  /// </summary>
+  public string? MatchMethod { get; set; }
+
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
   // Navigation properties

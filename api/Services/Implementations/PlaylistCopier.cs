@@ -7,28 +7,33 @@ using RadioWash.Api.Services.Interfaces;
 namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
-/// Platform-neutral playlist cleaner that drives the track-by-track loop against any
-/// <see cref="IMusicService"/> implementation. The factory supplies the provider-specific
-/// music service, so one cleaner class serves every platform.
+/// Cross-service copy engine. Structure mirrors <see cref="PlaylistCleaner"/> — the same
+/// progress tracking, TrackMapping batch persistence, and Hangfire cancellation semantics —
+/// but reads via the source provider's IMusicService and writes via the target's, bridging
+/// catalogs through <see cref="ITrackMatcher"/>. Kept separate from the cleaner so the
+/// existing same-service clean path stays untouched.
 /// </summary>
-public class PlaylistCleaner : IPlaylistCleaner
+public class PlaylistCopier : IPlaylistCopier
 {
-  private readonly IMusicService _musicService;
+  private readonly IMusicServiceFactory _musicServiceFactory;
+  private readonly ITrackMatcher _trackMatcher;
   private readonly IProgressTracker _progressTracker;
   private readonly IProgressBroadcastService _progressService;
   private readonly IUnitOfWork _unitOfWork;
-  private readonly ILogger<PlaylistCleaner> _logger;
+  private readonly ILogger<PlaylistCopier> _logger;
   private readonly BatchConfiguration _batchConfig;
 
-  public PlaylistCleaner(
-      IMusicService musicService,
+  public PlaylistCopier(
+      IMusicServiceFactory musicServiceFactory,
+      ITrackMatcher trackMatcher,
       IProgressTracker progressTracker,
       IProgressBroadcastService progressService,
       IUnitOfWork unitOfWork,
-      ILogger<PlaylistCleaner> logger,
+      ILogger<PlaylistCopier> logger,
       BatchConfiguration? batchConfig = null)
   {
-    _musicService = musicService;
+    _musicServiceFactory = musicServiceFactory;
+    _trackMatcher = trackMatcher;
     _progressTracker = progressTracker;
     _progressService = progressService;
     _unitOfWork = unitOfWork;
@@ -36,7 +41,7 @@ public class PlaylistCleaner : IPlaylistCleaner
     _batchConfig = batchConfig ?? new BatchConfiguration();
   }
 
-  public async Task<PlaylistCleaningResult> CleanPlaylistAsync(
+  public async Task<PlaylistCleaningResult> CopyPlaylistAsync(
       CleanPlaylistJob job,
       User user,
       IJobCancellationToken? cancellationToken = null)
@@ -44,14 +49,28 @@ public class PlaylistCleaner : IPlaylistCleaner
     var hangfireCancellationToken = cancellationToken ?? JobCancellationToken.Null;
     var shutdownToken = HangfireCancellationHelper.ResolveShutdownToken(hangfireCancellationToken);
 
+    var source = _musicServiceFactory.GetService(job.Provider);
+    var target = _musicServiceFactory.GetService(job.TargetProvider);
+
     HangfireCancellationHelper.ThrowIfCancellationRequested(hangfireCancellationToken);
-    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, shutdownToken);
+    var tracks = await source.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, shutdownToken);
     _progressTracker.Initialize(tracks.Count, _batchConfig);
 
-    var processedResult = await ProcessTracks(job, user, tracks, hangfireCancellationToken, shutdownToken);
+    // One batched ISRC resolution up front; per-track matching then hits the index instead
+    // of the network for every ISRC-carrying track.
+    var isrcs = tracks
+      .Select(t => t.Isrc)
+      .Where(isrc => !string.IsNullOrEmpty(isrc))
+      .Select(isrc => isrc!)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+    var isrcIndex = await _trackMatcher.PrefetchByIsrcAsync(user.Id, target, isrcs, shutdownToken);
+
+    var processedResult = await ProcessTracks(job, user, target, tracks, isrcIndex, hangfireCancellationToken, shutdownToken);
     var playlist = await CreateTargetPlaylist(
         user,
-        job.TargetPlaylistName,
+        target,
+        job,
         processedResult.CleanTrackUris,
         hangfireCancellationToken,
         shutdownToken);
@@ -68,7 +87,9 @@ public class PlaylistCleaner : IPlaylistCleaner
   private async Task<TrackProcessingResult> ProcessTracks(
       CleanPlaylistJob job,
       User user,
+      IMusicService target,
       IReadOnlyList<MusicTrack> tracks,
+      IReadOnlyDictionary<string, MusicTrack> isrcIndex,
       IJobCancellationToken cancellationToken,
       CancellationToken shutdownToken)
   {
@@ -79,14 +100,15 @@ public class PlaylistCleaner : IPlaylistCleaner
     {
       var track = tracks[i];
 
-      if (!IsValidTrack(track))
+      if (string.IsNullOrEmpty(track.Id))
       {
         _logger.LogWarning("Skipping invalid track: {TrackName}", track.Name ?? "Unknown");
         continue;
       }
 
       HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
-      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, shutdownToken);
+      var match = await _trackMatcher.MatchAsync(
+          user.Id, target, track, isrcIndex, job.SwapExplicitForClean, shutdownToken);
 
       var mapping = new TrackMapping
       {
@@ -95,10 +117,12 @@ public class PlaylistCleaner : IPlaylistCleaner
         SourceTrackName = track.Name ?? "Unknown",
         SourceArtistName = track.Artists.Count > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
         IsExplicit = track.IsExplicit,
-        HasCleanMatch = cleanVersion != null,
-        TargetTrackId = cleanVersion?.Id,
-        TargetTrackName = cleanVersion?.Name,
-        TargetArtistName = cleanVersion?.Artists.Count > 0 ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null,
+        HasCleanMatch = match.Target != null,
+        TargetTrackId = match.Target?.Id,
+        TargetTrackName = match.Target?.Name,
+        TargetArtistName = match.Target?.Artists.Count > 0 ? string.Join(", ", match.Target.Artists.Select(a => a.Name)) : null,
+        Isrc = track.Isrc,
+        MatchMethod = match.Method,
         CreatedAt = DateTime.UtcNow
       };
 
@@ -123,8 +147,6 @@ public class PlaylistCleaner : IPlaylistCleaner
 
     return result;
   }
-
-  private static bool IsValidTrack(MusicTrack track) => !string.IsNullOrEmpty(track.Id);
 
   private async Task HandleProgressReporting(int jobId, int processedCount, string? trackName)
   {
@@ -177,23 +199,24 @@ public class PlaylistCleaner : IPlaylistCleaner
 
   private async Task<PlaylistSummary> CreateTargetPlaylist(
       User user,
-      string playlistName,
+      IMusicService target,
+      CleanPlaylistJob job,
       List<string> trackIds,
       IJobCancellationToken cancellationToken,
       CancellationToken shutdownToken)
   {
     HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
-    var playlist = await _musicService.CreatePlaylistAsync(
+    var playlist = await target.CreatePlaylistAsync(
         user.Id,
-        playlistName,
-        "Cleaned by RadioWash.",
+        job.TargetPlaylistName,
+        $"Copied from {job.SourcePlaylistName} by RadioWash.",
         shutdownToken);
 
     if (trackIds.Any())
     {
       HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
-      // Pass raw platform IDs; the adapter decides URI format.
-      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, shutdownToken);
+      // Pass raw platform IDs; the target adapter decides URI format.
+      await target.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, shutdownToken);
     }
 
     return playlist;

@@ -63,6 +63,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = job.Id,
           Provider = job.Provider,
+          TargetProvider = job.TargetProvider,
+          JobType = job.JobType,
+          SwapExplicitForClean = job.SwapExplicitForClean,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -91,6 +94,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = job.Id,
           Provider = job.Provider,
+          TargetProvider = job.TargetProvider,
+          JobType = job.JobType,
+          SwapExplicitForClean = job.SwapExplicitForClean,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -124,6 +130,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = j.Id,
           Provider = j.Provider,
+          TargetProvider = j.TargetProvider,
+          JobType = j.JobType,
+          SwapExplicitForClean = j.SwapExplicitForClean,
           SourcePlaylistId = j.SourcePlaylistId,
           SourcePlaylistName = j.SourcePlaylistName,
           TargetPlaylistId = j.TargetPlaylistId,
@@ -175,7 +184,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
           TargetTrackId = t.TargetTrackId,
           TargetTrackName = t.TargetTrackName,
           TargetArtistName = t.TargetArtistName,
-          HasCleanMatch = t.HasCleanMatch
+          HasCleanMatch = t.HasCleanMatch,
+          Isrc = t.Isrc,
+          MatchMethod = t.MatchMethod
         })
         .ToListAsync();
 

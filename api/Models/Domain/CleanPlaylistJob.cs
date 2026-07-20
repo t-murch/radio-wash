@@ -8,6 +8,14 @@ public static class JobStatus
   public const string Failed = "Failed";
 }
 
+public static class JobTypes
+{
+  /// <summary>Same-service clean: source and target are the same provider.</summary>
+  public const string Clean = "clean";
+  /// <summary>Cross-service copy: tracks are matched into the target provider's catalog.</summary>
+  public const string Copy = "copy";
+}
+
 public class CleanPlaylistJob
 {
   public int Id { get; set; }
@@ -17,11 +25,26 @@ public class CleanPlaylistJob
   public User User { get; set; } = null!;
 
   /// <summary>
-  /// Music-provider discriminator ("spotify", "apple_music", ...). Used by the processor to
-  /// resolve the right IPlaylistCleaner from the factory. Defaults to "spotify" for existing
-  /// jobs and for callers that don't specify explicitly.
+  /// Source music-provider discriminator ("spotify", "apple_music", ...). Used by the
+  /// processor to resolve the right IPlaylistCleaner / source IMusicService. Defaults to
+  /// "spotify" for existing jobs and for callers that don't specify explicitly.
   /// </summary>
   public string Provider { get; set; } = "spotify";
+
+  /// <summary>
+  /// Provider the resulting playlist is created on. Equals <see cref="Provider"/> for
+  /// clean jobs; differs for cross-service copy jobs.
+  /// </summary>
+  public string TargetProvider { get; set; } = "spotify";
+
+  /// <summary>One of <see cref="JobTypes"/>; derived from source/target provider equality.</summary>
+  public string JobType { get; set; } = JobTypes.Clean;
+
+  /// <summary>
+  /// Whether explicit tracks are swapped for clean versions. Always true for clean jobs;
+  /// the per-job toggle for copy jobs (false = faithful 1:1 copy).
+  /// </summary>
+  public bool SwapExplicitForClean { get; set; } = true;
 
   public string SourcePlaylistId { get; set; } = null!;
   public string SourcePlaylistName { get; set; } = null!;

@@ -11,4 +11,6 @@ public class TrackMappingDto
   public string? TargetTrackName { get; set; }
   public string? TargetArtistName { get; set; }
   public bool HasCleanMatch { get; set; }
+  public string? Isrc { get; set; }
+  public string? MatchMethod { get; set; }
 }

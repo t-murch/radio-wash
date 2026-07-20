@@ -12,17 +12,20 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
 {
   private readonly IUnitOfWork _unitOfWork;
   private readonly IPlaylistCleanerFactory _cleanerFactory;
+  private readonly IPlaylistCopier _playlistCopier;
   private readonly IProgressBroadcastService _progressService;
   private readonly ILogger<CleanPlaylistJobProcessor> _logger;
 
   public CleanPlaylistJobProcessor(
       IUnitOfWork unitOfWork,
       IPlaylistCleanerFactory cleanerFactory,
+      IPlaylistCopier playlistCopier,
       IProgressBroadcastService progressService,
       ILogger<CleanPlaylistJobProcessor> logger)
   {
     _unitOfWork = unitOfWork;
     _cleanerFactory = cleanerFactory;
+    _playlistCopier = playlistCopier;
     _progressService = progressService;
     _logger = logger;
   }
@@ -47,14 +50,17 @@ public class CleanPlaylistJobProcessor : ICleanPlaylistJobProcessor
       var user = await _unitOfWork.Users.GetByIdAsync(job.UserId)
           ?? throw new InvalidOperationException($"User {job.UserId} not found");
 
-      // Route to the right cleaner based on the job's Provider. Unknown providers will throw
-      // from the factory before any API call is made.
-      var cleaner = _cleanerFactory.CreateCleaner(job.Provider);
-      var result = await cleaner.CleanPlaylistAsync(job, user, cancellationToken);
+      // Copy jobs bridge two providers through the copier; clean jobs route to the
+      // provider's cleaner. Unknown providers throw before any API call is made.
+      var result = job.JobType == JobTypes.Copy
+          ? await _playlistCopier.CopyPlaylistAsync(job, user, cancellationToken)
+          : await _cleanerFactory.CreateCleaner(job.Provider).CleanPlaylistAsync(job, user, cancellationToken);
 
       await CompleteJob(job, result);
-      await _progressService.BroadcastJobCompleted(jobId,
-          $"Processed {result.ProcessedTracks} tracks, matched {result.MatchedTracks} clean versions");
+      var completionMessage = job.JobType == JobTypes.Copy
+          ? $"Copied {result.MatchedTracks} of {result.ProcessedTracks} tracks to {job.TargetProvider}"
+          : $"Processed {result.ProcessedTracks} tracks, matched {result.MatchedTracks} clean versions";
+      await _progressService.BroadcastJobCompleted(jobId, completionMessage);
     }
     catch (Exception ex)
     {

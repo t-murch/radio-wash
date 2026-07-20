@@ -19,6 +19,7 @@ public class CleanPlaylistJobProcessorTests
   private readonly Mock<IUnitOfWork> _mockUnitOfWork;
   private readonly Mock<IPlaylistCleanerFactory> _mockCleanerFactory;
   private readonly Mock<IPlaylistCleaner> _mockCleaner;
+  private readonly Mock<IPlaylistCopier> _mockCopier;
   private readonly Mock<IProgressBroadcastService> _mockProgressService;
   private readonly Mock<ILogger<CleanPlaylistJobProcessor>> _mockLogger;
   private readonly Mock<ICleanPlaylistJobRepository> _mockJobRepo;
@@ -30,6 +31,7 @@ public class CleanPlaylistJobProcessorTests
     _mockUnitOfWork = new Mock<IUnitOfWork>();
     _mockCleanerFactory = new Mock<IPlaylistCleanerFactory>();
     _mockCleaner = new Mock<IPlaylistCleaner>();
+    _mockCopier = new Mock<IPlaylistCopier>();
     _mockProgressService = new Mock<IProgressBroadcastService>();
     _mockLogger = new Mock<ILogger<CleanPlaylistJobProcessor>>();
     _mockJobRepo = new Mock<ICleanPlaylistJobRepository>();
@@ -45,6 +47,7 @@ public class CleanPlaylistJobProcessorTests
     _processor = new CleanPlaylistJobProcessor(
       _mockUnitOfWork.Object,
       _mockCleanerFactory.Object,
+      _mockCopier.Object,
       _mockProgressService.Object,
       _mockLogger.Object);
   }
@@ -314,6 +317,80 @@ public class CleanPlaylistJobProcessorTests
         It.IsAny<Exception?>(),
         It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
       Times.AtLeast(2));
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_CopyJob_RoutesToCopierNotCleaner()
+  {
+    var job = new CleanPlaylistJob
+    {
+      Id = 77,
+      UserId = 7,
+      Provider = "spotify",
+      TargetProvider = "apple_music",
+      JobType = JobTypes.Copy,
+      SourcePlaylistId = "src",
+      SourcePlaylistName = "Source",
+      TargetPlaylistName = "Source",
+      Status = JobStatus.Pending
+    };
+    var user = new User { Id = 7, SupabaseId = "sb-abc" };
+    _mockJobRepo.Setup(x => x.GetByIdAsync(77)).ReturnsAsync(job);
+    _mockUserRepo.Setup(x => x.GetByIdAsync(7)).ReturnsAsync(user);
+    _mockJobRepo.Setup(x => x.UpdateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync((CleanPlaylistJob j) => j);
+    _mockCopier
+      .Setup(x => x.CopyPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
+      .ReturnsAsync(new PlaylistCleaningResult
+      {
+        ProcessedTracks = 5,
+        MatchedTracks = 4,
+        TargetPlaylistId = "p.new"
+      });
+
+    await _processor.ProcessJobAsync(77, Hangfire.JobCancellationToken.Null);
+
+    Assert.Equal(JobStatus.Completed, job.Status);
+    Assert.Equal("p.new", job.TargetPlaylistId);
+    _mockCopier.Verify(x => x.CopyPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()), Times.Once);
+    _mockCleanerFactory.Verify(x => x.CreateCleaner(It.IsAny<string>()), Times.Never);
+    // Copy jobs get a copy-shaped completion message naming the target provider.
+    _mockProgressService.Verify(
+      x => x.BroadcastJobCompleted(77, It.Is<string>(m => m.Contains("apple_music"))),
+      Times.Once);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_CleanJob_DoesNotTouchCopier()
+  {
+    var job = new CleanPlaylistJob
+    {
+      Id = 78,
+      UserId = 7,
+      Provider = "apple_music",
+      TargetProvider = "apple_music",
+      JobType = JobTypes.Clean,
+      SourcePlaylistId = "src",
+      SourcePlaylistName = "Source",
+      TargetPlaylistName = "Clean - Source",
+      Status = JobStatus.Pending
+    };
+    var user = new User { Id = 7, SupabaseId = "sb-abc" };
+    _mockJobRepo.Setup(x => x.GetByIdAsync(78)).ReturnsAsync(job);
+    _mockUserRepo.Setup(x => x.GetByIdAsync(7)).ReturnsAsync(user);
+    _mockJobRepo.Setup(x => x.UpdateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync((CleanPlaylistJob j) => j);
+    _mockCleaner
+      .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
+      .ReturnsAsync(new PlaylistCleaningResult { ProcessedTracks = 3, MatchedTracks = 3, TargetPlaylistId = "p.c" });
+
+    await _processor.ProcessJobAsync(78, Hangfire.JobCancellationToken.Null);
+
+    Assert.Equal(JobStatus.Completed, job.Status);
+    _mockCleanerFactory.Verify(x => x.CreateCleaner("apple_music"), Times.Once);
+    _mockCopier.Verify(
+      x => x.CopyPlaylistAsync(It.IsAny<CleanPlaylistJob>(), It.IsAny<User>(), It.IsAny<IJobCancellationToken>()),
+      Times.Never);
   }
 }
 

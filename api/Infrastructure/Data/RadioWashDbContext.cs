@@ -48,6 +48,31 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
         .HasMaxLength(50)
         .HasDefaultValue("spotify");
 
+    modelBuilder.Entity<CleanPlaylistJob>()
+        .Property(j => j.TargetProvider)
+        .IsRequired()
+        .HasMaxLength(50)
+        .HasDefaultValue("spotify");
+
+    modelBuilder.Entity<CleanPlaylistJob>()
+        .Property(j => j.JobType)
+        .IsRequired()
+        .HasMaxLength(20)
+        .HasDefaultValue(JobTypes.Clean);
+
+    modelBuilder.Entity<CleanPlaylistJob>()
+        .Property(j => j.SwapExplicitForClean)
+        .IsRequired()
+        .HasDefaultValue(true);
+
+    modelBuilder.Entity<TrackMapping>()
+        .Property(t => t.Isrc)
+        .HasMaxLength(20);
+
+    modelBuilder.Entity<TrackMapping>()
+        .Property(t => t.MatchMethod)
+        .HasMaxLength(20);
+
     modelBuilder.Entity<UserProviderData>()
         .HasOne(upd => upd.User)
         .WithMany(u => u.ProviderData)

@@ -4,6 +4,9 @@ public class CleanPlaylistJobDto
 {
   public int Id { get; set; }
   public string Provider { get; set; } = "spotify";
+  public string TargetProvider { get; set; } = "spotify";
+  public string JobType { get; set; } = "clean";
+  public bool SwapExplicitForClean { get; set; } = true;
   public string SourcePlaylistId { get; set; } = null!;
   public string SourcePlaylistName { get; set; } = null!;
   public string? TargetPlaylistId { get; set; }
