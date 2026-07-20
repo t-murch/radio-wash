@@ -21,6 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
+builder.Services.Configure<AppleMusicSettings>(builder.Configuration.GetSection(AppleMusicSettings.SectionName));
 builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
@@ -70,6 +71,11 @@ builder.Services.AddKeyedScoped<IMusicService>(
     SpotifyMusicService.Provider,
     (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
 builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMusicService>());
+builder.Services.AddScoped<IAppleMusicService, AppleMusicService>();
+builder.Services.AddScoped<AppleMusicMusicService>();
+builder.Services.AddKeyedScoped<IMusicService>(
+    AppleMusicMusicService.Provider,
+    (sp, _) => sp.GetRequiredService<AppleMusicMusicService>());
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
 
@@ -97,6 +103,11 @@ builder.Services.AddScoped<IErrorClassifier, ErrorClassifier>();
 // Time and random abstractions
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 builder.Services.AddSingleton<IRandomProvider, SystemRandomProvider>();
+
+// Apple Music developer token (ES256 JWT). Singleton so the signed token is cached
+// process-wide; missing configuration fails at first use, not at startup, so
+// Spotify-only deployments keep booting.
+builder.Services.AddSingleton<IAppleDeveloperTokenProvider, AppleDeveloperTokenProvider>();
 
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
