@@ -12,31 +12,31 @@ using RadioWash.Api.Services.Interfaces;
 namespace RadioWash.Api.Tests.Unit.Services;
 
 /// <summary>
-/// Characterization tests for <see cref="SpotifyPlaylistCleaner"/>. The cleaner now consumes
+/// Characterization tests for <see cref="PlaylistCleaner"/>. The cleaner consumes
 /// the provider-agnostic <c>IMusicService</c>; the Spotify-specific URI format that used to
 /// live here moved to <c>SpotifyMusicServiceTests</c>. The remaining tests pin the
 /// processing-loop behavior — explicit-vs-clean counting, invalid-track skip, batch
 /// persistence/rollback, and broadcast-failure tolerance — so the Phase 2 refactor can't
 /// silently regress the critical path.
 /// </summary>
-public class SpotifyPlaylistCleanerTests
+public class PlaylistCleanerTests
 {
   private readonly Mock<IMusicService> _mockMusic;
   private readonly Mock<IProgressTracker> _mockProgressTracker;
   private readonly Mock<IProgressBroadcastService> _mockBroadcast;
   private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-  private readonly Mock<ILogger<SpotifyPlaylistCleaner>> _mockLogger;
+  private readonly Mock<ILogger<PlaylistCleaner>> _mockLogger;
   private readonly Mock<ITrackMappingRepository> _mockMappingRepo;
   private readonly Mock<ICleanPlaylistJobRepository> _mockJobRepo;
-  private readonly SpotifyPlaylistCleaner _cleaner;
+  private readonly PlaylistCleaner _cleaner;
 
-  public SpotifyPlaylistCleanerTests()
+  public PlaylistCleanerTests()
   {
     _mockMusic = new Mock<IMusicService>();
     _mockProgressTracker = new Mock<IProgressTracker>();
     _mockBroadcast = new Mock<IProgressBroadcastService>();
     _mockUnitOfWork = new Mock<IUnitOfWork>();
-    _mockLogger = new Mock<ILogger<SpotifyPlaylistCleaner>>();
+    _mockLogger = new Mock<ILogger<PlaylistCleaner>>();
     _mockMappingRepo = new Mock<ITrackMappingRepository>();
     _mockJobRepo = new Mock<ICleanPlaylistJobRepository>();
 
@@ -56,7 +56,7 @@ public class SpotifyPlaylistCleanerTests
         Message = n ?? ""
       });
 
-    _cleaner = new SpotifyPlaylistCleaner(
+    _cleaner = new PlaylistCleaner(
       _mockMusic.Object,
       _mockProgressTracker.Object,
       _mockBroadcast.Object,

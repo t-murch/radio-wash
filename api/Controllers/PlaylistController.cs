@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using RadioWash.Api.Infrastructure.Data;
+using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Controllers;
@@ -7,37 +8,43 @@ namespace RadioWash.Api.Controllers;
 [Route("api/[controller]")]
 public class PlaylistController : AuthenticatedControllerBase
 {
-  private readonly ISpotifyService _spotifyService;
+  private readonly IMusicServiceFactory _musicServiceFactory;
 
   public PlaylistController(
-      ISpotifyService spotifyService,
+      IMusicServiceFactory musicServiceFactory,
       ILogger<PlaylistController> logger,
       RadioWashDbContext dbContext) : base(dbContext, logger)
   {
-    _spotifyService = spotifyService;
+    _musicServiceFactory = musicServiceFactory;
   }
 
   /// <summary>
-  /// Gets all playlists for the authenticated user
+  /// Gets all playlists for the authenticated user on the given provider (default Spotify)
   /// </summary>
   [HttpGet("user/me")]
-  public async Task<IActionResult> GetUserPlaylists()
+  public async Task<IActionResult> GetUserPlaylists([FromQuery] string? provider = null)
   {
+    if (!TryResolveProvider(provider, out var normalizedProvider, out var badRequest))
+    {
+      return badRequest!;
+    }
+
     try
     {
       var userId = GetCurrentUserId();
-      Logger.LogInformation("Getting playlists for user {UserId}", userId);
+      Logger.LogInformation("Getting {Provider} playlists for user {UserId}", normalizedProvider, userId);
 
-      var playlists = await _spotifyService.GetUserPlaylistsAsync(userId);
+      var playlists = await _musicServiceFactory.GetService(normalizedProvider)
+          .GetUserPlaylistsAsync(userId, HttpContext.RequestAborted);
       return Ok(playlists);
     }
     catch (UnauthorizedAccessException ex)
     {
-      Logger.LogWarning(ex, "No Spotify connection for user {UserId}", GetCurrentUserId());
+      Logger.LogWarning(ex, "No {Provider} connection for user {UserId}", normalizedProvider, GetCurrentUserId());
       return Ok(new
       {
-        error = "spotify_not_connected",
-        message = "Spotify account not connected. Please connect your Spotify account to view playlists.",
+        error = $"{normalizedProvider}_not_connected",
+        message = $"{ProviderLabel(normalizedProvider)} account not connected. Please connect your {ProviderLabel(normalizedProvider)} account to view playlists.",
         playlists = new object[0]
       });
     }
@@ -49,15 +56,21 @@ public class PlaylistController : AuthenticatedControllerBase
   }
 
   /// <summary>
-  /// Gets all tracks in a playlist
+  /// Gets all tracks in a playlist on the given provider (default Spotify)
   /// </summary>
   [HttpGet("playlist/{playlistId}/tracks")]
-  public async Task<IActionResult> GetPlaylistTracks(string playlistId)
+  public async Task<IActionResult> GetPlaylistTracks(string playlistId, [FromQuery] string? provider = null)
   {
+    if (!TryResolveProvider(provider, out var normalizedProvider, out var badRequest))
+    {
+      return badRequest!;
+    }
+
     try
     {
       var userId = GetCurrentUserId();
-      var tracks = await _spotifyService.GetPlaylistTracksAsync(userId, playlistId);
+      var tracks = await _musicServiceFactory.GetService(normalizedProvider)
+          .GetPlaylistTracksAsync(userId, playlistId, HttpContext.RequestAborted);
 
       // Map to simpler object for frontend
       var trackList = tracks.Select(t => new
@@ -65,21 +78,18 @@ public class PlaylistController : AuthenticatedControllerBase
         id = t.Id,
         name = t.Name,
         artist = string.Join(", ", t.Artists.Select(a => a.Name)),
-        album = t.Album.Name,
-        albumCover = t.Album.Images?.FirstOrDefault()?.Url,
-        isExplicit = t.Explicit,
-        uri = t.Uri
+        isExplicit = t.IsExplicit
       }).ToList();
 
       return Ok(trackList);
     }
     catch (UnauthorizedAccessException ex)
     {
-      Logger.LogWarning(ex, "No Spotify connection for user {UserId}", GetCurrentUserId());
+      Logger.LogWarning(ex, "No {Provider} connection for user {UserId}", normalizedProvider, GetCurrentUserId());
       return BadRequest(new
       {
-        error = "spotify_not_connected",
-        message = "Spotify account not connected. Please connect your Spotify account to view playlist tracks."
+        error = $"{normalizedProvider}_not_connected",
+        message = $"{ProviderLabel(normalizedProvider)} account not connected. Please connect your {ProviderLabel(normalizedProvider)} account to view playlist tracks."
       });
     }
     catch (Exception ex)
@@ -88,4 +98,28 @@ public class PlaylistController : AuthenticatedControllerBase
       return StatusCode(500, new { error = "Failed to get playlist tracks" });
     }
   }
+
+  private bool TryResolveProvider(string? provider, out string normalizedProvider, out IActionResult? badRequest)
+  {
+    badRequest = null;
+    if (string.IsNullOrWhiteSpace(provider))
+    {
+      normalizedProvider = MusicProviders.Spotify;
+      return true;
+    }
+
+    if (MusicProviders.TryNormalize(provider, out normalizedProvider))
+    {
+      return true;
+    }
+
+    badRequest = BadRequest(new { error = "unsupported_provider", message = $"Provider '{provider}' is not supported." });
+    return false;
+  }
+
+  private static string ProviderLabel(string provider) => provider switch
+  {
+    MusicProviders.AppleMusic => "Apple Music",
+    _ => "Spotify"
+  };
 }

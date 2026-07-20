@@ -12,7 +12,7 @@ namespace RadioWash.Api.Tests.Unit.Services;
 /// the provider-agnostic IMusicService contract. Coverage focuses on the mapping between
 /// Spotify-shaped DTOs and the generic MusicTrack/PlaylistSummary records and — critically —
 /// the Spotify-specific <c>spotify:track:&lt;id&gt;</c> URI format that was previously
-/// constructed in SpotifyPlaylistCleaner and now lives in the adapter.
+/// constructed in the playlist cleaner and now lives in the adapter.
 /// </summary>
 public class SpotifyMusicServiceTests
 {
@@ -186,7 +186,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task AddTracksToPlaylistAsync_WrapsRawIdsInSpotifyUriFormat()
   {
-    // This is the behavior that moved from SpotifyPlaylistCleaner into the adapter. Callers
+    // This is the behavior that moved from the playlist cleaner into the adapter. Callers
     // pass raw IDs; the adapter owns the spotify:track:<id> transformation.
     IEnumerable<string>? observed = null;
     _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))

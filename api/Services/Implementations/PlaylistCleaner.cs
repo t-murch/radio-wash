@@ -1,5 +1,4 @@
 using Hangfire;
-using Microsoft.Extensions.DependencyInjection;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.Music;
@@ -9,25 +8,24 @@ namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
 /// Platform-neutral playlist cleaner that drives the track-by-track loop against any
-/// <see cref="IMusicService"/> implementation. The name retains "Spotify" for back-compat
-/// with DI and the factory; it now operates through the provider-agnostic interface and no
-/// longer knows about Spotify-specific types or URI formats.
+/// <see cref="IMusicService"/> implementation. The factory supplies the provider-specific
+/// music service, so one cleaner class serves every platform.
 /// </summary>
-public class SpotifyPlaylistCleaner : IPlaylistCleaner
+public class PlaylistCleaner : IPlaylistCleaner
 {
   private readonly IMusicService _musicService;
   private readonly IProgressTracker _progressTracker;
   private readonly IProgressBroadcastService _progressService;
   private readonly IUnitOfWork _unitOfWork;
-  private readonly ILogger<SpotifyPlaylistCleaner> _logger;
+  private readonly ILogger<PlaylistCleaner> _logger;
   private readonly BatchConfiguration _batchConfig;
 
-  public SpotifyPlaylistCleaner(
-      [FromKeyedServices(SpotifyMusicService.Provider)] IMusicService musicService,
+  public PlaylistCleaner(
+      IMusicService musicService,
       IProgressTracker progressTracker,
       IProgressBroadcastService progressService,
       IUnitOfWork unitOfWork,
-      ILogger<SpotifyPlaylistCleaner> logger,
+      ILogger<PlaylistCleaner> logger,
       BatchConfiguration? batchConfig = null)
   {
     _musicService = musicService;

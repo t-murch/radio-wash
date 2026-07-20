@@ -114,7 +114,7 @@ builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, Ra
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
 builder.Services.AddScoped<IJobOrchestrator, HangfireJobOrchestrator>();
 builder.Services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
-builder.Services.AddScoped<SpotifyPlaylistCleaner>();
+builder.Services.AddScoped<IMusicServiceFactory, MusicServiceFactory>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {
