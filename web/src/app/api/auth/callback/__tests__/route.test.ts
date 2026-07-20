@@ -76,9 +76,9 @@ describe('Auth Callback Route', () => {
     // Verify session retrieval
     expect(mockSupabase.auth.getSession).toHaveBeenCalled();
 
-    // Verify token sync API call
+    // Verify token sync API call hits the generic provider route
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.radiowash.com/api/auth/spotify/tokens',
+      'https://api.radiowash.com/api/auth/tokens/spotify',
       {
         method: 'POST',
         headers: {

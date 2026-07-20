@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using RadioWash.Api.Configuration;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
@@ -15,10 +17,8 @@ namespace RadioWash.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-  // Spotify access tokens expire in 3600 seconds. Apple Music user tokens are long-lived and
-  // don't have an exact expiry — once that's wired up, this moves into the provider-specific
-  // handler or a lookup table. For now the only supported provider uses 3600.
-  private const int DefaultExpiresInSeconds = 3600;
+  // Spotify access tokens expire in 3600 seconds.
+  private const int SpotifyExpiresInSeconds = 3600;
 
   private readonly ILogger<AuthController> _logger;
   private readonly IMemoryCache _memoryCache;
@@ -26,6 +26,8 @@ public class AuthController : ControllerBase
   private readonly IWebHostEnvironment _environment;
   private readonly IUserService _userService;
   private readonly IMusicTokenService _musicTokenService;
+  private readonly IAppleDeveloperTokenProvider _appleDeveloperTokenProvider;
+  private readonly AppleMusicSettings _appleMusicSettings;
 
   public AuthController(
       ILogger<AuthController> logger,
@@ -33,7 +35,9 @@ public class AuthController : ControllerBase
       IConfiguration configuration,
       IWebHostEnvironment environment,
       IUserService userService,
-      IMusicTokenService musicTokenService)
+      IMusicTokenService musicTokenService,
+      IAppleDeveloperTokenProvider appleDeveloperTokenProvider,
+      IOptions<AppleMusicSettings> appleMusicSettings)
   {
     _logger = logger;
     _memoryCache = memoryCache;
@@ -41,7 +45,17 @@ public class AuthController : ControllerBase
     _environment = environment;
     _userService = userService;
     _musicTokenService = musicTokenService;
+    _appleDeveloperTokenProvider = appleDeveloperTokenProvider;
+    _appleMusicSettings = appleMusicSettings.Value;
   }
+
+  // Apple Music user tokens are long-lived (~6 months) with no expiry signal; store them
+  // with the configured assumed lifetime so reconnect prompts fire before they lapse.
+  private int ExpiresInSecondsFor(string provider) => provider switch
+  {
+    MusicProviders.AppleMusic => _appleMusicSettings.UserTokenAssumedLifetimeDays * 24 * 3600,
+    _ => SpotifyExpiresInSeconds
+  };
 
 
   /// <summary>
@@ -79,7 +93,7 @@ public class AuthController : ControllerBase
         normalizedProvider,
         request.AccessToken,
         request.RefreshToken,
-        DefaultExpiresInSeconds,
+        ExpiresInSecondsFor(normalizedProvider),
         scopes,
         null);
 
@@ -124,16 +138,46 @@ public class AuthController : ControllerBase
 
       return Ok(new
       {
+        provider = normalizedProvider,
         connected = hasValidTokens,
         connectedAt = tokenInfo?.CreatedAt,
         lastRefreshAt = tokenInfo?.LastRefreshAt,
-        canRefresh = tokenInfo?.CanRefresh ?? false
+        canRefresh = tokenInfo?.CanRefresh ?? false,
+        // Drives the frontend's reconnect prompt. Meaningful for providers without a
+        // refresh flow (Apple Music), where canRefresh is always false.
+        expiresAt = tokenInfo?.ExpiresAt
       });
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Error getting {Provider} connection status", normalizedProvider);
       return StatusCode(500, new { error = "Failed to get connection status" });
+    }
+  }
+
+  /// <summary>
+  /// Returns the MusicKit developer token so the frontend can configure MusicKit JS and
+  /// start Apple Music user authorization. The token is an app credential (not per-user
+  /// secret) but is only needed inside the authenticated dashboard, so it stays gated.
+  /// </summary>
+  [HttpGet("musickit/devtoken")]
+  [Authorize]
+  public async Task<IActionResult> MusicKitDeveloperToken()
+  {
+    if (!_appleDeveloperTokenProvider.IsConfigured)
+    {
+      return StatusCode(503, new { error = "apple_music_not_configured", message = "Apple Music is not configured on this server." });
+    }
+
+    try
+    {
+      var token = await _appleDeveloperTokenProvider.GetDeveloperTokenAsync(cancellationToken: HttpContext.RequestAborted);
+      return Ok(new { token });
+    }
+    catch (InvalidOperationException ex)
+    {
+      _logger.LogError(ex, "Apple Music developer token generation failed");
+      return StatusCode(503, new { error = "apple_music_not_configured", message = "Apple Music is not configured on this server." });
     }
   }
 
@@ -144,6 +188,8 @@ public class AuthController : ControllerBase
       "user-read-private", "user-read-email", "playlist-read-private",
       "playlist-read-collaborative", "playlist-modify-public", "playlist-modify-private"
     },
+    // Apple Music user tokens are scope-less; authorization is all-or-nothing via MusicKit.
+    MusicProviders.AppleMusic => Array.Empty<string>(),
     _ => Array.Empty<string>()
   };
 

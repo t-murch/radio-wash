@@ -31,7 +31,7 @@ export async function GET(request: Request) {
           const apiUrl =
             process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159';
 
-          await fetch(`${apiUrl}/api/auth/spotify/tokens`, {
+          await fetch(`${apiUrl}/api/auth/tokens/spotify`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${session.access_token}`,
