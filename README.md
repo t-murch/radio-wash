@@ -217,6 +217,62 @@ The application follows clean architecture principles:
 - **React Components**: Modular UI components with TypeScript
 - **API Service**: Frontend service layer for backend communication
 
+## Apple Music Setup
+
+RadioWash supports Apple Music as a full provider: cleaning Apple Music playlists in
+place and copying playlists in either direction between Spotify and Apple Music
+(with an optional explicit-to-clean swap during the copy).
+
+### Apple Developer portal prerequisites
+
+1. An Apple Developer Program membership (Team ID from the membership page).
+2. A **MusicKit-enabled key**: Certificates, Identifiers & Profiles → Keys → create a
+   key with the *Media Services (MusicKit)* capability. Download the `.p8` file and
+   note the Key ID. This signs the developer token the API generates.
+3. For **Sign in with Apple** (identity): an App ID plus a **Services ID** (e.g.
+   `com.radiowash.web`) with Sign in with Apple enabled, the Supabase callback
+   registered as a return URL (`https://<project-ref>.supabase.co/auth/v1/callback`),
+   and a client-secret JWT generated from an Apple key.
+
+### API configuration
+
+The AppleMusic section follows the same secrets pattern as Spotify (no
+`appsettings.json` in the repo — user-secrets locally, env vars in deployment):
+
+```bash
+cd api
+dotnet user-secrets set "AppleMusic:TeamId" "<TEAM_ID>"
+dotnet user-secrets set "AppleMusic:KeyId" "<KEY_ID>"
+dotnet user-secrets set "AppleMusic:PrivateKeyPath" "/path/to/AuthKey_XXXXXXXXXX.p8"
+```
+
+In deployed environments set `AppleMusic__TeamId`, `AppleMusic__KeyId`, and
+`AppleMusic__PrivateKeyBase64` (base64 the whole `.p8`: `base64 -w0 AuthKey_XXX.p8`;
+this survives env-var newline mangling). The GitHub Actions deploy workflow reads
+these from the `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, and
+`APPLE_MUSIC_PRIVATE_KEY_B64` secrets.
+
+The API boots without Apple credentials; Apple-specific endpoints return 503 until
+they are configured.
+
+### Supabase (Sign in with Apple)
+
+Local: export `SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID` (the Services ID) and
+`SUPABASE_AUTH_EXTERNAL_APPLE_SECRET` (the client-secret JWT) before
+`supabase start`. Hosted: configure the Apple provider in the Supabase dashboard.
+
+### Recurring rotation
+
+Two Apple credentials expire and must be rotated on a calendar:
+
+- The **Supabase Apple client secret** JWT — Apple caps validity at 6 months.
+- The **MusicKit developer token** — capped at 180 days; the API signs it with a
+  150-day lifetime and regenerates automatically, so this only matters if the
+  signing key itself is revoked.
+
+Music User Tokens (per-user Apple Music grants) are long-lived with no refresh
+flow; the app assumes ~150 days and prompts users to reconnect near expiry.
+
 ## Limitations
 
 - Not all explicit tracks have clean alternatives available on Spotify
@@ -229,7 +285,7 @@ The application follows clean architecture principles:
 - Batch processing of multiple playlists
 - Custom filtering options (profanity, themes, etc.)
 - User preferences for replacement strategies
-- Support for Apple Music and other streaming platforms
+- Support for additional streaming platforms (Apple Music shipped; see below)
 
 ## License
 
