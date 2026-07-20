@@ -2,6 +2,8 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createClientClient } from '@/lib/supabase/client';
 
 // e.g., 'types/api.ts', and import them here.
+export type MusicProvider = 'spotify' | 'apple_music';
+
 export interface User {
   id: number;
   spotifyId: string;
@@ -20,6 +22,10 @@ export interface Playlist {
 }
 export interface Job {
   id: number;
+  provider: MusicProvider;
+  targetProvider: MusicProvider;
+  jobType: 'clean' | 'copy';
+  swapExplicitForClean: boolean;
   sourcePlaylistId: string;
   sourcePlaylistName: string;
   targetPlaylistId?: string;
@@ -44,6 +50,8 @@ export interface TrackMapping {
   targetTrackName?: string;
   targetArtistName?: string;
   hasCleanMatch: boolean;
+  isrc?: string;
+  matchMethod?: string;
 }
 
 export interface SubscriptionStatus {
@@ -196,9 +204,14 @@ export const getMeServer = async (): Promise<User> => {
   return result;
 };
 
-export const getUserPlaylistsServer = (): Promise<
+export const getUserPlaylistsServer = (
+  provider: MusicProvider = 'spotify'
+): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
-> => fetchWithSupabaseAuthServer(`${API_BASE_URL}/playlist/user/me`);
+> =>
+  fetchWithSupabaseAuthServer(
+    `${API_BASE_URL}/playlist/user/me?provider=${provider}`
+  );
 
 export const getUserJobsServer = (): Promise<Job[]> =>
   fetchWithSupabaseAuthServer(`${API_BASE_URL}/cleanplaylist/user/me/jobs`);
@@ -222,8 +235,6 @@ export const getMe = async (): Promise<User> => {
   const result = await fetchWithSupabaseAuth(`${API_BASE_URL}/auth/me`);
   return result;
 };
-
-export type MusicProvider = 'spotify' | 'apple_music';
 
 export interface ConnectionStatus {
   provider: MusicProvider;
@@ -252,9 +263,12 @@ export const storeProviderTokens = (
 export const getMusicKitDeveloperToken = (): Promise<{ token: string }> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/auth/musickit/devtoken`);
 
-export const getUserPlaylists = (): Promise<
+export const getUserPlaylists = (
+  provider: MusicProvider = 'spotify'
+): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
-> => fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me`);
+> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me?provider=${provider}`);
 
 export const getJobTrackMappings = (
   userId: number,
@@ -267,16 +281,23 @@ export const getJobTrackMappings = (
 export const getUserJobs = (): Promise<Job[]> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/cleanplaylist/user/me/jobs`);
 
+export interface CreateJobOptions {
+  sourcePlaylistId: string;
+  targetPlaylistName?: string;
+  provider?: MusicProvider;
+  targetProvider?: MusicProvider;
+  swapExplicitForClean?: boolean;
+}
+
 export const createCleanPlaylistJob = (
   userId: number,
-  sourcePlaylistId: string,
-  targetPlaylistName?: string
+  options: CreateJobOptions
 ): Promise<Job> => {
   return fetchWithSupabaseAuth(
     `${API_BASE_URL}/cleanplaylist/user/${userId}/job`,
     {
       method: 'POST',
-      body: JSON.stringify({ sourcePlaylistId, targetPlaylistName }),
+      body: JSON.stringify(options),
     }
   );
 };

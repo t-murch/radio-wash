@@ -1,12 +1,64 @@
 import { useState, useEffect } from 'react';
-import { TrackMapping, getJobTrackMappings } from '@/services/api';
+import { TrackMapping, getJobTrackMappings, Job } from '@/services/api';
+import { trackUrl } from '@/lib/providers';
 
 interface TrackMappingsProps {
   userId: number;
   jobId: number;
+  job?: Job;
 }
 
-export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
+// Chip explaining HOW a copy-job track matched (ISRC bridge vs. search fallback).
+function MatchMethodChip({ method }: { method?: string }) {
+  if (!method || method === 'none') return null;
+  const labels: Record<string, string> = {
+    isrc: 'ISRC match',
+    'isrc-clean': 'ISRC → clean',
+    search: 'Search match',
+    'search-clean': 'Search → clean',
+  };
+  const label = labels[method];
+  if (!label) return null;
+  return (
+    <span className="inline-block text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+      {label}
+    </span>
+  );
+}
+
+function TrackLink({
+  provider,
+  trackId,
+  name,
+  className,
+}: {
+  provider?: string;
+  trackId: string;
+  name: string;
+  className: string;
+}) {
+  const url = trackUrl(provider as 'spotify' | 'apple_music' | undefined, trackId);
+  if (!url) {
+    return (
+      <span className={className.replace('hover:underline', '')} title={name}>
+        {name}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      title={name}
+    >
+      {name}
+    </a>
+  );
+}
+
+export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps) {
   const [trackMappings, setTrackMappings] = useState<TrackMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +99,11 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
   };
 
   const filteredMappings = getFilteredMappings();
+
+  const sourceProvider = job?.provider ?? 'spotify';
+  const targetProvider = job?.targetProvider ?? 'spotify';
+  const isCopy = job?.jobType === 'copy';
+  const matchedColumnLabel = isCopy ? 'Matched Version' : 'Clean Version';
 
   const truncateText = (text: string, maxLength = 30) => {
     return text.length > maxLength
@@ -143,7 +200,7 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                       Status
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-1/3">
-                      Clean Version
+                      {matchedColumnLabel}
                     </th>
                   </tr>
                 </thead>
@@ -152,15 +209,12 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                     <tr key={mapping.id} className="hover:bg-muted/50">
                       <td className="px-4 py-4">
                         <div className="space-y-1">
-                          <a
-                            href={`https://open.spotify.com/track/${mapping.sourceTrackId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <TrackLink
+                            provider={sourceProvider}
+                            trackId={mapping.sourceTrackId}
+                            name={truncateText(mapping.sourceTrackName, 40)}
                             className="block text-sm font-medium text-foreground hover:underline"
-                            title={mapping.sourceTrackName}
-                          >
-                            {truncateText(mapping.sourceTrackName, 40)}
-                          </a>
+                          />
                           <p
                             className="text-sm text-muted-foreground"
                             title={mapping.sourceArtistName}
@@ -176,36 +230,26 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                         />
                       </td>
                       <td className="px-4 py-4">
-                        {mapping.isExplicit ? (
-                          mapping.hasCleanMatch ? (
-                            <div className="space-y-1">
-                              <a
-                                href={`https://open.spotify.com/track/${mapping.targetTrackId}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block text-sm font-medium text-foreground hover:underline"
-                                title={mapping.targetTrackName || ''}
-                              >
-                                {truncateText(
-                                  mapping.targetTrackName || '',
-                                  40
-                                )}
-                              </a>
-                              <p
-                                className="text-sm text-muted-foreground"
-                                title={mapping.targetArtistName || ''}
-                              >
-                                {truncateText(
-                                  mapping.targetArtistName || '',
-                                  40
-                                )}
-                              </p>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              No clean version found
-                            </span>
-                          )
+                        {mapping.hasCleanMatch && mapping.targetTrackId ? (
+                          <div className="space-y-1">
+                            <TrackLink
+                              provider={targetProvider}
+                              trackId={mapping.targetTrackId}
+                              name={truncateText(mapping.targetTrackName || '', 40)}
+                              className="block text-sm font-medium text-foreground hover:underline"
+                            />
+                            <p
+                              className="text-sm text-muted-foreground"
+                              title={mapping.targetArtistName || ''}
+                            >
+                              {truncateText(mapping.targetArtistName || '', 40)}
+                            </p>
+                            {isCopy && <MatchMethodChip method={mapping.matchMethod} />}
+                          </div>
+                        ) : mapping.isExplicit || isCopy ? (
+                          <span className="text-sm text-muted-foreground">
+                            {isCopy ? 'No match found' : 'No clean version found'}
+                          </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">
                             Already clean
@@ -227,15 +271,12 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <a
-                        href={`https://open.spotify.com/track/${mapping.sourceTrackId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <TrackLink
+                        provider={sourceProvider}
+                        trackId={mapping.sourceTrackId}
+                        name={mapping.sourceTrackName}
                         className="block text-sm font-medium text-foreground hover:underline truncate"
-                        title={mapping.sourceTrackName}
-                      >
-                        {mapping.sourceTrackName}
-                      </a>
+                      />
                       <p
                         className="text-sm text-muted-foreground truncate"
                         title={mapping.sourceArtistName}
@@ -251,32 +292,30 @@ export default function TrackMappings({ userId, jobId }: TrackMappingsProps) {
                     </div>
                   </div>
 
-                  {mapping.isExplicit && (
+                  {(mapping.isExplicit || isCopy) && (
                     <div className="pt-3 border-t border">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        Clean Version
+                        {matchedColumnLabel}
                       </p>
-                      {mapping.hasCleanMatch ? (
+                      {mapping.hasCleanMatch && mapping.targetTrackId ? (
                         <div>
-                          <a
-                            href={`https://open.spotify.com/track/${mapping.targetTrackId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <TrackLink
+                            provider={targetProvider}
+                            trackId={mapping.targetTrackId}
+                            name={mapping.targetTrackName || ''}
                             className="block text-sm font-medium text-foreground hover:underline truncate"
-                            title={mapping.targetTrackName || ''}
-                          >
-                            {mapping.targetTrackName}
-                          </a>
+                          />
                           <p
                             className="text-sm text-muted-foreground truncate"
                             title={mapping.targetArtistName || ''}
                           >
                             {mapping.targetArtistName}
                           </p>
+                          {isCopy && <MatchMethodChip method={mapping.matchMethod} />}
                         </div>
                       ) : (
                         <span className="text-sm text-muted-foreground">
-                          No clean version found
+                          {isCopy ? 'No match found' : 'No clean version found'}
                         </span>
                       )}
                     </div>

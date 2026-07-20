@@ -5,6 +5,7 @@ import { useAuthToken } from '@/hooks/useAuthToken';
 import { logger } from '@/lib/logger';
 import { useEffect, useRef } from 'react';
 import { ClientDate } from '@/components/ui/ClientDate';
+import { providerLabel } from '@/lib/providers';
 
 export function JobCard({ job }: { job: Job }) {
   const { authToken } = useAuthToken();
@@ -162,6 +163,11 @@ export function JobCard({ job }: { job: Job }) {
             title={job.sourcePlaylistName}
           >
             From: {job.sourcePlaylistName}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {job.jobType === 'copy'
+              ? `${providerLabel(job.provider)} → ${providerLabel(job.targetProvider)}`
+              : providerLabel(job.provider)}
           </p>
         </div>
         <span
