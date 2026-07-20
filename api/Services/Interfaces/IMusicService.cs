@@ -35,6 +35,27 @@ public interface IMusicService
       MusicTrack explicitTrack,
       CancellationToken cancellationToken);
 
+  /// <summary>
+  /// Looks up tracks on this platform by ISRC. Returns a dictionary keyed by ISRC; ISRCs
+  /// with no match on this platform are absent. When multiple platform tracks share an
+  /// ISRC, implementations return one representative (callers needing clean/explicit
+  /// preference apply it via <see cref="FindCleanVersionAsync"/> or search).
+  /// </summary>
+  Task<IReadOnlyDictionary<string, MusicTrack>> GetTracksByIsrcAsync(
+      int userId,
+      IReadOnlyCollection<string> isrcs,
+      CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Free-text track search on this platform, used as the cross-catalog fallback when no
+  /// ISRC match exists.
+  /// </summary>
+  Task<IReadOnlyList<MusicTrack>> SearchTracksAsync(
+      int userId,
+      string query,
+      int limit,
+      CancellationToken cancellationToken);
+
   Task<PlaylistSummary> CreatePlaylistAsync(
       int userId,
       string name,

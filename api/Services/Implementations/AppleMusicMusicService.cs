@@ -55,15 +55,65 @@ public class AppleMusicMusicService : IMusicService
     string playlistId,
     CancellationToken cancellationToken)
   {
-    var songs = await _appleMusic.GetPlaylistTracksAsync(userId, playlistId, cancellationToken);
+    var songs = (await _appleMusic.GetPlaylistTracksAsync(userId, playlistId, cancellationToken)).ToList();
+
+    // Hydrate catalog attributes (ISRC for cross-catalog matching, authoritative
+    // contentRating) in one batched pass over the distinct catalog ids.
+    var catalogIds = songs
+      .Select(s => s.CatalogId)
+      .Where(id => !string.IsNullOrEmpty(id))
+      .Select(id => id!)
+      .Distinct()
+      .ToList();
+    var catalogById = (await _appleMusic.GetCatalogSongsByIdsAsync(userId, catalogIds, cancellationToken))
+      .ToDictionary(c => c.Id, StringComparer.Ordinal);
+
     // Tracks without catalog linkage (personal uploads, region gaps) keep their library id;
     // they can't be searched, matched, or re-added cross-catalog and flow through the
     // pipeline as unmatchable rather than erroring.
-    return songs.Select(s => new MusicTrack(
-      Id: s.CatalogId ?? s.Id,
-      Name: s.Attributes.Name,
-      IsExplicit: IsExplicitRating(s.Attributes.ContentRating),
-      Artists: SplitArtists(s.Attributes.ArtistName))).ToList();
+    return songs.Select(s =>
+    {
+      var catalog = s.CatalogId is not null && catalogById.TryGetValue(s.CatalogId, out var c) ? c : null;
+      return new MusicTrack(
+        Id: s.CatalogId ?? s.Id,
+        Name: s.Attributes.Name,
+        IsExplicit: IsExplicitRating(s.Attributes.ContentRating ?? catalog?.Attributes.ContentRating),
+        Artists: SplitArtists(s.Attributes.ArtistName),
+        Isrc: catalog?.Attributes.Isrc,
+        DurationMs: s.Attributes.DurationInMillis ?? catalog?.Attributes.DurationInMillis,
+        AlbumName: s.Attributes.AlbumName ?? catalog?.Attributes.AlbumName);
+    }).ToList();
+  }
+
+  public async Task<IReadOnlyDictionary<string, MusicTrack>> GetTracksByIsrcAsync(
+    int userId,
+    IReadOnlyCollection<string> isrcs,
+    CancellationToken cancellationToken)
+  {
+    var songs = await _appleMusic.GetCatalogSongsByIsrcAsync(userId, isrcs, cancellationToken);
+    // Multiple catalog songs can share an ISRC (album vs. single edition of the same
+    // recording); the first is representative. Clean/explicit preference is applied by the
+    // matcher, not here — clean editions are distinct recordings with their own ISRC.
+    var byIsrc = new Dictionary<string, MusicTrack>(StringComparer.OrdinalIgnoreCase);
+    foreach (var song in songs)
+    {
+      var isrc = song.Attributes.Isrc;
+      if (!string.IsNullOrEmpty(isrc) && !byIsrc.ContainsKey(isrc))
+      {
+        byIsrc[isrc] = MapCatalogSong(song);
+      }
+    }
+    return byIsrc;
+  }
+
+  public async Task<IReadOnlyList<MusicTrack>> SearchTracksAsync(
+    int userId,
+    string query,
+    int limit,
+    CancellationToken cancellationToken)
+  {
+    var songs = await _appleMusic.SearchCatalogSongsAsync(userId, query, limit, cancellationToken);
+    return songs.Select(MapCatalogSong).ToList();
   }
 
   public async Task<MusicTrack?> FindCleanVersionAsync(
@@ -82,7 +132,8 @@ public class AppleMusicMusicService : IMusicService
     var clean = candidates.FirstOrDefault(c =>
       !IsExplicitRating(c.Attributes.ContentRating) &&
       NamesMatch(explicitTrack.Name, c.Attributes.Name) &&
-      HasMatchingArtist(explicitTrack.Artists, c.Attributes.ArtistName));
+      HasMatchingArtist(explicitTrack.Artists, c.Attributes.ArtistName) &&
+      DurationsCompatible(explicitTrack.DurationMs, c.Attributes.DurationInMillis));
 
     return clean is null ? null : MapCatalogSong(clean);
   }
@@ -119,7 +170,10 @@ public class AppleMusicMusicService : IMusicService
     Id: song.Id,
     Name: song.Attributes.Name,
     IsExplicit: IsExplicitRating(song.Attributes.ContentRating),
-    Artists: SplitArtists(song.Attributes.ArtistName));
+    Artists: SplitArtists(song.Attributes.ArtistName),
+    Isrc: song.Attributes.Isrc,
+    DurationMs: song.Attributes.DurationInMillis,
+    AlbumName: song.Attributes.AlbumName);
 
   private static bool IsExplicitRating(string? contentRating) =>
     string.Equals(contentRating, "explicit", StringComparison.OrdinalIgnoreCase);
@@ -148,6 +202,11 @@ public class AppleMusicMusicService : IMusicService
     }
     return normalized;
   }
+
+  // Clean edits trim profanity, not runtime; a large duration gap means a different
+  // recording (remix, live take). Unknown durations don't disqualify a candidate.
+  private static bool DurationsCompatible(int? sourceMs, int? candidateMs) =>
+    sourceMs is null || candidateMs is null || Math.Abs(sourceMs.Value - candidateMs.Value) <= 3000;
 
   private static bool HasMatchingArtist(IReadOnlyList<MusicArtist> sourceArtists, string candidateArtistName)
   {

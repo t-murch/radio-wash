@@ -292,6 +292,12 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
       if (!explicitTrack.Explicit) return Task.FromResult<SpotifyTrack?>(explicitTrack);
       return Task.FromResult(CleanVersionsBySourceId.TryGetValue(explicitTrack.Id, out var clean) ? clean : null);
     }
+
+    public Task<IReadOnlyList<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<SpotifyTrack>>(Array.Empty<SpotifyTrack>());
+
+    public Task<SpotifyTrack?> GetTrackByIsrcAsync(int userId, string isrc, CancellationToken cancellationToken = default) =>
+      Task.FromResult<SpotifyTrack?>(null);
   }
 
   private sealed record AddTracksInvocation(int UserId, string PlaylistId, string[] TrackUris);

@@ -52,7 +52,8 @@ public class AppleMusicMusicServiceTests
   }
 
   private static AppleCatalogSong CreateCatalogSong(
-    string id, string name, string? contentRating = null, string artistName = "Test Artist")
+    string id, string name, string? contentRating = null, string artistName = "Test Artist",
+    string? isrc = null, int? durationMs = 200_000)
   {
     return new AppleCatalogSong
     {
@@ -63,7 +64,8 @@ public class AppleMusicMusicServiceTests
         ArtistName = artistName,
         AlbumName = "Test Album",
         ContentRating = contentRating,
-        DurationInMillis = 200_000
+        DurationInMillis = durationMs,
+        Isrc = isrc
       }
     };
   }
@@ -116,7 +118,7 @@ public class AppleMusicMusicServiceTests
   }
 
   [Fact]
-  public async Task GetPlaylistTracksAsync_ResolvesCatalogIdsAndContentRating()
+  public async Task GetPlaylistTracksAsync_ResolvesCatalogIdsAndHydratesFromCatalog()
   {
     _appleMusic.Setup(x => x.GetPlaylistTracksAsync(UserId, "p.abc", It.IsAny<CancellationToken>()))
         .ReturnsAsync(new[]
@@ -126,20 +128,35 @@ public class AppleMusicMusicServiceTests
           CreateLibrarySong("i.3", "Unrated Song", catalogRelationshipId: "cat300"),
           CreateLibrarySong("i.4", "Personal Upload")
         });
+    // One batched hydration call over the distinct catalog ids fills ISRC and provides an
+    // authoritative contentRating where the library attribute is absent.
+    IReadOnlyCollection<string>? hydratedIds = null;
+    _appleMusic.Setup(x => x.GetCatalogSongsByIdsAsync(UserId, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+        .Callback<int, IReadOnlyCollection<string>, CancellationToken>((_, ids, _) => hydratedIds = ids)
+        .ReturnsAsync(new[]
+        {
+          CreateCatalogSong("cat100", "Explicit Song", contentRating: "explicit", isrc: "ISRC100"),
+          CreateCatalogSong("cat300", "Unrated Song", contentRating: "explicit", isrc: "ISRC300")
+        });
 
     var tracks = await _adapter.GetPlaylistTracksAsync(UserId, "p.abc", CancellationToken.None);
 
     Assert.Equal(4, tracks.Count);
+    Assert.Equal(new[] { "cat100", "cat200", "cat300" }, hydratedIds!.OrderBy(x => x));
     // playParams.catalogId wins
     Assert.Equal("cat100", tracks[0].Id);
     Assert.True(tracks[0].IsExplicit);
+    Assert.Equal("ISRC100", tracks[0].Isrc);
     Assert.Equal("cat200", tracks[1].Id);
     Assert.False(tracks[1].IsExplicit);
-    // catalog relationship is the fallback source
+    // catalog relationship is the fallback id source; library had no rating, so the
+    // catalog's explicit rating wins
     Assert.Equal("cat300", tracks[2].Id);
-    Assert.False(tracks[2].IsExplicit);
+    Assert.True(tracks[2].IsExplicit);
+    Assert.Equal("ISRC300", tracks[2].Isrc);
     // no catalog linkage → library id passes through (unmatchable downstream, never an error)
     Assert.Equal("i.4", tracks[3].Id);
+    Assert.Null(tracks[3].Isrc);
   }
 
   [Fact]
@@ -208,6 +225,64 @@ public class AppleMusicMusicServiceTests
 
     Assert.NotNull(result);
     Assert.Equal("cat5", result.Id);
+  }
+
+  [Fact]
+  public async Task FindCleanVersionAsync_RejectsCandidatesWithIncompatibleDuration()
+  {
+    // A "clean" hit that is 30s shorter is a different recording (radio edit), not a
+    // clean edition of the source.
+    var explicitTrack = new MusicTrack("cat1", "Bad Song", true,
+      new List<MusicArtist> { new("Test Artist") }, DurationMs: 230_000);
+
+    _appleMusic.Setup(x => x.SearchCatalogSongsAsync(UserId, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[]
+        {
+          CreateCatalogSong("cat7", "Bad Song", contentRating: "clean", durationMs: 200_000)
+        });
+
+    var result = await _adapter.FindCleanVersionAsync(UserId, explicitTrack, CancellationToken.None);
+
+    Assert.Null(result);
+  }
+
+  [Fact]
+  public async Task GetTracksByIsrcAsync_KeysByIsrcAndKeepsFirstPerIsrc()
+  {
+    _appleMusic.Setup(x => x.GetCatalogSongsByIsrcAsync(UserId, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[]
+        {
+          CreateCatalogSong("cat1", "Song A", isrc: "ISRC_A"),
+          CreateCatalogSong("cat2", "Song A (album edition)", isrc: "ISRC_A"),
+          CreateCatalogSong("cat3", "Song B", contentRating: "explicit", isrc: "ISRC_B"),
+          CreateCatalogSong("cat4", "No Isrc Song")
+        });
+
+    var byIsrc = await _adapter.GetTracksByIsrcAsync(UserId, new[] { "ISRC_A", "ISRC_B", "ISRC_MISSING" }, CancellationToken.None);
+
+    Assert.Equal(2, byIsrc.Count);
+    Assert.Equal("cat1", byIsrc["ISRC_A"].Id);
+    Assert.Equal("cat3", byIsrc["ISRC_B"].Id);
+    Assert.True(byIsrc["ISRC_B"].IsExplicit);
+    Assert.False(byIsrc.ContainsKey("ISRC_MISSING"));
+  }
+
+  [Fact]
+  public async Task SearchTracksAsync_MapsCatalogSongs()
+  {
+    _appleMusic.Setup(x => x.SearchCatalogSongsAsync(UserId, "some query", 5, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[]
+        {
+          CreateCatalogSong("cat9", "Found Song", contentRating: "clean", isrc: "ISRC9")
+        });
+
+    var results = await _adapter.SearchTracksAsync(UserId, "some query", 5, CancellationToken.None);
+
+    var track = Assert.Single(results);
+    Assert.Equal("cat9", track.Id);
+    Assert.Equal("ISRC9", track.Isrc);
+    Assert.Equal(200_000, track.DurationMs);
+    Assert.Equal("Test Album", track.AlbumName);
   }
 
   [Fact]
