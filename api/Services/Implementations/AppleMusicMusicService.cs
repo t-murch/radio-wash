@@ -131,9 +131,9 @@ public class AppleMusicMusicService : IMusicService
 
     var clean = candidates.FirstOrDefault(c =>
       !IsExplicitRating(c.Attributes.ContentRating) &&
-      NamesMatch(explicitTrack.Name, c.Attributes.Name) &&
-      HasMatchingArtist(explicitTrack.Artists, c.Attributes.ArtistName) &&
-      DurationsCompatible(explicitTrack.DurationMs, c.Attributes.DurationInMillis));
+      TrackMatching.NamesMatch(explicitTrack.Name, c.Attributes.Name) &&
+      TrackMatching.HasArtistOverlap(explicitTrack.Artists, c.Attributes.ArtistName) &&
+      TrackMatching.DurationsCompatible(explicitTrack.DurationMs, c.Attributes.DurationInMillis));
 
     return clean is null ? null : MapCatalogSong(clean);
   }
@@ -182,40 +182,6 @@ public class AppleMusicMusicService : IMusicService
   // MusicArtist so name-overlap checks work against the full string.
   private static IReadOnlyList<MusicArtist> SplitArtists(string artistName) =>
     new List<MusicArtist> { new(artistName) };
-
-  private static bool NamesMatch(string sourceName, string candidateName)
-  {
-    return string.Equals(
-      NormalizeName(sourceName), NormalizeName(candidateName), StringComparison.OrdinalIgnoreCase);
-  }
-
-  // Clean editions are frequently listed as "Song (Clean)" / "Song [Clean]".
-  private static string NormalizeName(string name)
-  {
-    var normalized = name.Trim();
-    foreach (var suffix in new[] { "(clean)", "[clean]" })
-    {
-      if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-      {
-        normalized = normalized[..^suffix.Length].TrimEnd();
-      }
-    }
-    return normalized;
-  }
-
-  // Clean edits trim profanity, not runtime; a large duration gap means a different
-  // recording (remix, live take). Unknown durations don't disqualify a candidate.
-  private static bool DurationsCompatible(int? sourceMs, int? candidateMs) =>
-    sourceMs is null || candidateMs is null || Math.Abs(sourceMs.Value - candidateMs.Value) <= 3000;
-
-  private static bool HasMatchingArtist(IReadOnlyList<MusicArtist> sourceArtists, string candidateArtistName)
-  {
-    // The candidate side is a single joined string; match when any source artist appears in
-    // it (or vice versa for single-artist sources).
-    return sourceArtists.Any(a =>
-      candidateArtistName.Contains(a.Name, StringComparison.OrdinalIgnoreCase) ||
-      a.Name.Contains(candidateArtistName, StringComparison.OrdinalIgnoreCase));
-  }
 
   private static string? SizedArtworkUrl(string? templateUrl) =>
     templateUrl?

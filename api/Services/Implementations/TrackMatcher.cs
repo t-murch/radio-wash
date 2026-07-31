@@ -5,8 +5,6 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class TrackMatcher : ITrackMatcher
 {
-  // Clean edits trim profanity, not runtime; beyond this gap it's a different recording.
-  private const int DurationToleranceMs = 3000;
   private const int SearchLimit = 10;
 
   private readonly ILogger<TrackMatcher> _logger;
@@ -77,35 +75,7 @@ public class TrackMatcher : ITrackMatcher
   }
 
   private static bool IsPlausibleMatch(MusicTrack source, MusicTrack candidate) =>
-    NamesMatch(source.Name, candidate.Name) &&
-    HasArtistOverlap(source.Artists, candidate.Artists) &&
-    DurationsCompatible(source.DurationMs, candidate.DurationMs);
-
-  private static bool NamesMatch(string a, string b) =>
-    string.Equals(NormalizeName(a), NormalizeName(b), StringComparison.OrdinalIgnoreCase);
-
-  // Clean editions are frequently listed as "Song (Clean)" / "Song [Clean]".
-  private static string NormalizeName(string name)
-  {
-    var normalized = name.Trim();
-    foreach (var suffix in new[] { "(clean)", "[clean]" })
-    {
-      if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-      {
-        normalized = normalized[..^suffix.Length].TrimEnd();
-      }
-    }
-    return normalized;
-  }
-
-  // Providers shape artist lists differently (Spotify: one entry per artist; Apple: a
-  // single joined string), so overlap checks containment in both directions.
-  private static bool HasArtistOverlap(IReadOnlyList<MusicArtist> source, IReadOnlyList<MusicArtist> candidate) =>
-    source.Any(s => candidate.Any(c =>
-      c.Name.Contains(s.Name, StringComparison.OrdinalIgnoreCase) ||
-      s.Name.Contains(c.Name, StringComparison.OrdinalIgnoreCase)));
-
-  private static bool DurationsCompatible(int? sourceMs, int? candidateMs) =>
-    sourceMs is null || candidateMs is null ||
-    Math.Abs(sourceMs.Value - candidateMs.Value) <= DurationToleranceMs;
+    TrackMatching.NamesMatch(source.Name, candidate.Name) &&
+    TrackMatching.HasArtistOverlap(source.Artists, candidate.Artists) &&
+    TrackMatching.DurationsCompatible(source.DurationMs, candidate.DurationMs);
 }

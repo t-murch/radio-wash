@@ -17,8 +17,10 @@ public class TrackMapping
   public string? Isrc { get; set; }
 
   /// <summary>
-  /// How the target track was found ("clean-search" for clean jobs; "isrc", "isrc-clean",
-  /// "search", "search-clean", or "none" for copy jobs). Diagnostics for the job-details UI.
+  /// How the target track was found on a copy job: "isrc", "isrc-clean", "search",
+  /// "search-clean", or "none" (see <c>MatchMethods</c>). Null for same-service clean jobs,
+  /// which have only one match path and so nothing to disambiguate. Diagnostics for the
+  /// job-details UI, which renders this only for copy jobs.
   /// </summary>
   public string? MatchMethod { get; set; }
 
