@@ -69,6 +69,10 @@ public class AppleMusicService : IAppleMusicService
     CancellationToken cancellationToken,
     int maxRetries = 3)
   {
+    // Tracked separately from `attempt` so a preceding 429 can't consume the one developer-
+    // token regeneration: the two failures have unrelated causes and unrelated remedies.
+    var developerTokenRegenerated = false;
+
     for (int attempt = 1; attempt <= maxRetries; attempt++)
     {
       try
@@ -98,10 +102,11 @@ public class AppleMusicService : IAppleMusicService
 
         // 401 means Apple rejected the developer token (the app credential, not the user's).
         // Regenerate it once and retry; a second 401 is a configuration problem.
-        if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 1)
+        if (response.StatusCode == HttpStatusCode.Unauthorized && !developerTokenRegenerated)
         {
           _logger.LogWarning("Apple Music API returned 401; regenerating developer token and retrying");
           response.Dispose();
+          developerTokenRegenerated = true;
 
           var freshToken = await _developerTokenProvider.GetDeveloperTokenAsync(forceRefresh: true, cancellationToken);
           request = CloneRequestForRetry(request);

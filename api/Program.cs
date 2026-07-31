@@ -71,7 +71,13 @@ builder.Services.AddKeyedScoped<IMusicService>(
     SpotifyMusicService.Provider,
     (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
 builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMusicService>());
-builder.Services.AddScoped<IAppleMusicService, AppleMusicService>();
+// Typed client so Apple calls get an explicit timeout instead of HttpClient's 100s default.
+// Copy jobs issue hundreds of these per playlist; a hung request must not stall a worker for
+// over a minute when the service's own retry loop can move on.
+builder.Services.AddHttpClient<IAppleMusicService, AppleMusicService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddScoped<AppleMusicMusicService>();
 builder.Services.AddKeyedScoped<IMusicService>(
     AppleMusicMusicService.Provider,

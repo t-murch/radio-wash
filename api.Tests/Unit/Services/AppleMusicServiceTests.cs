@@ -289,6 +289,44 @@ public class AppleMusicServiceTests
   }
 
   [Fact]
+  public async Task SendWithRetry_On429ThenUnauthorized_StillRegeneratesDeveloperToken()
+  {
+    // A 429 consumes a retry attempt but says nothing about the developer token. The
+    // regeneration allowance is tracked independently, so a 401 arriving after a throttle
+    // still gets its one retry with a fresh token.
+    _mockDeveloperTokenProvider
+        .SetupSequence(x => x.GetDeveloperTokenAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync("stale_dev_token")
+        .ReturnsAsync("fresh_dev_token");
+
+    var authHeaders = new List<string?>();
+    var responses = new Queue<HttpResponseMessage>(new[]
+    {
+      new HttpResponseMessage(HttpStatusCode.TooManyRequests),
+      new HttpResponseMessage(HttpStatusCode.Unauthorized),
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = new StringContent(PlaylistsJson(null, CreatePlaylist("p.1", "Mix")), Encoding.UTF8, "application/json")
+      }
+    });
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .Callback<HttpRequestMessage, CancellationToken>((req, _) => authHeaders.Add(req.Headers.Authorization?.Parameter))
+        .ReturnsAsync(() => responses.Dequeue());
+
+    var service = CreateService((_, _) => Task.CompletedTask);
+    var result = await service.GetUserPlaylistsAsync(UserId);
+
+    Assert.Single(result);
+    Assert.Equal(new[] { "stale_dev_token", "stale_dev_token", "fresh_dev_token" }, authHeaders);
+    _mockDeveloperTokenProvider.Verify(
+        x => x.GetDeveloperTokenAsync(true, It.IsAny<CancellationToken>()), Times.Once);
+  }
+
+  [Fact]
   public async Task SendWithRetry_On403_ThrowsUnauthorizedAccess()
   {
     // 403 = Music User Token invalid/revoked. There is no refresh flow — the user must
