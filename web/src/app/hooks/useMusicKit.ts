@@ -45,27 +45,43 @@ const loadMusicKitScript = (): Promise<MusicKitGlobal> =>
     // The script dispatches `musickitloaded` on the document once initialized.
     document.addEventListener('musickitloaded', onLoaded, { once: true });
 
-    if (!document.getElementById(MUSICKIT_SCRIPT_ID)) {
-      const script = document.createElement('script');
-      script.id = MUSICKIT_SCRIPT_ID;
-      script.src = MUSICKIT_SCRIPT_URL;
-      script.async = true;
-      script.onerror = () => reject(new Error('Failed to load MusicKit script'));
-      document.head.appendChild(script);
+    const onError = () => {
+      document.removeEventListener('musickitloaded', onLoaded);
+      reject(new Error('Failed to load MusicKit script'));
+    };
+
+    const existing = document.getElementById(MUSICKIT_SCRIPT_ID);
+    if (existing) {
+      // A previous mount already injected the tag. If that load failed, `musickitloaded`
+      // will never fire, so attach to the existing element rather than waiting forever.
+      existing.addEventListener('error', onError, { once: true });
+      return;
     }
+
+    const script = document.createElement('script');
+    script.id = MUSICKIT_SCRIPT_ID;
+    script.src = MUSICKIT_SCRIPT_URL;
+    script.async = true;
+    script.addEventListener('error', onError, { once: true });
+    document.head.appendChild(script);
   });
 
 /**
  * Loads MusicKit JS, configures it with the developer token from the API, and exposes
  * `authorize` to mint a Music User Token. `authorize` opens Apple's consent popup and must
  * be invoked from a user gesture (click handler).
+ *
+ * Pass `enabled: false` for non-Apple callers to skip the CDN script and the developer-token
+ * request entirely; the hook is still called unconditionally, satisfying the Rules of Hooks.
  */
-export function useMusicKit() {
+export function useMusicKit({ enabled = true }: { enabled?: boolean } = {}) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const instanceRef = useRef<MusicKitInstance | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let cancelled = false;
 
     const setup = async () => {
@@ -96,7 +112,7 @@ export function useMusicKit() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   const authorize = useCallback(async (): Promise<string> => {
     if (!instanceRef.current) {

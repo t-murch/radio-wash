@@ -47,8 +47,10 @@ export function ProviderConnectionStatus({
 }: ProviderConnectionStatusProps) {
   const router = useRouter();
   const label = PROVIDER_LABELS[provider];
-  const musicKit = useMusicKit();
   const isApple = provider === 'apple_music';
+  // Only the Apple card needs MusicKit; the Spotify card would otherwise pull Apple's CDN
+  // script and a developer token it never uses.
+  const musicKit = useMusicKit({ enabled: isApple });
 
   const [status, setStatus] = useState<
     Partial<ConnectionStatus> & { loading: boolean; error?: string }

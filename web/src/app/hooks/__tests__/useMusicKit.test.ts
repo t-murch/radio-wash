@@ -80,6 +80,20 @@ describe('useMusicKit', () => {
     consoleSpy.mockRestore();
   });
 
+  it('does no work when disabled (non-Apple providers)', async () => {
+    delete window.MusicKit;
+
+    const { result } = renderHook(() => useMusicKit({ enabled: false }));
+
+    // Nothing to wait on — assert the absence of the setup side effects.
+    await waitFor(() =>
+      expect(getMusicKitDeveloperToken).not.toHaveBeenCalled()
+    );
+    expect(document.getElementById('musickit-js')).toBeNull();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
   it('injects the MusicKit script when the global is absent', async () => {
     delete window.MusicKit;
 
