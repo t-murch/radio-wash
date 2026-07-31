@@ -15,6 +15,13 @@ namespace RadioWash.Api.Services.Implementations;
 /// </summary>
 public class PlaylistCopier : IPlaylistCopier
 {
+  // Upper bound on ISRCs sent to the batched prefetch. Apple resolves these 25-per-request,
+  // but Spotify has no batch ISRC endpoint and spends one search per ISRC, so an uncapped
+  // prefetch on a large playlist front-loads hundreds of sequential calls before the first
+  // track is matched. Past the cap, tracks simply fall through to the search fallback in
+  // TrackMatcher — a lower-confidence match, not a dropped track.
+  private const int MaxPrefetchIsrcs = 200;
+
   private readonly IMusicServiceFactory _musicServiceFactory;
   private readonly ITrackMatcher _trackMatcher;
   private readonly IProgressTracker _progressTracker;
@@ -58,12 +65,22 @@ public class PlaylistCopier : IPlaylistCopier
 
     // One batched ISRC resolution up front; per-track matching then hits the index instead
     // of the network for every ISRC-carrying track.
-    var isrcs = tracks
+    var distinctIsrcs = tracks
       .Select(t => t.Isrc)
       .Where(isrc => !string.IsNullOrEmpty(isrc))
       .Select(isrc => isrc!)
       .Distinct(StringComparer.OrdinalIgnoreCase)
       .ToList();
+
+    var isrcs = distinctIsrcs.Take(MaxPrefetchIsrcs).ToList();
+    if (distinctIsrcs.Count > isrcs.Count)
+    {
+      _logger.LogInformation(
+        "Job {JobId}: {Total} distinct ISRCs exceeds the {Cap} prefetch cap; the remaining " +
+        "{Overflow} tracks resolve through the search fallback instead of ISRC lookup",
+        job.Id, distinctIsrcs.Count, MaxPrefetchIsrcs, distinctIsrcs.Count - isrcs.Count);
+    }
+
     var isrcIndex = await _trackMatcher.PrefetchByIsrcAsync(user.Id, target, isrcs, shutdownToken);
 
     var processedResult = await ProcessTracks(job, user, target, tracks, isrcIndex, hangfireCancellationToken, shutdownToken);

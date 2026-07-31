@@ -84,6 +84,45 @@ public class PlaylistCopierTests
     new(id, name, false, new List<MusicArtist> { new("Artist") });
 
   [Fact]
+  public async Task CopyPlaylistAsync_CapsIsrcPrefetchButStillProcessesEveryTrack()
+  {
+    // Spotify spends one search per ISRC, so an uncapped prefetch front-loads hundreds of
+    // sequential calls. Tracks past the cap must still be matched — they just fall through
+    // to the matcher's search fallback instead of the ISRC index.
+    const int cap = 200;
+    var job = MakeCopyJob();
+    var user = new User { Id = 7, SupabaseId = "sb" };
+    var tracks = Enumerable.Range(0, cap + 25)
+      .Select(i => SourceTrack($"s{i}", $"Track {i}", isrc: $"ISRC{i:D4}"))
+      .ToArray();
+
+    _source.Setup(x => x.GetPlaylistTracksAsync(user.Id, "src-pl", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(tracks);
+
+    IReadOnlyCollection<string>? prefetchedIsrcs = null;
+    _matcher
+      .Setup(x => x.PrefetchByIsrcAsync(user.Id, _target.Object, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+      .Callback<int, IMusicService, IReadOnlyCollection<string>, CancellationToken>((_, _, isrcs, _) => prefetchedIsrcs = isrcs)
+      .ReturnsAsync(new Dictionary<string, MusicTrack>());
+
+    _matcher
+      .Setup(x => x.MatchAsync(user.Id, _target.Object, It.IsAny<MusicTrack>(),
+        It.IsAny<IReadOnlyDictionary<string, MusicTrack>>(), true, It.IsAny<CancellationToken>()))
+      .ReturnsAsync((int _, IMusicService _, MusicTrack t, IReadOnlyDictionary<string, MusicTrack> _, bool _, CancellationToken _) =>
+        new TrackMatch(t, TargetTrack($"t-{t.Id}", t.Name), MatchMethods.Search));
+
+    _target.Setup(x => x.CreatePlaylistAsync(user.Id, It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PlaylistSummary("p.new", "Road Trip", null, null, 0, "", null));
+
+    var result = await _copier.CopyPlaylistAsync(job, user);
+
+    Assert.Equal(cap, prefetchedIsrcs!.Count);
+    // Every track is still processed and matched, cap notwithstanding.
+    Assert.Equal(tracks.Length, result.ProcessedTracks);
+    Assert.Equal(tracks.Length, result.MatchedTracks);
+  }
+
+  [Fact]
   public async Task CopyPlaylistAsync_ReadsFromSourceMatchesAndWritesToTarget()
   {
     var job = MakeCopyJob();

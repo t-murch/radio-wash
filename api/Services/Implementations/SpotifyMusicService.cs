@@ -61,7 +61,7 @@ public class SpotifyMusicService : IMusicService
     CancellationToken cancellationToken)
   {
     // Spotify has no batch ISRC endpoint — one search per ISRC. The client's 429 handling
-    // paces large lookups; the copier caps per-job volume.
+    // paces large lookups; PlaylistCopier.MaxPrefetchIsrcs bounds how many arrive here.
     var results = new Dictionary<string, MusicTrack>(StringComparer.OrdinalIgnoreCase);
     foreach (var isrc in isrcs)
     {
