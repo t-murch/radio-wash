@@ -44,6 +44,13 @@ public class CleanPlaylistController : AuthenticatedControllerBase
     {
       return BadRequest(new { error = ex.Message });
     }
+    // The source or target provider has no usable connection — the expected failure when a
+    // user starts a cross-service copy before connecting the other account. Surfaced as 401
+    // so the frontend can prompt a connect instead of showing a generic error.
+    catch (UnauthorizedAccessException ex)
+    {
+      return Unauthorized(new { error = ex.Message });
+    }
     catch (Exception ex)
     {
       Logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
