@@ -894,6 +894,31 @@ public class SpotifyServiceTests
   }
 
   [Fact]
+  public async Task GetTrackByIsrcAsync_WithOnlyFuzzyResults_ReturnsNull()
+  {
+    var userId = 1;
+    _mockMusicTokenService.Setup(x => x.GetValidAccessTokenAsync(userId, "spotify"))
+        .ReturnsAsync("token");
+
+    // Spotify pads isrc: searches with tracks that don't carry the requested ISRC. Callers
+    // label this result as a high-confidence ISRC match, so an unverified track must not be
+    // returned — the caller's validating search fallback handles these instead.
+    var fuzzy = CreateTestSpotifyTrack("fuzzy", "Song", false);
+    fuzzy.ExternalIds = new SpotifyExternalIds { Isrc = "OTHER" };
+    var missingIds = CreateTestSpotifyTrack("no-ids", "Song", false);
+
+    var searchResponse = new SpotifySearchResponse
+    {
+      Tracks = new SpotifyTracks { Items = new[] { fuzzy, missingIds } }
+    };
+    SetupHttpResponse(HttpStatusCode.OK, JsonSerializer.Serialize(searchResponse));
+
+    var result = await _spotifyService.GetTrackByIsrcAsync(userId, "USUM71234567");
+
+    Assert.Null(result);
+  }
+
+  [Fact]
   public async Task GetTrackByIsrcAsync_WithNoResults_ReturnsNull()
   {
     var userId = 1;

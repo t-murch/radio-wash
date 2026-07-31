@@ -310,10 +310,12 @@ public class SpotifyService : ISpotifyService
   {
     // Spotify has no batch ISRC endpoint; the isrc: search filter is the lookup path.
     var results = await SearchTracksAsync(userId, $"isrc:{isrc}", 3, cancellationToken);
-    // Prefer the result whose external id actually echoes the requested ISRC (search
-    // occasionally pads with fuzzy matches).
-    return results.FirstOrDefault(t => string.Equals(t.ExternalIds?.Isrc, isrc, StringComparison.OrdinalIgnoreCase))
-        ?? results.FirstOrDefault();
+    // Only accept a result whose external id actually echoes the requested ISRC. Spotify's
+    // search pads with fuzzy matches, and callers label this result as a high-confidence
+    // ISRC match — returning an unverified track would persist the wrong song under that
+    // label. No exact echo means no ISRC hit; the caller's search fallback (which validates
+    // name, artist and duration) handles it from there.
+    return results.FirstOrDefault(t => string.Equals(t.ExternalIds?.Isrc, isrc, StringComparison.OrdinalIgnoreCase));
   }
 
   /// <summary>
