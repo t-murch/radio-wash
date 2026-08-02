@@ -56,7 +56,15 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
-    ], // Spotify image domains
+      {
+        // Apple Music artwork. Apple serves it from a rotating pool of numbered hosts
+        // (is1-ssl, is2-ssl, is5-ssl, …), so match the subdomain rather than pinning one.
+        protocol: 'https',
+        hostname: '*.mzstatic.com',
+        port: '',
+        pathname: '/**',
+      },
+    ], // Spotify and Apple Music image domains
   },
   // SEO: Redirect www to apex domain
   async redirects() {
