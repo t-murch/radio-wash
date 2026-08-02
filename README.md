@@ -54,48 +54,37 @@ pnpm install
 
 ### 4. Configure the Backend
 
-1. Update the Spotify credentials in `api/appsettings.json`:
+Local configuration lives in a `.env` file at the repo root. Do not edit
+`api/appsettings.json` — it holds deployed values and is committed.
 
-```json
-"Spotify": {
-  "ClientId": "YOUR_SPOTIFY_CLIENT_ID",
-  "ClientSecret": "YOUR_SPOTIFY_CLIENT_SECRET",
-  "RedirectUri": "https://127.0.0.1:3000/auth",
-  "Scopes": [
-    "user-read-private",
-    "user-read-email",
-    "playlist-read-private",
-    "playlist-read-collaborative",
-    "playlist-modify-public",
-    "playlist-modify-private"
-  ]
-}
+```bash
+cp .env.example .env
 ```
 
-2. The Spotify API does not allow for `localhost` as a redirect URI. Update the allowed origins in `api/appsettings.json`:
+Then fill in `.env` from `supabase status` (run `supabase start` first). At minimum
+the API needs `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET`. Every variable is documented inline
+in `.env.example`.
 
-```json
-"AllowedOrigins": "http://localhost:3000;https://localhost:3000;http://127.0.0.1:3000;https://127.0.0.1:3000"
+> **Why `.env` and not `appsettings.Development.json`?**
+> `api/.dockerignore` excludes `appsettings.*.json` so developer secrets are never baked
+> into an image. A containerised API therefore cannot read
+> `appsettings.Development.json` — inside the container the only config file is
+> `appsettings.json`, which points at the deployed Supabase project. `docker-compose.yml`
+> injects the values from `.env` instead. The API refuses to start in Development when
+> they are missing, so a misconfiguration fails loudly at boot rather than as
+> unexplained 401s and CORS errors later.
+
+Also register the Supabase callback as a Redirect URI on your Spotify app
+(<https://developer.spotify.com/dashboard>). Spotify rejects `localhost`, so use the
+loopback IP and match `SUPABASE_API_PORT`:
+
+```
+http://127.0.0.1:54321/auth/v1/callback
 ```
 
-3. Update the JWT secret in `api/appsettings.json`:
-
-```json
-"Jwt": {
-  "Secret": "YOUR_SUPER_SECRET_JWT_KEY_THAT_SHOULD_BE_AT_LEAST_32_CHARACTERS_LONG",
-  "Issuer": "RadioWash",
-  "Audience": "RadioWashFrontend",
-  "ExpirationInMinutes": 1440
-}
-```
-
-4. Set up your database connection string in `api/appsettings.json`:
-
-```json
-"ConnectionStrings": {
-  "DefaultConnection": "Data Source=radiowash.db"
-}
-```
+Open the app at `https://127.0.0.1:3000` (not `localhost`) — CORS admits exactly one
+origin, and the two hostnames are distinct origins to the browser.
 
 ### 5. Run Database Migrations
 
@@ -236,15 +225,18 @@ place and copying playlists in either direction between Spotify and Apple Music
 
 ### API configuration
 
-The AppleMusic section follows the same secrets pattern as Spotify (no
-`appsettings.json` in the repo — user-secrets locally, env vars in deployment):
+The AppleMusic section follows the same pattern as the rest of local config — set it in
+`.env` at the repo root (see [Configure the Backend](#4-configure-the-backend)):
 
 ```bash
-cd api
-dotnet user-secrets set "AppleMusic:TeamId" "<TEAM_ID>"
-dotnet user-secrets set "AppleMusic:KeyId" "<KEY_ID>"
-dotnet user-secrets set "AppleMusic:PrivateKeyPath" "/path/to/AuthKey_XXXXXXXXXX.p8"
+APPLE_MUSIC_TEAM_ID=<TEAM_ID>
+APPLE_MUSIC_KEY_ID=<KEY_ID>
+APPLE_MUSIC_PRIVATE_KEY_B64=$(base64 -w0 /path/to/AuthKey_XXXXXXXXXX.p8)
 ```
+
+Keep the `.p8` itself outside the repository. Base64 is used rather than a file path
+because the key has to cross into the API container, and it is the same form the
+deployed environments take.
 
 In deployed environments set `AppleMusic__TeamId`, `AppleMusic__KeyId`, and
 `AppleMusic__PrivateKeyBase64` (base64 the whole `.p8`: `base64 -w0 AuthKey_XXX.p8`;
