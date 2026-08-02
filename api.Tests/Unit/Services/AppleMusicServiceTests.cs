@@ -421,6 +421,48 @@ public class AppleMusicServiceTests
   }
 
   [Fact]
+  public async Task CreateLibraryPlaylistAsync_WithGzipResponseAndNoDecompression_FailsAtTheJsonParser()
+  {
+    // Regression guard for the failure mode, not the fix. Apple compresses some responses
+    // (POST /me/library/playlists among them) even when the request advertises no encoding.
+    // HttpClient only decompresses when its primary handler sets AutomaticDecompression —
+    // Program.cs configures that for this typed client. Without it the raw gzip bytes reach
+    // the parser and throw on 0x1F, the gzip magic byte, *after* the playlist has already
+    // been created on Apple's side, so the copy job fails having done the work.
+    //
+    // This pins the diagnosis so the symptom stays recognisable; the registration itself is
+    // asserted in AppleMusicHttpClientConfigurationTests.
+    var gzipped = GzipCompress(PlaylistsJson(null, CreatePlaylist("p.gz", "Clean Mix")));
+
+    var response = new HttpResponseMessage(HttpStatusCode.Created)
+    {
+      Content = new ByteArrayContent(gzipped)
+    };
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(response);
+
+    var ex = await Assert.ThrowsAsync<JsonException>(
+        () => _service.CreateLibraryPlaylistAsync(UserId, "Clean Mix", "desc"));
+
+    Assert.Contains("0x1F", ex.Message);
+  }
+
+  private static byte[] GzipCompress(string value)
+  {
+    using var output = new MemoryStream();
+    using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+    {
+      var bytes = Encoding.UTF8.GetBytes(value);
+      gzip.Write(bytes, 0, bytes.Length);
+    }
+    return output.ToArray();
+  }
+
+  [Fact]
   public async Task AddTracksToLibraryPlaylistAsync_ChunksInto25PerRequest()
   {
     var bodies = new List<string>();

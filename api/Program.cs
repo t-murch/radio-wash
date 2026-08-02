@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -86,6 +87,14 @@ builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMus
 builder.Services.AddHttpClient<IAppleMusicService, AppleMusicService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
+})
+// Apple compresses some responses (POST /me/library/playlists among them) whether or not the
+// request advertises an encoding, and HttpClient does not decompress unless asked. Reading a
+// gzip body as text yields "'0x1F' is an invalid start of a value" from the JSON parser —
+// the gzip magic byte — which surfaces as a failed copy job well after the write succeeded.
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
 });
 builder.Services.AddScoped<AppleMusicMusicService>();
 builder.Services.AddKeyedScoped<IMusicService>(
