@@ -86,15 +86,30 @@ export function ProviderConnectionStatus({
 
     setConnecting(true);
     try {
-      const musicUserToken = await musicKit.authorize();
+      // Two distinct failures live here: Apple declining to issue a Music User Token, and our
+      // own API declining to store it. Reporting both as "subscription required" sends people
+      // to renew a subscription they already have, so keep them apart.
+      let musicUserToken: string;
+      try {
+        musicUserToken = await musicKit.authorize();
+      } catch (error) {
+        console.error('Apple Music authorization failed:', error);
+        setStatus((prev) => ({
+          ...prev,
+          error:
+            'Apple Music authorization failed. An active Apple Music subscription is required.',
+        }));
+        return;
+      }
+
       await storeProviderTokens('apple_music', musicUserToken);
       await checkStatus();
     } catch (error) {
-      console.error('Apple Music authorization failed:', error);
+      console.error('Failed to store Apple Music token:', error);
       setStatus((prev) => ({
         ...prev,
         error:
-          'Apple Music authorization failed. An active Apple Music subscription is required.',
+          'Apple Music approved the connection, but saving it failed. Please try again.',
       }));
     } finally {
       setConnecting(false);

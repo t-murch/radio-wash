@@ -127,6 +127,35 @@ describe('ProviderConnectionStatus', () => {
     consoleSpy.mockRestore();
   });
 
+  it('distinguishes a failed token store from a failed Apple authorization', async () => {
+    // Apple granted the token; our own API rejected it. Blaming the subscription here would
+    // send the user to renew one they already have.
+    (getConnectionStatus as Mock).mockResolvedValue(
+      connectedStatus({ provider: 'apple_music', connected: false })
+    );
+    (storeProviderTokens as Mock).mockRejectedValue(
+      new Error('API Error: 400 Bad Request')
+    );
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(<ProviderConnectionStatus provider="apple_music" />);
+    await waitFor(() =>
+      expect(screen.getByText('Apple Music Not Connected')).toBeInTheDocument()
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: /connect apple music/i })
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/subscription/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/saving it failed/i);
+    // Authorization did happen — only the store failed.
+    expect(mockAuthorize).toHaveBeenCalledOnce();
+    consoleSpy.mockRestore();
+  });
+
   it('does NOT prompt Apple reconnect just because canRefresh is false', async () => {
     // Apple has no refresh flow — canRefresh is always false. The Spotify heuristic
     // (connected && !canRefresh → Reconnect) must not carry over.

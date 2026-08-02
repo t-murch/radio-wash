@@ -316,6 +316,49 @@ public class AuthControllerTests
   }
 
   [Fact]
+  public async Task StoreTokens_WithAppleMusic_PersistsWithoutARefreshToken()
+  {
+    // An Apple Music User Token has no refresh counterpart, so the connect flow posts
+    // refreshToken as null. Storing it must succeed rather than being rejected.
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    var request = new SpotifyTokenRequest { AccessToken = "music-user-token", RefreshToken = null };
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService
+      .Setup(x => x.StoreTokensAsync(user.Id, "apple_music", "music-user-token", null, It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()))
+      .ReturnsAsync(CreateTestUserMusicToken());
+
+    var result = await _authController.StoreTokens("apple_music", request);
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(
+      x => x.StoreTokensAsync(user.Id, "apple_music", "music-user-token", null, It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()),
+      Times.Once);
+  }
+
+  [Fact]
+  public void SpotifyTokenRequest_RefreshTokenIsNullableSoAppleMusicPayloadsBind()
+  {
+    // Regression: RefreshToken was a non-nullable string. MVC gives non-nullable reference
+    // types an implicit [Required] (ApiBehaviorOptions.SuppressImplicitRequiredAttributeFor-
+    // NonNullableReferenceTypes defaults to false), so the Apple connect payload — which sends
+    // refreshToken: null because a Music User Token has no refresh counterpart — was rejected
+    // with a 400 before ever reaching the action.
+    //
+    // Every other test here invokes the action directly and so cannot observe a binding-layer
+    // rejection. Assert the nullability that drives it.
+    var refreshToken = typeof(SpotifyTokenRequest).GetProperty(nameof(SpotifyTokenRequest.RefreshToken))!;
+
+    var nullabilityInfo = new System.Reflection.NullabilityInfoContext().Create(refreshToken);
+
+    Assert.Equal(
+      System.Reflection.NullabilityState.Nullable,
+      nullabilityInfo.WriteState);
+  }
+
+  [Fact]
   public async Task StoreTokens_WithMixedCaseProvider_NormalizesProviderBeforePersisting()
   {
     var userId = Guid.NewGuid();
