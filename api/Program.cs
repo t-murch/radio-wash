@@ -25,6 +25,15 @@ builder.Services.Configure<AppleMusicSettings>(builder.Configuration.GetSection(
 builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
+// `.dockerignore` keeps appsettings.*.json out of the image, so a containerised Development run
+// sees only appsettings.json — which holds production values. Left unchecked that surfaces as
+// blanket 401s (tokens validated against the wrong issuer) and CORS-blocked requests, with
+// nothing in the logs naming configuration as the cause. Fail fast and say exactly what to set.
+if (builder.Environment.IsDevelopment())
+{
+    LocalDevelopmentConfigurationGuard.Validate(builder.Configuration, frontendUrl);
+}
+
 // Services
 builder.Services.AddHttpClient();
 
