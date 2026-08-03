@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { ClientDate } from '@/components/ui/ClientDate';
 import {
   ConnectionStatus,
@@ -10,6 +9,7 @@ import {
   storeProviderTokens,
 } from '../services/api';
 import { useMusicKit } from '../hooks/useMusicKit';
+import { signInWithSpotify } from '../auth/actions';
 
 // Prompt Apple reconnection ahead of the assumed Music User Token expiry. canRefresh is
 // meaningless for Apple (no refresh flow exists), so expiry proximity drives the prompt.
@@ -45,7 +45,6 @@ export function ProviderConnectionStatus({
   provider,
   onConnectionChange,
 }: ProviderConnectionStatusProps) {
-  const router = useRouter();
   const label = PROVIDER_LABELS[provider];
   const isApple = provider === 'apple_music';
   // Only the Apple card needs MusicKit; the Spotify card would otherwise pull Apple's CDN
@@ -79,8 +78,10 @@ export function ProviderConnectionStatus({
   const handleConnect = async () => {
     if (!isApple) {
       // Spotify tokens are (re)issued through Supabase OAuth; the callback syncs them to
-      // the API. (Replaces a dead backend /auth/spotify/login link.)
-      router.push('/auth');
+      // the API. Invoke the server action directly — routing to /auth instead would bounce
+      // a signed-in user straight back here (the login page redirects authenticated
+      // sessions), silently doing nothing.
+      await signInWithSpotify();
       return;
     }
 

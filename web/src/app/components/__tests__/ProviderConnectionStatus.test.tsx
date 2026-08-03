@@ -7,15 +7,16 @@ import {
   storeProviderTokens,
 } from '../../services/api';
 import { useMusicKit } from '../../hooks/useMusicKit';
-
-const mockPush = vi.fn();
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
-}));
+import { signInWithSpotify } from '../../auth/actions';
 
 vi.mock('../../services/api', () => ({
   getConnectionStatus: vi.fn(),
   storeProviderTokens: vi.fn(),
+}));
+
+// Server action — invoked directly so a signed-in user isn't bounced off /auth.
+vi.mock('../../auth/actions', () => ({
+  signInWithSpotify: vi.fn(),
 }));
 
 vi.mock('../../hooks/useMusicKit', () => ({
@@ -59,7 +60,9 @@ describe('ProviderConnectionStatus', () => {
     expect(screen.queryByText('Reconnect')).not.toBeInTheDocument();
   });
 
-  it('sends the user to /auth to connect Spotify (no dead backend link)', async () => {
+  it('starts Spotify OAuth via the server action, not a route to /auth', async () => {
+    // /auth redirects any signed-in session straight back to the dashboard, so navigating
+    // there makes connect/reconnect a silent no-op. The action goes to Spotify directly.
     (getConnectionStatus as Mock).mockResolvedValue(
       connectedStatus({ connected: false })
     );
@@ -72,7 +75,7 @@ describe('ProviderConnectionStatus', () => {
 
     await user.click(screen.getByRole('button', { name: /connect spotify/i }));
 
-    expect(mockPush).toHaveBeenCalledWith('/auth');
+    expect(signInWithSpotify).toHaveBeenCalledOnce();
     expect(mockAuthorize).not.toHaveBeenCalled();
   });
 
@@ -101,7 +104,7 @@ describe('ProviderConnectionStatus', () => {
     );
     expect(mockAuthorize).toHaveBeenCalledOnce();
     expect(storeProviderTokens).toHaveBeenCalledWith('apple_music', 'mut-token');
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(signInWithSpotify).not.toHaveBeenCalled();
   });
 
   it('shows a friendly error when Apple authorization fails (e.g. no subscription)', async () => {
@@ -196,16 +199,20 @@ describe('ProviderConnectionStatus', () => {
     expect(screen.getByText('Reconnect')).toBeInTheDocument();
   });
 
-  it('prompts Spotify reconnect when tokens cannot refresh', async () => {
+  it('prompts Spotify reconnect when tokens cannot refresh, and reconnect re-runs OAuth', async () => {
     (getConnectionStatus as Mock).mockResolvedValue(
       connectedStatus({ canRefresh: false })
     );
+    const user = userEvent.setup();
 
     render(<ProviderConnectionStatus provider="spotify" />);
     await waitFor(() =>
       expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
     );
 
-    expect(screen.getByText('Reconnect')).toBeInTheDocument();
+    // The reconnecting user is signed in — exactly the case where a /auth round-trip
+    // would bounce back without doing anything.
+    await user.click(screen.getByText('Reconnect'));
+    expect(signInWithSpotify).toHaveBeenCalledOnce();
   });
 });
