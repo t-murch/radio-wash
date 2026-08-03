@@ -8,13 +8,15 @@
 export const SUBSCRIPTION_PRICING = {
   // Base subscription plan
   MONTHLY: {
-    // The actual price charged (what Stripe charges)
-    AMOUNT_CENTS: 299, // $2.99
-    AMOUNT_DOLLARS: 2.99,
-    
+    // The actual price charged (what Stripe charges). Must match the unit_amount of the
+    // Stripe price referenced by Stripe:PricePlanId — the checkout session is created from
+    // that price, so a mismatch here misstates the cost in the UI without changing the bill.
+    AMOUNT_CENTS: 500, // $5.00
+    AMOUNT_DOLLARS: 5.0,
+
     // Display prices (for marketing, may be different from actual)
-    DISPLAY_PRICE: '$2.99',
-    MARKETING_PRICE: '$3', // Simplified for marketing copy
+    DISPLAY_PRICE: '$5.00',
+    MARKETING_PRICE: '$5',
     
     // Stripe-related identifiers
     STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || '',
@@ -27,9 +29,12 @@ export const SUBSCRIPTION_PRICING = {
     }
   },
   
-  // Future pricing tiers (for easy expansion)
+  // Future pricing tiers (for easy expansion).
+  // NOTE: unused — CURRENT_PLAN is MONTHLY and no yearly Stripe price exists. These figures
+  // were derived from the old $2.99 monthly and have not been restated for $5.00; set them
+  // deliberately (and create the Stripe price) before offering an annual plan.
   YEARLY: {
-    AMOUNT_CENTS: 2990, // $29.90 (about 17% discount)
+    AMOUNT_CENTS: 2990, // $29.90 — stale: ~17% off the previous $2.99/month
     AMOUNT_DOLLARS: 29.90,
     DISPLAY_PRICE: '$29.90',
     MARKETING_PRICE: '$30',
@@ -48,7 +53,9 @@ export const formatPrice = (cents: number): string => {
 };
 
 export const formatMarketingPrice = (price: string): string => {
-  // Remove decimals for marketing copy (e.g., "$2.99" -> "$3")
+  // Strip a trailing .00 or .99 for marketing copy (e.g. "$5.00" -> "$5").
+  // Note this truncates rather than rounds: "$2.99" becomes "$2", not "$3". Currently unused —
+  // MARKETING_PRICE is set explicitly — so the behaviour is preserved rather than corrected.
   return price.replace(/\.00$/, '').replace(/\.99$/, '');
 };
 
