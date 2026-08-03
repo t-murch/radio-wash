@@ -161,7 +161,10 @@ public class AuthControllerTests
     var tokensRevokedValue = tokensRevokedProperty?.GetValue(response);
     Assert.Equal(true, tokensRevokedValue);
 
+    // Every supported provider, not just Spotify — the hardcoded list previously left
+    // Apple Music connected after a "revoke everything" logout on a shared device.
     _mockMusicTokenService.Verify(x => x.RevokeTokensAsync(user.Id, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.RevokeTokensAsync(user.Id, "apple_music"), Times.Once);
   }
 
   [Fact]
@@ -218,6 +221,46 @@ public class AuthControllerTests
             It.IsAny<Exception>(),
             It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
         Times.Once);
+  }
+
+  [Fact]
+  public async Task DisconnectProvider_RevokesTheStoredTokens()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+
+    var result = await _authController.DisconnectProvider("apple_music");
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(x => x.RevokeTokensAsync(user.Id, "apple_music"), Times.Once);
+  }
+
+  [Fact]
+  public async Task DisconnectProvider_NormalizesTheProviderKey()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+
+    var result = await _authController.DisconnectProvider("SPOTIFY");
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(x => x.RevokeTokensAsync(user.Id, "spotify"), Times.Once);
+  }
+
+  [Fact]
+  public async Task DisconnectProvider_WithUnsupportedProvider_ReturnsBadRequest()
+  {
+    var userId = Guid.NewGuid();
+    SetupAuthenticatedUser(userId);
+
+    var result = await _authController.DisconnectProvider("winamp");
+
+    Assert.IsType<BadRequestObjectResult>(result);
+    _mockMusicTokenService.Verify(x => x.RevokeTokensAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
   }
 
   private void SetupAuthenticatedUser(Guid userId)
