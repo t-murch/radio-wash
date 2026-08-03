@@ -37,10 +37,11 @@ export async function GET(request: Request) {
               Authorization: `Bearer ${session.access_token}`,
               'Content-Type': 'application/json',
             },
+            // Expiry is not sent: the API derives it per provider (Spotify tokens
+            // always live 3600s), so a client-supplied value would only be ignored.
             body: JSON.stringify({
               accessToken: session.provider_token,
               refreshToken: session.provider_refresh_token,
-              expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
             }),
           });
         } catch (tokenSyncError) {

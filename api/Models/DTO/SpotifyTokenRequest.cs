@@ -10,6 +10,4 @@ public class SpotifyTokenRequest
   /// here would fail model validation before the request reached the controller.
   /// </summary>
   public string? RefreshToken { get; set; }
-
-  public DateTime ExpiresAt { get; set; }
 }
