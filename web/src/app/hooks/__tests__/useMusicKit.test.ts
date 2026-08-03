@@ -106,4 +106,25 @@ describe('useMusicKit', () => {
       (document.getElementById('musickit-js') as HTMLScriptElement).src
     ).toContain('js-cdn.music.apple.com/musickit/v3/musickit.js');
   });
+
+  it('removes the script tag on load failure so a later mount can retry', async () => {
+    // A dead tag left in the DOM would make every subsequent mount attach to it and wait
+    // forever on a `musickitloaded` event that already failed to fire.
+    delete window.MusicKit;
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { result } = renderHook(() => useMusicKit());
+    await waitFor(() =>
+      expect(document.getElementById('musickit-js')).not.toBeNull()
+    );
+
+    document.getElementById('musickit-js')!.dispatchEvent(new Event('error'));
+
+    await waitFor(() =>
+      expect(result.current.error).toBe('Failed to load MusicKit script')
+    );
+    expect(document.getElementById('musickit-js')).toBeNull();
+
+    consoleSpy.mockRestore();
+  });
 });

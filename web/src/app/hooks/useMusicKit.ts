@@ -47,6 +47,10 @@ const loadMusicKitScript = (): Promise<MusicKitGlobal> =>
 
     const onError = () => {
       document.removeEventListener('musickitloaded', onLoaded);
+      // Remove the dead tag so a later mount injects a fresh one. Left in place, the next
+      // caller would find the existing element, wait on a `musickitloaded` that already
+      // failed to fire, and hang forever.
+      document.getElementById(MUSICKIT_SCRIPT_ID)?.remove();
       reject(new Error('Failed to load MusicKit script'));
     };
 

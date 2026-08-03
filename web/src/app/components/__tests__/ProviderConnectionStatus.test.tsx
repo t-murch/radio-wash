@@ -159,6 +159,29 @@ describe('ProviderConnectionStatus', () => {
     consoleSpy.mockRestore();
   });
 
+  it('surfaces a MusicKit setup failure instead of a silently disabled button', async () => {
+    (useMusicKit as Mock).mockReturnValue({
+      ready: false,
+      error: 'Failed to load MusicKit script',
+      authorize: mockAuthorize,
+    });
+    (getConnectionStatus as Mock).mockResolvedValue(
+      connectedStatus({ provider: 'apple_music', connected: false })
+    );
+
+    render(<ProviderConnectionStatus provider="apple_music" />);
+    await waitFor(() =>
+      expect(screen.getByText('Apple Music Not Connected')).toBeInTheDocument()
+    );
+
+    expect(
+      screen.getByRole('button', { name: /connect apple music/i })
+    ).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Apple Music is unavailable: Failed to load MusicKit script/
+    );
+  });
+
   it('does NOT prompt Apple reconnect just because canRefresh is false', async () => {
     // Apple has no refresh flow — canRefresh is always false. The Spotify heuristic
     // (connected && !canRefresh → Reconnect) must not carry over.

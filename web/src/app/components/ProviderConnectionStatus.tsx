@@ -141,6 +141,12 @@ export function ProviderConnectionStatus({
   }
 
   const connectDisabled = connecting || (isApple && !musicKit.ready);
+  // MusicKit failing to initialize (CDN blocked, Apple not configured on the server) leaves
+  // the Connect button permanently disabled — without this, silently so.
+  const setupError =
+    isApple && musicKit.error
+      ? `Apple Music is unavailable: ${musicKit.error}`
+      : null;
 
   return (
     <div className="bg-card rounded-lg shadow p-6">
@@ -196,10 +202,10 @@ export function ProviderConnectionStatus({
         )}
       </div>
 
-      {status.error && (
+      {(status.error || setupError) && (
         <div className="mt-4 pt-2">
           <p className="text-sm text-error" role="alert">
-            {status.error}
+            {status.error ?? setupError}
           </p>
         </div>
       )}
