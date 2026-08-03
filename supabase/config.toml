@@ -244,12 +244,16 @@ max_frequency = "5s"
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `slack`, `spotify`, `workos`, `zoom`.
 [auth.external.apple]
-enabled = true
-# The Services ID configured for Sign in with Apple (e.g. com.radiowash.web).
-client_id = "env(SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID)"
+# Sign in with Apple is not wired up yet — enabling it needs a Services ID (client_id) and an
+# ES256 client-secret JWT generated from the Apple key (Apple caps its validity at 6 months,
+# so it must be rotated; see README "Apple Music Setup"). Until then this stays disabled so a
+# fresh clone can `supabase start` without Apple environment variables. The MusicKit
+# "Connect Apple Music" flow does not depend on this provider.
+enabled = false
+# The Services ID configured for Sign in with Apple (e.g. com.radiowash.web). Set via
+# SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID when enabling.
+client_id = ""
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
-# NOTE: this is the ES256 client-secret JWT generated from the Apple key; Apple caps its
-# validity at 6 months, so it must be rotated.
 secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 # Overrides the default auth redirectUrl.
 redirect_uri = ""
