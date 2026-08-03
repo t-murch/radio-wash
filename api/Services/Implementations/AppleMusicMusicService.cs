@@ -19,10 +19,12 @@ public class AppleMusicMusicService : IMusicService
   private const string ArtworkSize = "300";
 
   private readonly IAppleMusicService _appleMusic;
+  private readonly ILogger<AppleMusicMusicService> _logger;
 
-  public AppleMusicMusicService(IAppleMusicService appleMusic)
+  public AppleMusicMusicService(IAppleMusicService appleMusic, ILogger<AppleMusicMusicService> logger)
   {
     _appleMusic = appleMusic;
+    _logger = logger;
   }
 
   public string ProviderName => Provider;
@@ -155,7 +157,7 @@ public class AppleMusicMusicService : IMusicService
       null);
   }
 
-  public Task AddTracksToPlaylistAsync(
+  public async Task AddTracksToPlaylistAsync(
     int userId,
     string playlistId,
     IEnumerable<string> trackIds,
@@ -163,7 +165,28 @@ public class AppleMusicMusicService : IMusicService
   {
     // IDs are catalog song ids; the client owns the {id, type: "songs"} body format the way
     // SpotifyMusicService owns spotify:track:<id> URIs.
-    return _appleMusic.AddTracksToLibraryPlaylistAsync(userId, playlistId, trackIds, cancellationToken);
+    //
+    // Library ids ("i.XXXX" — personal uploads, region-gap tracks) can still reach here: the
+    // clean pipeline hands a non-explicit track's own id back as its "clean version", and for
+    // a catalog-less track that id is the library id. Apple rejects a library id posted as a
+    // catalog song, and one bad id fails its entire 25-track chunk — after the target
+    // playlist was already created. Drop them instead: the track is absent from the result,
+    // the same outcome the copy pipeline gives catalog-less tracks.
+    var catalogIds = new List<string>();
+    var skipped = new List<string>();
+    foreach (var id in trackIds)
+    {
+      (IsCatalogSongId(id) ? catalogIds : skipped).Add(id);
+    }
+
+    if (skipped.Count > 0)
+    {
+      _logger.LogWarning(
+        "Skipping {SkippedCount} non-catalog track id(s) while adding to Apple Music playlist {PlaylistId}: {SkippedIds}",
+        skipped.Count, playlistId, string.Join(", ", skipped));
+    }
+
+    await _appleMusic.AddTracksToLibraryPlaylistAsync(userId, playlistId, catalogIds, cancellationToken);
   }
 
   internal static MusicTrack MapCatalogSong(AppleCatalogSong song) => new(
@@ -174,6 +197,11 @@ public class AppleMusicMusicService : IMusicService
     Isrc: song.Attributes.Isrc,
     DurationMs: song.Attributes.DurationInMillis,
     AlbumName: song.Attributes.AlbumName);
+
+  // Catalog song ids are purely numeric; library ids look like "i.XXXX" and are meaningless
+  // outside the owner's library.
+  private static bool IsCatalogSongId(string id) =>
+    id.Length > 0 && id.All(char.IsAsciiDigit);
 
   private static bool IsExplicitRating(string? contentRating) =>
     string.Equals(contentRating, "explicit", StringComparison.OrdinalIgnoreCase);

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RadioWash.Api.Models.AppleMusic;
 using RadioWash.Api.Models.Music;
@@ -22,7 +23,7 @@ public class AppleMusicMusicServiceTests
 
   public AppleMusicMusicServiceTests()
   {
-    _adapter = new AppleMusicMusicService(_appleMusic.Object);
+    _adapter = new AppleMusicMusicService(_appleMusic.Object, NullLogger<AppleMusicMusicService>.Instance);
   }
 
   private static AppleLibrarySong CreateLibrarySong(
@@ -309,9 +310,28 @@ public class AppleMusicMusicServiceTests
         .Callback<int, string, IEnumerable<string>, CancellationToken>((_, _, ids, _) => captured = ids)
         .Returns(Task.CompletedTask);
 
-    await _adapter.AddTracksToPlaylistAsync(UserId, "p.1", new[] { "cat1", "cat2" }, CancellationToken.None);
+    await _adapter.AddTracksToPlaylistAsync(UserId, "p.1", new[] { "1440857781", "1440857782" }, CancellationToken.None);
 
     Assert.NotNull(captured);
-    Assert.Equal(new[] { "cat1", "cat2" }, captured);
+    Assert.Equal(new[] { "1440857781", "1440857782" }, captured);
+  }
+
+  [Fact]
+  public async Task AddTracksToPlaylistAsync_DropsLibraryIdsInsteadOfFailingTheChunk()
+  {
+    // The clean pipeline returns a non-explicit track's own id as its "clean version". For a
+    // personal upload or region-gap track that id is the library id ("i.XXXX"), and Apple
+    // rejects a library id posted as a catalog song — failing the whole 25-track chunk after
+    // the target playlist was already created. The adapter must drop them, not forward them.
+    IEnumerable<string>? captured = null;
+    _appleMusic.Setup(x => x.AddTracksToLibraryPlaylistAsync(UserId, "p.1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+        .Callback<int, string, IEnumerable<string>, CancellationToken>((_, _, ids, _) => captured = ids)
+        .Returns(Task.CompletedTask);
+
+    await _adapter.AddTracksToPlaylistAsync(
+        UserId, "p.1", new[] { "1440857781", "i.upload1", "1440857782" }, CancellationToken.None);
+
+    Assert.NotNull(captured);
+    Assert.Equal(new[] { "1440857781", "1440857782" }, captured);
   }
 }
