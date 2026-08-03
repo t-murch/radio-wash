@@ -10,12 +10,22 @@ vi.mock('next/navigation', () => ({
 
 describe('AuthForm', () => {
   let mockSignInWithSpotify: Mock;
+  let mockSignInWithApple: Mock;
   let mockSearchParams: {
     get: Mock;
   };
 
+  const renderForm = () =>
+    render(
+      <AuthForm
+        signInWithSpotify={mockSignInWithSpotify}
+        signInWithApple={mockSignInWithApple}
+      />
+    );
+
   beforeEach(() => {
     mockSignInWithSpotify = vi.fn();
+    mockSignInWithApple = vi.fn();
     mockSearchParams = {
       get: vi.fn(),
     };
@@ -26,20 +36,36 @@ describe('AuthForm', () => {
   it('should render auth form with Spotify sign-in button', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     expect(screen.getByText('RadioWash')).toBeInTheDocument();
     expect(
-      screen.getByText('Create clean versions of your Spotify playlists')
+      screen.getByText('Create clean versions of your playlists')
     ).toBeInTheDocument();
     expect(screen.getByText('Sign up with Spotify')).toBeInTheDocument();
+  });
+
+  it('should render Apple sign-in button wired to its own action', () => {
+    mockSearchParams.get.mockReturnValue(null);
+
+    renderForm();
+
+    const appleButton = screen.getByRole('button', {
+      name: /sign up with apple/i,
+    });
+    expect(appleButton).toBeInTheDocument();
+    expect(appleButton).toHaveAttribute('type', 'submit');
+    // Each button submits its own form/action.
+    expect(appleButton.closest('form')).not.toBe(
+      screen.getByRole('button', { name: /sign up with spotify/i }).closest('form')
+    );
   });
 
   it('should display error message when error parameter is present', () => {
     const errorMessage = 'Authentication failed';
     mockSearchParams.get.mockReturnValue(errorMessage);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     const errorAlert = screen.getByRole('alert');
     expect(errorAlert).toBeInTheDocument();
@@ -50,7 +76,7 @@ describe('AuthForm', () => {
   it('should not display error message when no error parameter', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -58,7 +84,7 @@ describe('AuthForm', () => {
   it('should render form with submit button that has correct attributes', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     const form = screen
       .getByRole('button', { name: /sign up with spotify/i })
@@ -72,7 +98,7 @@ describe('AuthForm', () => {
   it('should have correct button styling and attributes', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     const signInButton = screen.getByText('Sign up with Spotify');
 
@@ -88,7 +114,7 @@ describe('AuthForm', () => {
   it('should contain Spotify icon SVG', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     const svgElement = screen
       .getByText('Sign up with Spotify')
@@ -100,12 +126,10 @@ describe('AuthForm', () => {
   it('should display helpful description text', () => {
     mockSearchParams.get.mockReturnValue(null);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     expect(
-      screen.getByText(
-        /Sign up with Spotify to instantly access your playlists/
-      )
+      screen.getByText(/Sign up to instantly access your playlists/)
     ).toBeInTheDocument();
   });
 
@@ -120,9 +144,7 @@ describe('AuthForm', () => {
     errorMessages.forEach((error, _index) => {
       mockSearchParams.get.mockReturnValue(error);
 
-      const { unmount } = render(
-        <AuthForm signInWithSpotify={mockSignInWithSpotify} />
-      );
+      const { unmount } = renderForm();
 
       const errorAlert = screen.getByRole('alert');
       expect(errorAlert).toHaveTextContent(error);
@@ -136,7 +158,7 @@ describe('AuthForm', () => {
     const errorMessage = 'Test error';
     mockSearchParams.get.mockReturnValue(errorMessage);
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     const errorAlert = screen.getByRole('alert');
     expect(errorAlert).toBeInTheDocument();
@@ -154,7 +176,7 @@ describe('AuthForm', () => {
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    render(<AuthForm signInWithSpotify={mockSignInWithSpotify} />);
+    renderForm();
 
     expect(screen.getByText('RadioWash')).toBeInTheDocument();
     expect(screen.getByText('Sign up with Spotify')).toBeInTheDocument();

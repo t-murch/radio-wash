@@ -44,6 +44,13 @@ public class CleanPlaylistController : AuthenticatedControllerBase
     {
       return BadRequest(new { error = ex.Message });
     }
+    // The source or target provider has no usable connection — the expected failure when a
+    // user starts a cross-service copy before connecting the other account. Surfaced as 401
+    // so the frontend can prompt a connect instead of showing a generic error.
+    catch (UnauthorizedAccessException ex)
+    {
+      return Unauthorized(new { error = ex.Message });
+    }
     catch (Exception ex)
     {
       Logger.LogError(ex, "Error creating clean playlist job for user {UserId}", userId);
@@ -63,6 +70,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = job.Id,
           Provider = job.Provider,
+          TargetProvider = job.TargetProvider,
+          JobType = job.JobType,
+          SwapExplicitForClean = job.SwapExplicitForClean,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -91,6 +101,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = job.Id,
           Provider = job.Provider,
+          TargetProvider = job.TargetProvider,
+          JobType = job.JobType,
+          SwapExplicitForClean = job.SwapExplicitForClean,
           SourcePlaylistId = job.SourcePlaylistId,
           SourcePlaylistName = job.SourcePlaylistName,
           TargetPlaylistId = job.TargetPlaylistId,
@@ -124,6 +137,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
         {
           Id = j.Id,
           Provider = j.Provider,
+          TargetProvider = j.TargetProvider,
+          JobType = j.JobType,
+          SwapExplicitForClean = j.SwapExplicitForClean,
           SourcePlaylistId = j.SourcePlaylistId,
           SourcePlaylistName = j.SourcePlaylistName,
           TargetPlaylistId = j.TargetPlaylistId,
@@ -175,7 +191,9 @@ public class CleanPlaylistController : AuthenticatedControllerBase
           TargetTrackId = t.TargetTrackId,
           TargetTrackName = t.TargetTrackName,
           TargetArtistName = t.TargetArtistName,
-          HasCleanMatch = t.HasCleanMatch
+          HasCleanMatch = t.HasCleanMatch,
+          Isrc = t.Isrc,
+          MatchMethod = t.MatchMethod
         })
         .ToListAsync();
 

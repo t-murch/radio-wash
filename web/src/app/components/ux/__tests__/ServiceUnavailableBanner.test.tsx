@@ -19,11 +19,11 @@ describe('ServiceUnavailableBanner', () => {
     ).toBeInTheDocument();
   });
 
-  it('should display Coming Soon section for Apple Music', () => {
+  it('should no longer advertise Apple Music as coming soon (it shipped)', () => {
     render(<ServiceUnavailableBanner />);
 
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
-    expect(screen.getByText(/apple music support/i)).toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/apple music support/i)).not.toBeInTheDocument();
   });
 
   it('should have role="alert" for accessibility', () => {

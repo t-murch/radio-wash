@@ -82,8 +82,8 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     services.AddSingleton(new BatchConfiguration());
     services.AddSingleton<IProgressBroadcastService, FakeProgressBroadcast>();
 
-    services.AddScoped<SpotifyPlaylistCleaner>();
     services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
+    services.AddScoped<IMusicServiceFactory, MusicServiceFactory>();
     services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
 
     // Fake data-protection-backed encryption needs a data protection provider. Add the
@@ -230,7 +230,8 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
   // which would drag Hangfire registrations into this fixture).
   private CleanPlaylistService CreateCleanPlaylistService(IServiceProvider sp) => new(
     sp.GetRequiredService<IUnitOfWork>(),
-    sp.GetRequiredService<ISpotifyService>(),
+    sp.GetRequiredService<IMusicServiceFactory>(),
+    sp.GetRequiredService<IMusicTokenService>(),
     new NoopJobOrchestrator(),
     sp.GetRequiredService<ILogger<CleanPlaylistService>>());
 
@@ -291,6 +292,12 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
       if (!explicitTrack.Explicit) return Task.FromResult<SpotifyTrack?>(explicitTrack);
       return Task.FromResult(CleanVersionsBySourceId.TryGetValue(explicitTrack.Id, out var clean) ? clean : null);
     }
+
+    public Task<IReadOnlyList<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit, CancellationToken cancellationToken = default) =>
+      Task.FromResult<IReadOnlyList<SpotifyTrack>>(Array.Empty<SpotifyTrack>());
+
+    public Task<SpotifyTrack?> GetTrackByIsrcAsync(int userId, string isrc, CancellationToken cancellationToken = default) =>
+      Task.FromResult<SpotifyTrack?>(null);
   }
 
   private sealed record AddTracksInvocation(int UserId, string PlaylistId, string[] TrackUris);

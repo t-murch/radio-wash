@@ -398,6 +398,66 @@ public class MusicTokenServiceTests
     Assert.Equal(2, startedCount);
   }
 
+  [Fact]
+  public async Task GetValidAccessTokenAsync_ForProviderWithoutRefresher_ReturnsTokenPastAssumedExpiry()
+  {
+    // Apple Music exposes no expiry signal, so ExpiresAt is a local guess written at store
+    // time. Refusing the token at that guess would break a Music User Token that is very
+    // likely still valid; the provider's own 403 is the authoritative signal.
+    var userId = 1;
+    var provider = "apple_music";
+
+    _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
+        .ReturnsAsync(new UserMusicToken
+        {
+          Id = 1,
+          UserId = userId,
+          Provider = provider,
+          EncryptedAccessToken = "encrypted-mut",
+          EncryptedRefreshToken = null,
+          ExpiresAt = DateTime.UtcNow.AddDays(-3)
+        });
+    _mockEncryptionService.Setup(x => x.DecryptToken("encrypted-mut")).Returns("music-user-token");
+
+    // _musicTokenService is built with an empty refresher collection — the Apple case.
+    var token = await _musicTokenService.GetValidAccessTokenAsync(userId, provider);
+
+    Assert.Equal("music-user-token", token);
+  }
+
+  [Fact]
+  public async Task GetValidAccessTokenAsync_ForProviderWithRefreshFlow_StillFailsWhenRefreshFails()
+  {
+    // The bypass above is keyed on the provider's capability, not on DI wiring or on whether
+    // this particular row happens to carry a refresh token. Spotify has a refresh flow, so a
+    // genuinely expired token whose refresh fails must still throw rather than being handed
+    // out as "probably fine".
+    var userId = 1;
+    var provider = "spotify";
+
+    _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
+        .ReturnsAsync(new UserMusicToken
+        {
+          Id = 1,
+          UserId = userId,
+          Provider = provider,
+          EncryptedAccessToken = "encrypted",
+          EncryptedRefreshToken = "encrypted-refresh",
+          ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
+        });
+
+    var service = new MusicTokenService(
+      _mockTokenRepository.Object,
+      _mockEncryptionService.Object,
+      _mockConfiguration.Object,
+      _mockLogger.Object,
+      _mockHttpClient.Object,
+      new IMusicTokenRefresher[] { new FakeSpotifyRefresher(() => Task.FromResult(false)) });
+
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(
+      () => service.GetValidAccessTokenAsync(userId, provider));
+  }
+
   // Fake refresher keyed to "spotify" so MusicTokenService resolves it from the injected
   // collection. Each call awaits a caller-provided delegate so concurrency tests can gate
   // the refresh dispatch precisely.

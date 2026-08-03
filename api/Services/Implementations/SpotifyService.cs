@@ -282,8 +282,20 @@ public class SpotifyService : ISpotifyService
     var artists = string.Join(" ", explicitTrack.Artists.Select(a => a.Name));
     // Construct a search query that excludes "explicit" and looks for the same track name and artist.
     var query = $"{explicitTrack.Name} {artists} -tag:explicit";
+    var results = await SearchTracksAsync(userId, query, 5, cancellationToken);
+
+    // Find the best non-explicit match with same artist(s)
+    return results.FirstOrDefault(t =>
+        !t.Explicit &&
+        t.Name.Equals(explicitTrack.Name, StringComparison.OrdinalIgnoreCase) &&
+        HasMatchingArtist(explicitTrack.Artists, t.Artists)
+    );
+  }
+
+  public async Task<IReadOnlyList<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit, CancellationToken cancellationToken = default)
+  {
     var encodedQuery = Uri.EscapeDataString(query);
-    var url = $"{_spotifySettings.ApiBaseUrl}/search?q={encodedQuery}&type=track&limit=5";
+    var url = $"{_spotifySettings.ApiBaseUrl}/search?q={encodedQuery}&type=track&limit={limit}";
 
     var request = await CreateSpotifyRequestAsync(HttpMethod.Get, url, userId);
     var response = await SendWithRetryAsync(request, userId, cancellationToken);
@@ -291,13 +303,19 @@ public class SpotifyService : ISpotifyService
 
     var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
     var searchResponse = JsonSerializer.Deserialize<SpotifySearchResponse>(jsonResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    return searchResponse?.Tracks?.Items ?? Array.Empty<SpotifyTrack>();
+  }
 
-    // Find the best non-explicit match with same artist(s)
-    return searchResponse?.Tracks?.Items?.FirstOrDefault(t => 
-        !t.Explicit && 
-        t.Name.Equals(explicitTrack.Name, StringComparison.OrdinalIgnoreCase) &&
-        HasMatchingArtist(explicitTrack.Artists, t.Artists)
-    );
+  public async Task<SpotifyTrack?> GetTrackByIsrcAsync(int userId, string isrc, CancellationToken cancellationToken = default)
+  {
+    // Spotify has no batch ISRC endpoint; the isrc: search filter is the lookup path.
+    var results = await SearchTracksAsync(userId, $"isrc:{isrc}", 3, cancellationToken);
+    // Only accept a result whose external id actually echoes the requested ISRC. Spotify's
+    // search pads with fuzzy matches, and callers label this result as a high-confidence
+    // ISRC match — returning an unverified track would persist the wrong song under that
+    // label. No exact echo means no ISRC hit; the caller's search fallback (which validates
+    // name, artist and duration) handles it from there.
+    return results.FirstOrDefault(t => string.Equals(t.ExternalIds?.Isrc, isrc, StringComparison.OrdinalIgnoreCase));
   }
 
   /// <summary>

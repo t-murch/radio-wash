@@ -51,6 +51,20 @@ public class SpotifyTrack
 
   [JsonPropertyName("uri")]
   public string Uri { get; set; } = null!;
+
+  [JsonPropertyName("duration_ms")]
+  public int? DurationMs { get; set; }
+
+  // Full track objects carry external_ids by default on playlist-tracks and search
+  // responses; ISRC is the cross-catalog matching bridge.
+  [JsonPropertyName("external_ids")]
+  public SpotifyExternalIds? ExternalIds { get; set; }
+}
+
+public class SpotifyExternalIds
+{
+  [JsonPropertyName("isrc")]
+  public string? Isrc { get; set; }
 }
 
 public class SpotifyArtist

@@ -45,6 +45,9 @@ Thumbs.db
 .next
 out
 
+# TypeScript incremental build state
+*.tsbuildinfo
+
 # Sensitive configuration files
 api/appsettings.Development.json
 api/appsettings.json

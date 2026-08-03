@@ -61,6 +61,13 @@ namespace RadioWash.Api.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
 
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("clean");
+
                     b.Property<int>("MatchedTracks")
                         .HasColumnType("integer");
 
@@ -86,12 +93,24 @@ namespace RadioWash.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("SwapExplicitForClean")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("TargetPlaylistId")
                         .HasColumnType("text");
 
                     b.Property<string>("TargetPlaylistName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("TargetProvider")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("spotify");
 
                     b.Property<int>("TotalTracks")
                         .HasColumnType("integer");
@@ -325,8 +344,16 @@ namespace RadioWash.Api.Migrations
                     b.Property<bool>("IsExplicit")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Isrc")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<int>("JobId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("MatchMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("SourceArtistName")
                         .IsRequired()

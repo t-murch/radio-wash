@@ -76,9 +76,9 @@ describe('Auth Callback Route', () => {
     // Verify session retrieval
     expect(mockSupabase.auth.getSession).toHaveBeenCalled();
 
-    // Verify token sync API call
+    // Verify token sync API call hits the generic provider route
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.radiowash.com/api/auth/spotify/tokens',
+      'https://api.radiowash.com/api/auth/tokens/spotify',
       {
         method: 'POST',
         headers: {
@@ -88,7 +88,6 @@ describe('Auth Callback Route', () => {
         body: JSON.stringify({
           accessToken: 'spotify_access_token',
           refreshToken: 'spotify_refresh_token',
-          expiresAt: new Date(new Date('2025-01-01T00:00:00.000Z').getTime() + 3600 * 1000).toISOString(),
         }),
       }
     );

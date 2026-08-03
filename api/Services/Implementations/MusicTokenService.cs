@@ -98,6 +98,25 @@ public class MusicTokenService : IMusicTokenService
     // Check if token is expired
     if (DateTime.UtcNow >= tokenRecord.ExpiresAt.AddMinutes(-5)) // Refresh 5 minutes early
     {
+      // Providers with no refresh flow (Apple Music) store an *assumed* expiry — Apple
+      // returns no expiry signal, so ExpiresAt is a local guess, not an authority. Refusing
+      // the token here would fail a credential that is very likely still good, and there is
+      // nothing to refresh anyway. Hand it over and let the provider decide:
+      // AppleMusicService turns a real 403 into a reconnect-required error, which is the
+      // only trustworthy signal available.
+      //
+      // Keyed on the provider's capability rather than on DI wiring, so a missing refresher
+      // registration surfaces as a loud refresh failure instead of silently downgrading
+      // Spotify to "never expires".
+      if (!MusicProviders.SupportsTokenRefresh(provider))
+      {
+        _logger.LogDebug(
+          "Assumed expiry reached for user {UserId} provider {Provider}, which has no refresh flow; " +
+          "using the stored token and deferring to the provider's own authorization check",
+          userId, provider);
+        return _encryptionService.DecryptToken(tokenRecord.EncryptedAccessToken);
+      }
+
       _logger.LogInformation("Token expired for user {UserId} provider {Provider}, attempting refresh", userId, provider);
 
       var refreshed = await RefreshTokensAsync(userId, provider);

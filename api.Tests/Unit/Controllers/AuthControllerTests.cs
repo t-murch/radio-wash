@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
+using RadioWash.Api.Configuration;
 using RadioWash.Api.Controllers;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
@@ -25,6 +27,8 @@ public class AuthControllerTests
   private readonly Mock<IWebHostEnvironment> _mockEnvironment;
   private readonly Mock<IUserService> _mockUserService;
   private readonly Mock<IMusicTokenService> _mockMusicTokenService;
+  private readonly Mock<IAppleDeveloperTokenProvider> _mockAppleDeveloperTokenProvider;
+  private readonly AppleMusicSettings _appleMusicSettings;
   private readonly AuthController _authController;
 
   public AuthControllerTests()
@@ -35,6 +39,8 @@ public class AuthControllerTests
     _mockEnvironment = new Mock<IWebHostEnvironment>();
     _mockUserService = new Mock<IUserService>();
     _mockMusicTokenService = new Mock<IMusicTokenService>();
+    _mockAppleDeveloperTokenProvider = new Mock<IAppleDeveloperTokenProvider>();
+    _appleMusicSettings = new AppleMusicSettings { TeamId = "team", KeyId = "key" };
 
     _authController = new AuthController(
         _mockLogger.Object,
@@ -42,191 +48,13 @@ public class AuthControllerTests
         _mockConfiguration.Object,
         _mockEnvironment.Object,
         _mockUserService.Object,
-        _mockMusicTokenService.Object);
+        _mockMusicTokenService.Object,
+        _mockAppleDeveloperTokenProvider.Object,
+        Options.Create(_appleMusicSettings));
 
     // Setup default configuration values
     _mockConfiguration.Setup(x => x["FrontendUrl"]).Returns("http://127.0.0.1:3000");
     _mockConfiguration.Setup(x => x["BackendUrl"]).Returns("http://127.0.0.1:5159");
-  }
-
-  // Legacy route tests exercise the Spotify-specific action methods intentionally. The
-  // methods are marked [Obsolete] for external callers; the tests keep them honest until the
-  // frontend migrates to the generic routes.
-#pragma warning disable CS0618 // Type or member is obsolete
-
-  [Fact]
-  public async Task StoreSpotifyTokens_WithValidRequest_ReturnsOk()
-  {
-    // Arrange
-    var userId = Guid.NewGuid();
-    var user = CreateTestUserDto();
-    var request = new SpotifyTokenRequest
-    {
-      AccessToken = "access_token_123",
-      RefreshToken = "refresh_token_123"
-    };
-
-    SetupAuthenticatedUser(userId);
-    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId))
-        .ReturnsAsync(user);
-
-    var storedToken = CreateTestUserMusicToken();
-    _mockMusicTokenService.Setup(x => x.StoreTokensAsync(
-        user.Id, "spotify", request.AccessToken, request.RefreshToken, 3600,
-        It.IsAny<string[]>(), null))
-        .ReturnsAsync(storedToken);
-
-    // Act
-    var result = await _authController.StoreSpotifyTokens(request);
-
-    // Assert
-    var okResult = Assert.IsType<OkObjectResult>(result);
-    var response = okResult.Value;
-    Assert.NotNull(response);
-
-    _mockMusicTokenService.Verify(x => x.StoreTokensAsync(
-        user.Id, "spotify", request.AccessToken, request.RefreshToken, 3600,
-        It.Is<string[]>(scopes => scopes.Contains("user-read-private") && scopes.Contains("playlist-modify-private")),
-        null), Times.Once);
-  }
-
-  [Fact]
-  public async Task StoreSpotifyTokens_WithNoUserIdClaim_ReturnsUnauthorized()
-  {
-    // Arrange
-    var request = new SpotifyTokenRequest
-    {
-      AccessToken = "access_token_123",
-      RefreshToken = "refresh_token_123"
-    };
-
-    SetupUnauthenticatedUser();
-
-    // Act
-    var result = await _authController.StoreSpotifyTokens(request);
-
-    // Assert
-    var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
-    var response = unauthorizedResult.Value;
-    Assert.NotNull(response);
-
-    _mockUserService.Verify(x => x.GetUserBySupabaseIdAsync(It.IsAny<Guid>()), Times.Never);
-    _mockMusicTokenService.Verify(x => x.StoreTokensAsync(
-        It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-        It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object>()), Times.Never);
-  }
-
-  [Fact]
-  public async Task StoreSpotifyTokens_WithNonExistentUser_ReturnsNotFound()
-  {
-    // Arrange
-    var userId = Guid.NewGuid();
-    var request = new SpotifyTokenRequest
-    {
-      AccessToken = "access_token_123",
-      RefreshToken = "refresh_token_123"
-    };
-
-    SetupAuthenticatedUser(userId);
-    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId))
-        .ReturnsAsync((UserDto?)null);
-
-    // Act
-    var result = await _authController.StoreSpotifyTokens(request);
-
-    // Assert
-    var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
-    var response = notFoundResult.Value;
-    Assert.NotNull(response);
-
-    _mockMusicTokenService.Verify(x => x.StoreTokensAsync(
-        It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-        It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object>()), Times.Never);
-  }
-
-  [Fact]
-  public async Task StoreSpotifyTokens_WithException_ReturnsInternalServerError()
-  {
-    // Arrange
-    var userId = Guid.NewGuid();
-    var user = CreateTestUserDto();
-    var request = new SpotifyTokenRequest
-    {
-      AccessToken = "access_token_123",
-      RefreshToken = "refresh_token_123"
-    };
-
-    SetupAuthenticatedUser(userId);
-    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId))
-        .ReturnsAsync(user);
-    _mockMusicTokenService.Setup(x => x.StoreTokensAsync(
-        It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-        It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object>()))
-        .ThrowsAsync(new Exception("Database error"));
-
-    // Act
-    var result = await _authController.StoreSpotifyTokens(request);
-
-    // Assert
-    var serverErrorResult = Assert.IsType<ObjectResult>(result);
-    Assert.Equal(500, serverErrorResult.StatusCode);
-
-    _mockLogger.Verify(
-        x => x.Log(
-            LogLevel.Error,
-            It.IsAny<EventId>(),
-            It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Error storing Spotify tokens")),
-            It.IsAny<Exception>(),
-            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-        Times.Once);
-  }
-
-  [Fact]
-  public async Task SpotifyConnectionStatus_WithValidUser_ReturnsConnectionInfo()
-  {
-    // Arrange
-    var userId = Guid.NewGuid();
-    var user = CreateTestUserDto();
-    var tokenInfo = CreateTestUserMusicToken();
-
-    SetupAuthenticatedUser(userId);
-    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId))
-        .ReturnsAsync(user);
-    _mockMusicTokenService.Setup(x => x.HasValidTokensAsync(user.Id, "spotify"))
-        .ReturnsAsync(true);
-    _mockMusicTokenService.Setup(x => x.GetTokenInfoAsync(user.Id, "spotify"))
-        .ReturnsAsync(tokenInfo);
-
-    // Act
-    var result = await _authController.SpotifyConnectionStatus();
-
-    // Assert
-    var okResult = Assert.IsType<OkObjectResult>(result);
-    var response = okResult.Value;
-    Assert.NotNull(response);
-
-    var responseType = response.GetType();
-    var connectedProperty = responseType.GetProperty("connected");
-    var connectedValue = connectedProperty?.GetValue(response);
-    Assert.Equal(true, connectedValue);
-  }
-
-  [Fact]
-  public async Task SpotifyConnectionStatus_WithInvalidUser_ReturnsNotFound()
-  {
-    // Arrange
-    var userId = Guid.NewGuid();
-
-    SetupAuthenticatedUser(userId);
-    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId))
-        .ReturnsAsync((UserDto?)null);
-
-    // Act
-    var result = await _authController.SpotifyConnectionStatus();
-
-    // Assert
-    var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
-    Assert.NotNull(notFoundResult.Value);
   }
 
   [Fact]
@@ -425,8 +253,6 @@ public class AuthControllerTests
     };
   }
 
-#pragma warning restore CS0618
-
   private static UserDto CreateTestUserDto()
   {
     return new UserDto
@@ -490,6 +316,49 @@ public class AuthControllerTests
   }
 
   [Fact]
+  public async Task StoreTokens_WithAppleMusic_PersistsWithoutARefreshToken()
+  {
+    // An Apple Music User Token has no refresh counterpart, so the connect flow posts
+    // refreshToken as null. Storing it must succeed rather than being rejected.
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    var request = new SpotifyTokenRequest { AccessToken = "music-user-token", RefreshToken = null };
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService
+      .Setup(x => x.StoreTokensAsync(user.Id, "apple_music", "music-user-token", null, It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()))
+      .ReturnsAsync(CreateTestUserMusicToken());
+
+    var result = await _authController.StoreTokens("apple_music", request);
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(
+      x => x.StoreTokensAsync(user.Id, "apple_music", "music-user-token", null, It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()),
+      Times.Once);
+  }
+
+  [Fact]
+  public void SpotifyTokenRequest_RefreshTokenIsNullableSoAppleMusicPayloadsBind()
+  {
+    // Regression: RefreshToken was a non-nullable string. MVC gives non-nullable reference
+    // types an implicit [Required] (ApiBehaviorOptions.SuppressImplicitRequiredAttributeFor-
+    // NonNullableReferenceTypes defaults to false), so the Apple connect payload — which sends
+    // refreshToken: null because a Music User Token has no refresh counterpart — was rejected
+    // with a 400 before ever reaching the action.
+    //
+    // Every other test here invokes the action directly and so cannot observe a binding-layer
+    // rejection. Assert the nullability that drives it.
+    var refreshToken = typeof(SpotifyTokenRequest).GetProperty(nameof(SpotifyTokenRequest.RefreshToken))!;
+
+    var nullabilityInfo = new System.Reflection.NullabilityInfoContext().Create(refreshToken);
+
+    Assert.Equal(
+      System.Reflection.NullabilityState.Nullable,
+      nullabilityInfo.WriteState);
+  }
+
+  [Fact]
   public async Task StoreTokens_WithMixedCaseProvider_NormalizesProviderBeforePersisting()
   {
     var userId = Guid.NewGuid();
@@ -508,6 +377,40 @@ public class AuthControllerTests
     _mockMusicTokenService.Verify(
       x => x.StoreTokensAsync(user.Id, "spotify", "at", "rt", It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()),
       Times.Once);
+  }
+
+  [Fact]
+  public async Task StoreTokens_WithNoUserIdClaim_ReturnsUnauthorized()
+  {
+    SetupUnauthenticatedUser();
+
+    var result = await _authController.StoreTokens("spotify", new SpotifyTokenRequest
+    {
+      AccessToken = "at",
+      RefreshToken = "rt"
+    });
+
+    Assert.IsType<UnauthorizedObjectResult>(result);
+    _mockMusicTokenService.Verify(
+      x => x.StoreTokensAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(),
+        It.IsAny<int>(), It.IsAny<string[]>(), It.IsAny<object?>()),
+      Times.Never);
+  }
+
+  [Fact]
+  public async Task StoreTokens_WithNonExistentUser_ReturnsNotFound()
+  {
+    var userId = Guid.NewGuid();
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync((UserDto?)null);
+
+    var result = await _authController.StoreTokens("spotify", new SpotifyTokenRequest
+    {
+      AccessToken = "at",
+      RefreshToken = "rt"
+    });
+
+    Assert.IsType<NotFoundObjectResult>(result);
   }
 
   [Fact]
@@ -581,5 +484,83 @@ public class AuthControllerTests
     _mockMusicTokenService.Verify(
       x => x.HasValidTokensAsync(It.IsAny<int>(), It.IsAny<string>()),
       Times.Never);
+  }
+
+  // --- Apple Music specifics ---
+
+  [Fact]
+  public async Task StoreTokens_WithAppleMusicProvider_UsesLongAssumedExpiryAndNoScopes()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    // Music User Tokens have no refresh token; the callback stores just the MUT.
+    var request = new SpotifyTokenRequest { AccessToken = "music_user_token", RefreshToken = null };
+    var expectedExpiry = _appleMusicSettings.UserTokenAssumedLifetimeDays * 24 * 3600;
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService
+      .Setup(x => x.StoreTokensAsync(user.Id, "apple_music", "music_user_token", null, expectedExpiry,
+        It.Is<string[]>(s => s.Length == 0), It.IsAny<object?>()))
+      .ReturnsAsync(CreateTestUserMusicToken());
+
+    var result = await _authController.StoreTokens("apple_music", request);
+
+    Assert.IsType<OkObjectResult>(result);
+    _mockMusicTokenService.Verify(
+      x => x.StoreTokensAsync(user.Id, "apple_music", "music_user_token", null, expectedExpiry,
+        It.Is<string[]>(s => s.Length == 0), It.IsAny<object?>()),
+      Times.Once);
+  }
+
+  [Fact]
+  public async Task ConnectionStatus_IncludesProviderAndExpiresAt()
+  {
+    var userId = Guid.NewGuid();
+    var user = CreateTestUserDto();
+    var tokenInfo = CreateTestUserMusicToken();
+
+    SetupAuthenticatedUser(userId);
+    _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService.Setup(x => x.HasValidTokensAsync(user.Id, "apple_music")).ReturnsAsync(true);
+    _mockMusicTokenService.Setup(x => x.GetTokenInfoAsync(user.Id, "apple_music")).ReturnsAsync(tokenInfo);
+
+    var result = await _authController.ConnectionStatus("apple_music");
+
+    var ok = Assert.IsType<OkObjectResult>(result);
+    var payload = ok.Value!;
+    var payloadType = payload.GetType();
+    Assert.Equal("apple_music", payloadType.GetProperty("provider")!.GetValue(payload));
+    Assert.Equal(tokenInfo.ExpiresAt, payloadType.GetProperty("expiresAt")!.GetValue(payload));
+  }
+
+  [Fact]
+  public async Task MusicKitDeveloperToken_WhenNotConfigured_Returns503()
+  {
+    SetupAuthenticatedUser(Guid.NewGuid());
+    _mockAppleDeveloperTokenProvider.Setup(x => x.IsConfigured).Returns(false);
+
+    var result = await _authController.MusicKitDeveloperToken();
+
+    var status = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(503, status.StatusCode);
+    _mockAppleDeveloperTokenProvider.Verify(
+      x => x.GetDeveloperTokenAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task MusicKitDeveloperToken_WhenConfigured_ReturnsToken()
+  {
+    SetupAuthenticatedUser(Guid.NewGuid());
+    _mockAppleDeveloperTokenProvider.Setup(x => x.IsConfigured).Returns(true);
+    _mockAppleDeveloperTokenProvider
+      .Setup(x => x.GetDeveloperTokenAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync("dev_jwt");
+
+    var result = await _authController.MusicKitDeveloperToken();
+
+    var ok = Assert.IsType<OkObjectResult>(result);
+    var payload = ok.Value!;
+    Assert.Equal("dev_jwt", payload.GetType().GetProperty("token")!.GetValue(payload));
   }
 }

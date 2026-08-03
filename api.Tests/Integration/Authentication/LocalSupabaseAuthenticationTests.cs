@@ -100,7 +100,7 @@ public class LocalSupabaseAuthenticationTests : IClassFixture<LocalSupabaseWebAp
         };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/auth/spotify/tokens", tokenRequest);
+        var response = await _client.PostAsJsonAsync("/api/auth/tokens/spotify", tokenRequest);
 
         // Assert - Should not return 401 Unauthorized
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -115,7 +115,7 @@ public class LocalSupabaseAuthenticationTests : IClassFixture<LocalSupabaseWebAp
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _testUserToken);
 
         // Act
-        var response = await _client.GetAsync("/api/auth/spotify/status");
+        var response = await _client.GetAsync("/api/auth/status/spotify");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

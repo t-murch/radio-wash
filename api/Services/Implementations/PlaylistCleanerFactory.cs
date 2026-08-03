@@ -1,9 +1,12 @@
+using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
-/// Factory for creating playlist cleaners
+/// Factory for creating playlist cleaners. Resolves the keyed <see cref="IMusicService"/>
+/// registered for the requested provider, so adding a platform means one keyed DI
+/// registration — no factory edits.
 /// </summary>
 public class PlaylistCleanerFactory : IPlaylistCleanerFactory
 {
@@ -16,10 +19,17 @@ public class PlaylistCleanerFactory : IPlaylistCleanerFactory
 
   public IPlaylistCleaner CreateCleaner(string platform)
   {
-    return platform.ToLower() switch
+    string provider;
+    try
     {
-      "spotify" => _serviceProvider.GetRequiredService<SpotifyPlaylistCleaner>(),
-      _ => throw new NotSupportedException($"Platform '{platform}' is not supported")
-    };
+      provider = MusicProviders.NormalizeOrThrow(platform);
+    }
+    catch (ArgumentException ex)
+    {
+      throw new NotSupportedException($"Platform '{platform}' is not supported", ex);
+    }
+
+    var musicService = _serviceProvider.GetRequiredKeyedService<IMusicService>(provider);
+    return ActivatorUtilities.CreateInstance<PlaylistCleaner>(_serviceProvider, musicService);
   }
 }

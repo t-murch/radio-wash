@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -21,8 +22,18 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
+builder.Services.Configure<AppleMusicSettings>(builder.Configuration.GetSection(AppleMusicSettings.SectionName));
 builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
+
+// `.dockerignore` keeps appsettings.*.json out of the image, so a containerised Development run
+// sees only appsettings.json — which holds production values. Left unchecked that surfaces as
+// blanket 401s (tokens validated against the wrong issuer) and CORS-blocked requests, with
+// nothing in the logs naming configuration as the cause. Fail fast and say exactly what to set.
+if (builder.Environment.IsDevelopment())
+{
+    LocalDevelopmentConfigurationGuard.Validate(builder.Configuration, frontendUrl);
+}
 
 // Services
 builder.Services.AddHttpClient();
@@ -70,6 +81,25 @@ builder.Services.AddKeyedScoped<IMusicService>(
     SpotifyMusicService.Provider,
     (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
 builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMusicService>());
+// Typed client so Apple calls get an explicit timeout instead of HttpClient's 100s default.
+// Copy jobs issue hundreds of these per playlist; a hung request must not stall a worker for
+// over a minute when the service's own retry loop can move on.
+builder.Services.AddHttpClient<IAppleMusicService, AppleMusicService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+// Apple compresses some responses (POST /me/library/playlists among them) whether or not the
+// request advertises an encoding, and HttpClient does not decompress unless asked. Reading a
+// gzip body as text yields "'0x1F' is an invalid start of a value" from the JSON parser —
+// the gzip magic byte — which surfaces as a failed copy job well after the write succeeded.
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+});
+builder.Services.AddScoped<AppleMusicMusicService>();
+builder.Services.AddKeyedScoped<IMusicService>(
+    AppleMusicMusicService.Provider,
+    (sp, _) => sp.GetRequiredService<AppleMusicMusicService>());
 builder.Services.AddScoped<ICleanPlaylistService, CleanPlaylistService>();
 builder.Services.AddScoped<IProgressBroadcastService, ProgressBroadcastService>();
 
@@ -98,12 +128,19 @@ builder.Services.AddScoped<IErrorClassifier, ErrorClassifier>();
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 builder.Services.AddSingleton<IRandomProvider, SystemRandomProvider>();
 
+// Apple Music developer token (ES256 JWT). Singleton so the signed token is cached
+// process-wide; missing configuration fails at first use, not at startup, so
+// Spotify-only deployments keep booting.
+builder.Services.AddSingleton<IAppleDeveloperTokenProvider, AppleDeveloperTokenProvider>();
+
 // SOLID Refactored Services
 builder.Services.AddScoped<RadioWash.Api.Infrastructure.Patterns.IUnitOfWork, RadioWash.Api.Infrastructure.Patterns.EntityFrameworkUnitOfWork>();
 builder.Services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
 builder.Services.AddScoped<IJobOrchestrator, HangfireJobOrchestrator>();
 builder.Services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
-builder.Services.AddScoped<SpotifyPlaylistCleaner>();
+builder.Services.AddScoped<IMusicServiceFactory, MusicServiceFactory>();
+builder.Services.AddScoped<ITrackMatcher, TrackMatcher>();
+builder.Services.AddScoped<IPlaylistCopier, PlaylistCopier>();
 builder.Services.AddScoped<IProgressTracker, SmartProgressTracker>();
 builder.Services.AddSingleton<BatchConfiguration>(provider =>
 {

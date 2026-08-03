@@ -5,21 +5,28 @@ import { JobCard } from '@/components/ux/JobCard';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
-import { useState } from 'react';
-import { SpotifyConnectionStatus } from '../components/SpotifyConnectionStatus';
+import { useCallback, useState } from 'react';
+import { ProviderConnectionStatus } from '../components/ProviderConnectionStatus';
 import {
   createCleanPlaylistJob,
   getMe,
   getUserJobs,
   getUserPlaylists,
   Job,
+  MusicProvider,
   Playlist,
   User,
 } from '../services/api';
+import { playlistUrl, PROVIDER_LABELS } from '../lib/providers';
 import { useSubscriptionStatus } from '../hooks/useSubscriptionSync';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { CURRENT_PLAN, FEATURE_DESCRIPTIONS } from '@/lib/constants/pricing';
+
+const OTHER_PROVIDER: Record<MusicProvider, MusicProvider> = {
+  spotify: 'apple_music',
+  apple_music: 'spotify',
+};
 
 export function DashboardClient({
   initialMe,
@@ -36,9 +43,27 @@ export function DashboardClient({
   const queryClient = useQueryClient();
   const router = useRouter();
 
+  const [activeProvider, setActiveProvider] = useState<MusicProvider>('spotify');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [customName, setCustomName] = useState('');
-  const [spotifyConnected, setSpotifyConnected] = useState(true); // Default to true, will be updated by component
+  // 'clean' = same-service clean job; 'copy' = cross-service copy to the other provider.
+  const [destination, setDestination] = useState<'clean' | 'copy'>('clean');
+  const [swapExplicit, setSwapExplicit] = useState(true);
+  const [connections, setConnections] = useState<Record<MusicProvider, boolean>>({
+    spotify: true, // optimistic defaults; updated by the connection cards
+    apple_music: false,
+  });
+
+  const onSpotifyConnectionChange = useCallback(
+    (connected: boolean) =>
+      setConnections((prev) => ({ ...prev, spotify: connected })),
+    []
+  );
+  const onAppleConnectionChange = useCallback(
+    (connected: boolean) =>
+      setConnections((prev) => ({ ...prev, apple_music: connected })),
+    []
+  );
 
   // Use React Query to manage data, with initial data from the server
   const { data: me } = useQuery({
@@ -50,10 +75,10 @@ export function DashboardClient({
   const { data: playlistsResponse } = useQuery<
     Playlist[] | { error: string; message: string; playlists: Playlist[] }
   >({
-    queryKey: ['playlists'],
-    queryFn: getUserPlaylists,
-    enabled: !!me,
-    placeholderData: initialPlaylists,
+    queryKey: ['playlists', activeProvider],
+    queryFn: () => getUserPlaylists(activeProvider),
+    enabled: !!me && connections[activeProvider],
+    placeholderData: activeProvider === 'spotify' ? initialPlaylists : undefined,
   });
 
   // Handle the response structure that includes error and playlists fields
@@ -70,14 +95,35 @@ export function DashboardClient({
 
   const { data: subscriptionStatus } = useSubscriptionStatus();
 
-  const openSpotifyPlaylist = (playlistId: string) => {
-    window.open(`https://open.spotify.com/playlist/${playlistId}`, '_blank');
+  const activeLabel = PROVIDER_LABELS[activeProvider];
+  const targetProvider =
+    destination === 'copy' ? OTHER_PROVIDER[activeProvider] : activeProvider;
+  const targetLabel = PROVIDER_LABELS[targetProvider];
+  const activeConnected = connections[activeProvider];
+  // A copy needs the destination account connected too.
+  const copyBlocked = destination === 'copy' && !connections[targetProvider];
+
+  const openPlaylist = (playlistId: string) => {
+    const url = playlistUrl(activeProvider, playlistId);
+    if (url) window.open(url, '_blank');
+  };
+
+  const selectProvider = (provider: MusicProvider) => {
+    setActiveProvider(provider);
+    setSelectedPlaylistId('');
+    setDestination('clean');
   };
 
   const createJobMutation = useMutation({
-    mutationFn: (vars: { sourcePlaylistId: string; targetName: string }) =>
-      createCleanPlaylistJob(me!.id, vars.sourcePlaylistId, vars.targetName),
-    onSuccess: (newJob) => {
+    mutationFn: (vars: { sourcePlaylistId: string; targetName?: string }) =>
+      createCleanPlaylistJob(me!.id, {
+        sourcePlaylistId: vars.sourcePlaylistId,
+        targetPlaylistName: vars.targetName,
+        provider: activeProvider,
+        targetProvider,
+        swapExplicitForClean: destination === 'copy' ? swapExplicit : true,
+      }),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['playlists'] });
       // Force immediate refetch
@@ -93,8 +139,22 @@ export function DashboardClient({
   const handleCreatePlaylist = () => {
     const selected = playlists.find((p) => p.id === selectedPlaylistId);
     if (!selected || !me) return;
-    const targetName = customName.trim() || `Clean - ${selected.name}`;
-    createJobMutation.mutate({ sourcePlaylistId: selected.id, targetName });
+    // Leave the name empty to accept the server default ("Clean - X", or the source name
+    // for faithful copies).
+    createJobMutation.mutate({
+      sourcePlaylistId: selected.id,
+      targetName: customName.trim() || undefined,
+    });
+  };
+
+  const submitLabel = () => {
+    if (createJobMutation.isPending) return 'Working on it...';
+    if (destination === 'copy') {
+      return swapExplicit
+        ? `Copy Clean Version to ${targetLabel}`
+        : `Copy to ${targetLabel}`;
+    }
+    return 'Create Clean Version';
   };
 
   return (
@@ -103,28 +163,46 @@ export function DashboardClient({
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-            <SpotifyConnectionStatus onConnectionChange={setSpotifyConnected} />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <ProviderConnectionStatus
+                provider="spotify"
+                onConnectionChange={onSpotifyConnectionChange}
+              />
+              <ProviderConnectionStatus
+                provider="apple_music"
+                onConnectionChange={onAppleConnectionChange}
+              />
+            </div>
+
+            {/* Source-provider tabs */}
+            <div className="flex gap-2 border-b border-border">
+              {(['spotify', 'apple_music'] as const).map((provider) => (
+                <button
+                  key={provider}
+                  onClick={() => selectProvider(provider)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    activeProvider === provider
+                      ? 'border-brand text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {PROVIDER_LABELS[provider]}
+                </button>
+              ))}
+            </div>
+
             <div className="bg-card border rounded-lg p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-foreground mb-4">
-                Create a Clean Playlist
+                Clean or Copy a Playlist
               </h2>
-              {!spotifyConnected ? (
+              {!activeConnected ? (
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-muted-foreground"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.84-.179-.84-.66 0-.36.24-.66.54-.78 4.56-1.021 8.52-.6 11.64 1.32.36.18.48.66.24 1.021zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.481.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z" />
-                    </svg>
-                  </div>
                   <h3 className="text-lg font-medium text-foreground mb-2">
-                    Connect Spotify to Get Started
+                    Connect {activeLabel} to Get Started
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    Connect your Spotify account to access your playlists and
-                    create clean versions.
+                    Connect your {activeLabel} account above to access your
+                    playlists.
                   </p>
                 </div>
               ) : (
@@ -137,10 +215,57 @@ export function DashboardClient({
                     <option value="">-- Choose a playlist --</option>
                     {playlists.map((p, idx) => (
                       <option key={idx} value={p.id}>
-                        {p.name} ({p.trackCount} tracks)
+                        {p.name}
+                        {p.trackCount > 0 ? ` (${p.trackCount} tracks)` : ''}
                       </option>
                     ))}
                   </select>
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <label className="flex-1 flex items-center gap-2 p-3 border rounded-md cursor-pointer">
+                      <input
+                        type="radio"
+                        name="destination"
+                        checked={destination === 'clean'}
+                        onChange={() => setDestination('clean')}
+                      />
+                      <span className="text-sm">
+                        Clean it on {activeLabel}
+                      </span>
+                    </label>
+                    <label className="flex-1 flex items-center gap-2 p-3 border rounded-md cursor-pointer">
+                      <input
+                        type="radio"
+                        name="destination"
+                        checked={destination === 'copy'}
+                        onChange={() => setDestination('copy')}
+                      />
+                      <span className="text-sm">
+                        Copy to {PROVIDER_LABELS[OTHER_PROVIDER[activeProvider]]}
+                      </span>
+                    </label>
+                  </div>
+
+                  {destination === 'copy' && (
+                    <label className="flex items-center gap-2 px-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={swapExplicit}
+                        onChange={(e) => setSwapExplicit(e.target.checked)}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        Swap explicit tracks for clean versions during the copy
+                      </span>
+                    </label>
+                  )}
+
+                  {copyBlocked && (
+                    <p className="text-sm text-warning">
+                      Connect your {targetLabel} account above to copy playlists
+                      there.
+                    </p>
+                  )}
+
                   <input
                     type="text"
                     placeholder="New Playlist Name (Optional)"
@@ -151,23 +276,24 @@ export function DashboardClient({
                   <button
                     onClick={handleCreatePlaylist}
                     disabled={
-                      !selectedPlaylistId || createJobMutation.isPending
+                      !selectedPlaylistId ||
+                      copyBlocked ||
+                      createJobMutation.isPending
                     }
                     className="w-full bg-success text-success-foreground py-3 rounded-md hover:bg-success-hover disabled:opacity-50"
                   >
-                    {createJobMutation.isPending
-                      ? 'Working on it...'
-                      : 'Create Clean Version'}
+                    {submitLabel()}
                   </button>
                 </div>
               )}
             </div>
 
-            {spotifyConnected && (
+            {activeConnected && (
               <div className="space-y-4">
                 {playlists.length === 0 ? (
                   <p className="text-muted-foreground">
-                    No playlists found. Make sure you have playlists on Spotify.
+                    No playlists found. Make sure you have playlists on{' '}
+                    {activeLabel}.
                   </p>
                 ) : (
                   <div className="space-y-4 max-h-[65vh] overflow-y-auto overflow-x-hidden">
@@ -203,9 +329,11 @@ export function DashboardClient({
                           >
                             {playlist.name}
                           </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {playlist.trackCount} tracks
-                          </p>
+                          {playlist.trackCount > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              {playlist.trackCount} tracks
+                            </p>
+                          )}
                           <div className="flex flex-col sm:flex-row gap-2 mt-2">
                             <button
                               onClick={(e) => {
@@ -216,15 +344,17 @@ export function DashboardClient({
                             >
                               Make Clean
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openSpotifyPlaylist(playlist.id);
-                              }}
-                              className="text-xs bg-muted text-foreground px-2 py-1 rounded-md hover:bg-muted/80 flex-1 sm:flex-none"
-                            >
-                              Open in Spotify
-                            </button>
+                            {playlistUrl(activeProvider, playlist.id) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPlaylist(playlist.id);
+                                }}
+                                className="text-xs bg-muted text-foreground px-2 py-1 rounded-md hover:bg-muted/80 flex-1 sm:flex-none"
+                              >
+                                Open in {activeLabel}
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -268,9 +398,11 @@ export function DashboardClient({
                                 >
                                   {playlist.name}
                                 </h3>
-                                <p className="text-sm text-muted-foreground">
-                                  🎵 {playlist.trackCount} tracks
-                                </p>
+                                {playlist.trackCount > 0 && (
+                                  <p className="text-sm text-muted-foreground">
+                                    🎵 {playlist.trackCount} tracks
+                                  </p>
+                                )}
                               </div>
 
                               <div className="flex flex-col xs:flex-row gap-2">
@@ -283,15 +415,17 @@ export function DashboardClient({
                                 >
                                   Make Clean
                                 </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openSpotifyPlaylist(playlist.id);
-                                  }}
-                                  className="px-3 py-2 bg-muted text-foreground text-sm font-medium rounded-lg hover:bg-muted/80 transition-colors flex-1 xs:flex-none"
-                                >
-                                  Open in Spotify
-                                </button>
+                                {playlistUrl(activeProvider, playlist.id) && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openPlaylist(playlist.id);
+                                    }}
+                                    className="px-3 py-2 bg-muted text-foreground text-sm font-medium rounded-lg hover:bg-muted/80 transition-colors flex-1 xs:flex-none"
+                                  >
+                                    Open in {activeLabel}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>

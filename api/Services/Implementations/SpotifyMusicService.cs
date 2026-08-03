@@ -55,6 +55,35 @@ public class SpotifyMusicService : IMusicService
     return cleanVersion is null ? null : MapTrack(cleanVersion);
   }
 
+  public async Task<IReadOnlyDictionary<string, MusicTrack>> GetTracksByIsrcAsync(
+    int userId,
+    IReadOnlyCollection<string> isrcs,
+    CancellationToken cancellationToken)
+  {
+    // Spotify has no batch ISRC endpoint — one search per ISRC. The client's 429 handling
+    // paces large lookups; PlaylistCopier.MaxPrefetchIsrcs bounds how many arrive here.
+    var results = new Dictionary<string, MusicTrack>(StringComparer.OrdinalIgnoreCase);
+    foreach (var isrc in isrcs)
+    {
+      var track = await _spotify.GetTrackByIsrcAsync(userId, isrc, cancellationToken);
+      if (track is not null)
+      {
+        results[isrc] = MapTrack(track);
+      }
+    }
+    return results;
+  }
+
+  public async Task<IReadOnlyList<MusicTrack>> SearchTracksAsync(
+    int userId,
+    string query,
+    int limit,
+    CancellationToken cancellationToken)
+  {
+    var tracks = await _spotify.SearchTracksAsync(userId, query, limit, cancellationToken);
+    return tracks.Select(MapTrack).ToList();
+  }
+
   public async Task<PlaylistSummary> CreatePlaylistAsync(
     int userId,
     string name,
@@ -90,7 +119,10 @@ public class SpotifyMusicService : IMusicService
     IsExplicit: t.Explicit,
     Artists: (t.Artists ?? Array.Empty<SpotifyArtist>())
       .Select(a => new MusicArtist(a.Name))
-      .ToList());
+      .ToList(),
+    Isrc: t.ExternalIds?.Isrc,
+    DurationMs: t.DurationMs,
+    AlbumName: t.Album?.Name);
 
   private static SpotifyTrack ToSpotifyTrack(MusicTrack t) => new()
   {

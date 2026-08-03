@@ -12,7 +12,7 @@ namespace RadioWash.Api.Tests.Unit.Services;
 /// the provider-agnostic IMusicService contract. Coverage focuses on the mapping between
 /// Spotify-shaped DTOs and the generic MusicTrack/PlaylistSummary records and — critically —
 /// the Spotify-specific <c>spotify:track:&lt;id&gt;</c> URI format that was previously
-/// constructed in SpotifyPlaylistCleaner and now lives in the adapter.
+/// constructed in the playlist cleaner and now lives in the adapter.
 /// </summary>
 public class SpotifyMusicServiceTests
 {
@@ -108,6 +108,80 @@ public class SpotifyMusicServiceTests
   }
 
   [Fact]
+  public async Task GetPlaylistTracksAsync_MapsIsrcDurationAndAlbum()
+  {
+    _spotify.Setup(x => x.GetPlaylistTracksAsync(7, "pl-abc", It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+    {
+      new SpotifyTrack
+      {
+        Id = "t1",
+        Name = "Song",
+        Explicit = false,
+        Artists = new[] { new SpotifyArtist { Id = "a1", Name = "Artist A" } },
+        Album = new SpotifyAlbum { Id = "al", Name = "Album Name" },
+        Uri = "spotify:track:t1",
+        DurationMs = 187_000,
+        ExternalIds = new SpotifyExternalIds { Isrc = "USUM71234567" }
+      }
+    });
+
+    var tracks = await _adapter.GetPlaylistTracksAsync(7, "pl-abc", CancellationToken.None);
+
+    var t = Assert.Single(tracks);
+    Assert.Equal("USUM71234567", t.Isrc);
+    Assert.Equal(187_000, t.DurationMs);
+    Assert.Equal("Album Name", t.AlbumName);
+  }
+
+  [Fact]
+  public async Task GetTracksByIsrcAsync_LooksUpEachIsrcAndSkipsMisses()
+  {
+    _spotify.Setup(x => x.GetTrackByIsrcAsync(7, "ISRC_A", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new SpotifyTrack
+      {
+        Id = "spot-a",
+        Name = "Song A",
+        Explicit = false,
+        Artists = new[] { new SpotifyArtist { Id = "a1", Name = "Artist" } },
+        Album = new SpotifyAlbum { Id = "al", Name = "Album" },
+        Uri = "spotify:track:spot-a",
+        ExternalIds = new SpotifyExternalIds { Isrc = "ISRC_A" }
+      });
+    _spotify.Setup(x => x.GetTrackByIsrcAsync(7, "ISRC_MISS", It.IsAny<CancellationToken>()))
+      .ReturnsAsync((SpotifyTrack?)null);
+
+    var byIsrc = await _adapter.GetTracksByIsrcAsync(7, new[] { "ISRC_A", "ISRC_MISS" }, CancellationToken.None);
+
+    var hit = Assert.Single(byIsrc);
+    Assert.Equal("ISRC_A", hit.Key);
+    Assert.Equal("spot-a", hit.Value.Id);
+  }
+
+  [Fact]
+  public async Task SearchTracksAsync_MapsResults()
+  {
+    _spotify.Setup(x => x.SearchTracksAsync(7, "some query", 5, It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new[]
+      {
+        new SpotifyTrack
+        {
+          Id = "s1",
+          Name = "Found",
+          Explicit = true,
+          Artists = new[] { new SpotifyArtist { Id = "a1", Name = "Artist" } },
+          Album = new SpotifyAlbum { Id = "al", Name = "Album" },
+          Uri = "spotify:track:s1"
+        }
+      });
+
+    var results = await _adapter.SearchTracksAsync(7, "some query", 5, CancellationToken.None);
+
+    var t = Assert.Single(results);
+    Assert.Equal("s1", t.Id);
+    Assert.True(t.IsExplicit);
+  }
+
+  [Fact]
   public async Task FindCleanVersionAsync_OnExplicitTrackWithMatch_ReturnsMappedCleanVersion()
   {
     SpotifyTrack? observedInput = null;
@@ -186,7 +260,7 @@ public class SpotifyMusicServiceTests
   [Fact]
   public async Task AddTracksToPlaylistAsync_WrapsRawIdsInSpotifyUriFormat()
   {
-    // This is the behavior that moved from SpotifyPlaylistCleaner into the adapter. Callers
+    // This is the behavior that moved from the playlist cleaner into the adapter. Callers
     // pass raw IDs; the adapter owns the spotify:track:<id> transformation.
     IEnumerable<string>? observed = null;
     _spotify.Setup(x => x.AddTracksToPlaylistAsync(7, "pl", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))

@@ -4,6 +4,7 @@ using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -16,7 +17,9 @@ namespace RadioWash.Api.Tests.Unit.Services;
 public class CleanPlaylistServiceTests
 {
   private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-  private readonly Mock<ISpotifyService> _mockSpotifyService;
+  private readonly Mock<IMusicServiceFactory> _mockMusicServiceFactory;
+  private readonly Mock<IMusicService> _mockMusicService;
+  private readonly Mock<IMusicTokenService> _mockMusicTokenService;
   private readonly Mock<IJobOrchestrator> _mockJobOrchestrator;
   private readonly Mock<ILogger<CleanPlaylistService>> _mockLogger;
   private readonly Mock<ICleanPlaylistJobRepository> _mockJobRepo;
@@ -26,7 +29,9 @@ public class CleanPlaylistServiceTests
   public CleanPlaylistServiceTests()
   {
     _mockUnitOfWork = new Mock<IUnitOfWork>();
-    _mockSpotifyService = new Mock<ISpotifyService>();
+    _mockMusicServiceFactory = new Mock<IMusicServiceFactory>();
+    _mockMusicService = new Mock<IMusicService>();
+    _mockMusicTokenService = new Mock<IMusicTokenService>();
     _mockJobOrchestrator = new Mock<IJobOrchestrator>();
     _mockLogger = new Mock<ILogger<CleanPlaylistService>>();
     _mockJobRepo = new Mock<ICleanPlaylistJobRepository>();
@@ -35,12 +40,23 @@ public class CleanPlaylistServiceTests
     _mockUnitOfWork.Setup(x => x.Jobs).Returns(_mockJobRepo.Object);
     _mockUnitOfWork.Setup(x => x.Users).Returns(_mockUserRepo.Object);
 
+    // Default: the factory resolves every supported provider to the shared mock, and the
+    // user is connected. Individual tests override these.
+    _mockMusicServiceFactory.Setup(x => x.GetService(It.IsAny<string>()))
+        .Returns(_mockMusicService.Object);
+    _mockMusicTokenService.Setup(x => x.HasValidTokensAsync(It.IsAny<int>(), It.IsAny<string>()))
+        .ReturnsAsync(true);
+
     _service = new CleanPlaylistService(
         _mockUnitOfWork.Object,
-        _mockSpotifyService.Object,
+        _mockMusicServiceFactory.Object,
+        _mockMusicTokenService.Object,
         _mockJobOrchestrator.Object,
         _mockLogger.Object);
   }
+
+  private static IReadOnlyList<PlaylistSummary> SinglePlaylist(string playlistId, string name = "Original Playlist", int trackCount = 50) =>
+      new List<PlaylistSummary> { new(playlistId, name, null, null, trackCount, "owner", null) };
 
   [Fact]
   public async Task CreateJobAsync_WithValidUser_CreatesJobSuccessfully()
@@ -55,20 +71,11 @@ public class CleanPlaylistServiceTests
     };
 
     var user = new User { Id = userId, SupabaseId = "sb123" };
-    var playlists = new List<PlaylistDto>
-        {
-            new PlaylistDto
-            {
-                Id = playlistId,
-                Name = "Original Playlist",
-                TrackCount = 50
-            }
-        };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId))
         .ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
-        .ReturnsAsync(playlists);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist(playlistId));
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
         .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
     _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>()))
@@ -120,12 +127,11 @@ public class CleanPlaylistServiceTests
     };
 
     var user = new User { Id = userId };
-    var playlists = new List<PlaylistDto>(); // Empty list
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId))
         .ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
-        .ReturnsAsync(playlists);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new List<PlaylistSummary>()); // Empty list
 
     // Act & Assert
     await Assert.ThrowsAsync<KeyNotFoundException>(
@@ -144,18 +150,10 @@ public class CleanPlaylistServiceTests
       SourcePlaylistId = playlistId
     };
     var user = new User { Id = userId, SupabaseId = "sb123" };
-    var playlists = new List<PlaylistDto>
-    {
-      new()
-      {
-        Id = playlistId,
-        Name = "Original Playlist",
-        TrackCount = 50
-      }
-    };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(playlists);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist(playlistId));
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
       .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
     _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
@@ -163,6 +161,7 @@ public class CleanPlaylistServiceTests
     var result = await _service.CreateJobAsync(userId, createDto);
 
     Assert.Equal("spotify", result.Provider);
+    _mockMusicServiceFactory.Verify(x => x.GetService("spotify"), Times.Once);
     _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "spotify")), Times.Once);
   }
 
@@ -177,18 +176,10 @@ public class CleanPlaylistServiceTests
       Provider = "Spotify"
     };
     var user = new User { Id = userId, SupabaseId = "sb123" };
-    var playlists = new List<PlaylistDto>
-    {
-      new()
-      {
-        Id = playlistId,
-        Name = "Original Playlist",
-        TrackCount = 50
-      }
-    };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockSpotifyService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(playlists);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist(playlistId));
     _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
       .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
     _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
@@ -200,7 +191,34 @@ public class CleanPlaylistServiceTests
   }
 
   [Fact]
-  public async Task CreateJobAsync_WithUnsupportedProvider_ThrowsArgumentExceptionBeforeCreatingJob()
+  public async Task CreateJobAsync_WithAppleMusicProvider_RoutesThroughFactory()
+  {
+    var userId = 1;
+    var playlistId = "p.abc123";
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = playlistId,
+      Provider = "apple_music"
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist(playlistId, "Apple Playlist"));
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("apple_music", result.Provider);
+    _mockMusicServiceFactory.Verify(x => x.GetService("apple_music"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "apple_music"), Times.Once);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "apple_music")), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithoutValidTokens_FailsFastBeforePlaylistLookup()
   {
     var userId = 1;
     var createDto = new CreateCleanPlaylistJobDto
@@ -211,16 +229,130 @@ public class CleanPlaylistServiceTests
     var user = new User { Id = userId, SupabaseId = "sb123" };
 
     _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicTokenService.Setup(x => x.HasValidTokensAsync(userId, "apple_music"))
+        .ReturnsAsync(false);
+
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateJobAsync(userId, createDto));
+
+    _mockMusicService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithUnsupportedProvider_ThrowsArgumentExceptionBeforeCreatingJob()
+  {
+    var userId = 1;
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist123",
+      Provider = "tidal"
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
 
     var exception = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateJobAsync(userId, createDto));
 
-    Assert.Equal("Provider 'apple_music' is not supported.", exception.Message);
+    Assert.Equal("Provider 'tidal' is not supported.", exception.Message);
     _mockUnitOfWork.Verify(x => x.BeginTransactionAsync(), Times.Never);
-    _mockSpotifyService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    _mockMusicService.Verify(x => x.GetUserPlaylistsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     _mockJobRepo.Verify(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()), Times.Never);
     _mockUnitOfWork.Verify(x => x.SaveChangesAsync(), Times.Never);
     _mockJobOrchestrator.Verify(x => x.EnqueueJobAsync(It.IsAny<int>()), Times.Never);
     _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Never);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_WithDifferentTargetProvider_CreatesCopyJobAndChecksBothConnections()
+  {
+    var userId = 1;
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist123",
+      Provider = "spotify",
+      TargetProvider = "apple_music",
+      SwapExplicitForClean = false
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist("playlist123", "Road Trip"));
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("copy", result.JobType);
+    Assert.Equal("spotify", result.Provider);
+    Assert.Equal("apple_music", result.TargetProvider);
+    Assert.False(result.SwapExplicitForClean);
+    // Faithful copies keep the source playlist's name.
+    Assert.Equal("Road Trip", result.TargetPlaylistName);
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "apple_music"), Times.Once);
+    // Source playlist is validated on the SOURCE provider.
+    _mockMusicServiceFactory.Verify(x => x.GetService("spotify"), Times.Once);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(j =>
+      j.JobType == "copy" && j.TargetProvider == "apple_music" && !j.SwapExplicitForClean)), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_CopyWithCleanToggle_DefaultsNameToCleanPrefix()
+  {
+    var userId = 1;
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist123",
+      Provider = "apple_music",
+      TargetProvider = "spotify"
+      // SwapExplicitForClean omitted → defaults to true
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist("playlist123", "Road Trip"));
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("copy", result.JobType);
+    Assert.True(result.SwapExplicitForClean);
+    Assert.Equal("Clean - Road Trip", result.TargetPlaylistName);
+  }
+
+  [Fact]
+  public async Task CreateJobAsync_SameSourceAndTarget_IsCleanJobAndAlwaysSwaps()
+  {
+    var userId = 1;
+    var createDto = new CreateCleanPlaylistJobDto
+    {
+      SourcePlaylistId = "playlist123",
+      Provider = "spotify",
+      TargetProvider = "spotify",
+      // Clean jobs ignore an explicit false: cleaning IS the product for same-service jobs.
+      SwapExplicitForClean = false
+    };
+    var user = new User { Id = userId, SupabaseId = "sb123" };
+
+    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(SinglePlaylist("playlist123"));
+    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
+    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
+
+    var result = await _service.CreateJobAsync(userId, createDto);
+
+    Assert.Equal("clean", result.JobType);
+    Assert.True(result.SwapExplicitForClean);
+    // Same-service: only one connection check.
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "spotify"), Times.Once);
   }
 
   [Fact]

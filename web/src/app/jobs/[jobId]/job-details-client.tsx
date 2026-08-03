@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings';
+import { jobTypeLabel, playlistUrl, providerLabel } from '@/lib/providers';
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { Button } from '@/components/ui/button';
 import { useSubscriptionStatus, useEnableSyncForJob, useSubscribeToSync, useSyncConfigs } from '@/hooks/useSubscriptionSync';
@@ -103,6 +104,13 @@ export function JobDetailsClient({
               <p className="text-muted-foreground">
                 From: {job.sourcePlaylistName}
               </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {jobTypeLabel(job)}
+                {' · '}
+                {job.jobType === 'copy'
+                  ? `${providerLabel(job.provider)} → ${providerLabel(job.targetProvider)}`
+                  : providerLabel(job.provider)}
+              </p>
             </div>
             <span
               className={`inline-block px-2 py-1 text-sm rounded-full ${getStatusBadgeClass(
@@ -142,14 +150,21 @@ export function JobDetailsClient({
 
           {job.status === 'Completed' && job.targetPlaylistId && (
             <div className="mt-6 space-y-4">
-              <a
-                href={`https://open.spotify.com/playlist/${job.targetPlaylistId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-success-foreground bg-success hover:bg-success-hover"
-              >
-                Open Playlist in Spotify
-              </a>
+              {playlistUrl(job.targetProvider, job.targetPlaylistId) ? (
+                <a
+                  href={playlistUrl(job.targetProvider, job.targetPlaylistId)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-success-foreground bg-success hover:bg-success-hover"
+                >
+                  Open Playlist in {providerLabel(job.targetProvider)}
+                </a>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Your playlist is ready in your {providerLabel(job.targetProvider)}{' '}
+                  library.
+                </p>
+              )}
 
               {/* Sync Management Section */}
               <div className="border border-border rounded-lg p-6 bg-card">
@@ -262,7 +277,9 @@ export function JobDetailsClient({
           )}
         </div>
 
-        {initialMe && <TrackMappings userId={initialMe.id} jobId={jobId} />}
+        {initialMe && (
+          <TrackMappings userId={initialMe.id} jobId={jobId} job={job} />
+        )}
       </main>
     </div>
   );

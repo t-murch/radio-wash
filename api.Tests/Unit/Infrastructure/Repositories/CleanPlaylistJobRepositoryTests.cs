@@ -101,7 +101,7 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
   public async Task CreateAsync_JobWithoutExplicitProvider_DefaultsToSpotify()
   {
     // New jobs must carry a Provider discriminator so the processor can route to the right
-    // IPlaylistCleaner (currently always SpotifyPlaylistCleaner). Existing callers do not set
+    // IPlaylistCleaner (the provider-neutral PlaylistCleaner). Existing callers do not set
     // Provider explicitly — they should get "spotify" for back-compat with the current
     // Spotify-only flow.
     var user = CreateTestUser();

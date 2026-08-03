@@ -1,5 +1,4 @@
 using Hangfire;
-using Microsoft.Extensions.DependencyInjection;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.Music;
@@ -8,29 +7,40 @@ using RadioWash.Api.Services.Interfaces;
 namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
-/// Platform-neutral playlist cleaner that drives the track-by-track loop against any
-/// <see cref="IMusicService"/> implementation. The name retains "Spotify" for back-compat
-/// with DI and the factory; it now operates through the provider-agnostic interface and no
-/// longer knows about Spotify-specific types or URI formats.
+/// Cross-service copy engine. Structure mirrors <see cref="PlaylistCleaner"/> — the same
+/// progress tracking, TrackMapping batch persistence, and Hangfire cancellation semantics —
+/// but reads via the source provider's IMusicService and writes via the target's, bridging
+/// catalogs through <see cref="ITrackMatcher"/>. Kept separate from the cleaner so the
+/// existing same-service clean path stays untouched.
 /// </summary>
-public class SpotifyPlaylistCleaner : IPlaylistCleaner
+public class PlaylistCopier : IPlaylistCopier
 {
-  private readonly IMusicService _musicService;
+  // Upper bound on ISRCs sent to the batched prefetch. Apple resolves these 25-per-request,
+  // but Spotify has no batch ISRC endpoint and spends one search per ISRC, so an uncapped
+  // prefetch on a large playlist front-loads hundreds of sequential calls before the first
+  // track is matched. Past the cap, tracks simply fall through to the search fallback in
+  // TrackMatcher — a lower-confidence match, not a dropped track.
+  private const int MaxPrefetchIsrcs = 200;
+
+  private readonly IMusicServiceFactory _musicServiceFactory;
+  private readonly ITrackMatcher _trackMatcher;
   private readonly IProgressTracker _progressTracker;
   private readonly IProgressBroadcastService _progressService;
   private readonly IUnitOfWork _unitOfWork;
-  private readonly ILogger<SpotifyPlaylistCleaner> _logger;
+  private readonly ILogger<PlaylistCopier> _logger;
   private readonly BatchConfiguration _batchConfig;
 
-  public SpotifyPlaylistCleaner(
-      [FromKeyedServices(SpotifyMusicService.Provider)] IMusicService musicService,
+  public PlaylistCopier(
+      IMusicServiceFactory musicServiceFactory,
+      ITrackMatcher trackMatcher,
       IProgressTracker progressTracker,
       IProgressBroadcastService progressService,
       IUnitOfWork unitOfWork,
-      ILogger<SpotifyPlaylistCleaner> logger,
+      ILogger<PlaylistCopier> logger,
       BatchConfiguration? batchConfig = null)
   {
-    _musicService = musicService;
+    _musicServiceFactory = musicServiceFactory;
+    _trackMatcher = trackMatcher;
     _progressTracker = progressTracker;
     _progressService = progressService;
     _unitOfWork = unitOfWork;
@@ -38,22 +48,46 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
     _batchConfig = batchConfig ?? new BatchConfiguration();
   }
 
-  public async Task<PlaylistCleaningResult> CleanPlaylistAsync(
+  public async Task<PlaylistCleaningResult> CopyPlaylistAsync(
       CleanPlaylistJob job,
       User user,
       IJobCancellationToken? cancellationToken = null)
   {
     var hangfireCancellationToken = cancellationToken ?? JobCancellationToken.Null;
-    var shutdownToken = ResolveShutdownToken(hangfireCancellationToken);
+    var shutdownToken = HangfireCancellationHelper.ResolveShutdownToken(hangfireCancellationToken);
 
-    ThrowIfCancellationRequested(hangfireCancellationToken);
-    var tracks = await _musicService.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, shutdownToken);
+    var source = _musicServiceFactory.GetService(job.Provider);
+    var target = _musicServiceFactory.GetService(job.TargetProvider);
+
+    HangfireCancellationHelper.ThrowIfCancellationRequested(hangfireCancellationToken);
+    var tracks = await source.GetPlaylistTracksAsync(user.Id, job.SourcePlaylistId, shutdownToken);
     _progressTracker.Initialize(tracks.Count, _batchConfig);
 
-    var processedResult = await ProcessTracks(job, user, tracks, hangfireCancellationToken, shutdownToken);
+    // One batched ISRC resolution up front; per-track matching then hits the index instead
+    // of the network for every ISRC-carrying track.
+    var distinctIsrcs = tracks
+      .Select(t => t.Isrc)
+      .Where(isrc => !string.IsNullOrEmpty(isrc))
+      .Select(isrc => isrc!)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
+    var isrcs = distinctIsrcs.Take(MaxPrefetchIsrcs).ToList();
+    if (distinctIsrcs.Count > isrcs.Count)
+    {
+      _logger.LogInformation(
+        "Job {JobId}: {Total} distinct ISRCs exceeds the {Cap} prefetch cap; the remaining " +
+        "{Overflow} tracks resolve through the search fallback instead of ISRC lookup",
+        job.Id, distinctIsrcs.Count, MaxPrefetchIsrcs, distinctIsrcs.Count - isrcs.Count);
+    }
+
+    var isrcIndex = await _trackMatcher.PrefetchByIsrcAsync(user.Id, target, isrcs, shutdownToken);
+
+    var processedResult = await ProcessTracks(job, user, target, tracks, isrcIndex, hangfireCancellationToken, shutdownToken);
     var playlist = await CreateTargetPlaylist(
         user,
-        job.TargetPlaylistName,
+        target,
+        job,
         processedResult.CleanTrackUris,
         hangfireCancellationToken,
         shutdownToken);
@@ -70,7 +104,9 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
   private async Task<TrackProcessingResult> ProcessTracks(
       CleanPlaylistJob job,
       User user,
+      IMusicService target,
       IReadOnlyList<MusicTrack> tracks,
+      IReadOnlyDictionary<string, MusicTrack> isrcIndex,
       IJobCancellationToken cancellationToken,
       CancellationToken shutdownToken)
   {
@@ -81,14 +117,15 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
     {
       var track = tracks[i];
 
-      if (!IsValidTrack(track))
+      if (string.IsNullOrEmpty(track.Id))
       {
         _logger.LogWarning("Skipping invalid track: {TrackName}", track.Name ?? "Unknown");
         continue;
       }
 
-      ThrowIfCancellationRequested(cancellationToken);
-      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, shutdownToken);
+      HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+      var match = await _trackMatcher.MatchAsync(
+          user.Id, target, track, isrcIndex, job.SwapExplicitForClean, shutdownToken);
 
       var mapping = new TrackMapping
       {
@@ -97,10 +134,12 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
         SourceTrackName = track.Name ?? "Unknown",
         SourceArtistName = track.Artists.Count > 0 ? string.Join(", ", track.Artists.Select(a => a.Name)) : "Unknown",
         IsExplicit = track.IsExplicit,
-        HasCleanMatch = cleanVersion != null,
-        TargetTrackId = cleanVersion?.Id,
-        TargetTrackName = cleanVersion?.Name,
-        TargetArtistName = cleanVersion?.Artists.Count > 0 ? string.Join(", ", cleanVersion.Artists.Select(a => a.Name)) : null,
+        HasCleanMatch = match.Target != null,
+        TargetTrackId = match.Target?.Id,
+        TargetTrackName = match.Target?.Name,
+        TargetArtistName = match.Target?.Artists.Count > 0 ? string.Join(", ", match.Target.Artists.Select(a => a.Name)) : null,
+        Isrc = track.Isrc,
+        MatchMethod = match.Method,
         CreatedAt = DateTime.UtcNow
       };
 
@@ -125,8 +164,6 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
 
     return result;
   }
-
-  private static bool IsValidTrack(MusicTrack track) => !string.IsNullOrEmpty(track.Id);
 
   private async Task HandleProgressReporting(int jobId, int processedCount, string? trackName)
   {
@@ -179,54 +216,26 @@ public class SpotifyPlaylistCleaner : IPlaylistCleaner
 
   private async Task<PlaylistSummary> CreateTargetPlaylist(
       User user,
-      string playlistName,
+      IMusicService target,
+      CleanPlaylistJob job,
       List<string> trackIds,
       IJobCancellationToken cancellationToken,
       CancellationToken shutdownToken)
   {
-    ThrowIfCancellationRequested(cancellationToken);
-    var playlist = await _musicService.CreatePlaylistAsync(
+    HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+    var playlist = await target.CreatePlaylistAsync(
         user.Id,
-        playlistName,
-        "Cleaned by RadioWash.",
+        job.TargetPlaylistName,
+        $"Copied from {job.SourcePlaylistName} by RadioWash.",
         shutdownToken);
 
     if (trackIds.Any())
     {
-      ThrowIfCancellationRequested(cancellationToken);
-      // Pass raw platform IDs; the adapter decides URI format.
-      await _musicService.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, shutdownToken);
+      HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
+      // Pass raw platform IDs; the target adapter decides URI format.
+      await target.AddTracksToPlaylistAsync(user.Id, playlist.Id, trackIds, shutdownToken);
     }
 
     return playlist;
-  }
-
-  // JobCancellationToken.Null (the sentinel used at enqueue time and in direct unit tests) has
-  // no backing ShutdownToken property, so accessing it throws NullReferenceException. Swallow
-  // that here and fall back to a non-cancellable token; real Hangfire runtime tokens expose a
-  // valid ShutdownToken for cooperative server-shutdown cancellation.
-  private static CancellationToken ResolveShutdownToken(IJobCancellationToken token)
-  {
-    try
-    {
-      return token.ShutdownToken;
-    }
-    catch (NullReferenceException)
-    {
-      return CancellationToken.None;
-    }
-  }
-
-  private static void ThrowIfCancellationRequested(IJobCancellationToken token)
-  {
-    try
-    {
-      token.ThrowIfCancellationRequested();
-    }
-    catch (NullReferenceException)
-    {
-      // JobCancellationToken.Null also throws here; treat it as a non-cancellable sentinel for
-      // direct unit tests and enqueue-time placeholders.
-    }
   }
 }

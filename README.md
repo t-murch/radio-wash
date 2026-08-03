@@ -54,48 +54,37 @@ pnpm install
 
 ### 4. Configure the Backend
 
-1. Update the Spotify credentials in `api/appsettings.json`:
+Local configuration lives in a `.env` file at the repo root. Do not edit
+`api/appsettings.json` — it holds deployed values and is committed.
 
-```json
-"Spotify": {
-  "ClientId": "YOUR_SPOTIFY_CLIENT_ID",
-  "ClientSecret": "YOUR_SPOTIFY_CLIENT_SECRET",
-  "RedirectUri": "https://127.0.0.1:3000/auth",
-  "Scopes": [
-    "user-read-private",
-    "user-read-email",
-    "playlist-read-private",
-    "playlist-read-collaborative",
-    "playlist-modify-public",
-    "playlist-modify-private"
-  ]
-}
+```bash
+cp .env.example .env
 ```
 
-2. The Spotify API does not allow for `localhost` as a redirect URI. Update the allowed origins in `api/appsettings.json`:
+Then fill in `.env` from `supabase status` (run `supabase start` first). At minimum
+the API needs `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SPOTIFY_CLIENT_ID`, and `SPOTIFY_CLIENT_SECRET`. Every variable is documented inline
+in `.env.example`.
 
-```json
-"AllowedOrigins": "http://localhost:3000;https://localhost:3000;http://127.0.0.1:3000;https://127.0.0.1:3000"
+> **Why `.env` and not `appsettings.Development.json`?**
+> `api/.dockerignore` excludes `appsettings.*.json` so developer secrets are never baked
+> into an image. A containerised API therefore cannot read
+> `appsettings.Development.json` — inside the container the only config file is
+> `appsettings.json`, which points at the deployed Supabase project. `docker-compose.yml`
+> injects the values from `.env` instead. The API refuses to start in Development when
+> they are missing, so a misconfiguration fails loudly at boot rather than as
+> unexplained 401s and CORS errors later.
+
+Also register the Supabase callback as a Redirect URI on your Spotify app
+(<https://developer.spotify.com/dashboard>). Spotify rejects `localhost`, so use the
+loopback IP and match `SUPABASE_API_PORT`:
+
+```
+http://127.0.0.1:54321/auth/v1/callback
 ```
 
-3. Update the JWT secret in `api/appsettings.json`:
-
-```json
-"Jwt": {
-  "Secret": "YOUR_SUPER_SECRET_JWT_KEY_THAT_SHOULD_BE_AT_LEAST_32_CHARACTERS_LONG",
-  "Issuer": "RadioWash",
-  "Audience": "RadioWashFrontend",
-  "ExpirationInMinutes": 1440
-}
-```
-
-4. Set up your database connection string in `api/appsettings.json`:
-
-```json
-"ConnectionStrings": {
-  "DefaultConnection": "Data Source=radiowash.db"
-}
-```
+Open the app at `https://127.0.0.1:3000` (not `localhost`) — CORS admits exactly one
+origin, and the two hostnames are distinct origins to the browser.
 
 ### 5. Run Database Migrations
 
@@ -217,6 +206,65 @@ The application follows clean architecture principles:
 - **React Components**: Modular UI components with TypeScript
 - **API Service**: Frontend service layer for backend communication
 
+## Apple Music Setup
+
+RadioWash supports Apple Music as a full provider: cleaning Apple Music playlists in
+place and copying playlists in either direction between Spotify and Apple Music
+(with an optional explicit-to-clean swap during the copy).
+
+### Apple Developer portal prerequisites
+
+1. An Apple Developer Program membership (Team ID from the membership page).
+2. A **MusicKit-enabled key**: Certificates, Identifiers & Profiles → Keys → create a
+   key with the *Media Services (MusicKit)* capability. Download the `.p8` file and
+   note the Key ID. This signs the developer token the API generates.
+3. For **Sign in with Apple** (identity): an App ID plus a **Services ID** (e.g.
+   `com.radiowash.web`) with Sign in with Apple enabled, the Supabase callback
+   registered as a return URL (`https://<project-ref>.supabase.co/auth/v1/callback`),
+   and a client-secret JWT generated from an Apple key.
+
+### API configuration
+
+The AppleMusic section follows the same pattern as the rest of local config — set it in
+`.env` at the repo root (see [Configure the Backend](#4-configure-the-backend)):
+
+```bash
+APPLE_MUSIC_TEAM_ID=<TEAM_ID>
+APPLE_MUSIC_KEY_ID=<KEY_ID>
+APPLE_MUSIC_PRIVATE_KEY_B64=$(base64 -w0 /path/to/AuthKey_XXXXXXXXXX.p8)
+```
+
+Keep the `.p8` itself outside the repository. Base64 is used rather than a file path
+because the key has to cross into the API container, and it is the same form the
+deployed environments take.
+
+In deployed environments set `AppleMusic__TeamId`, `AppleMusic__KeyId`, and
+`AppleMusic__PrivateKeyBase64` (base64 the whole `.p8`: `base64 -w0 AuthKey_XXX.p8`;
+this survives env-var newline mangling). The GitHub Actions deploy workflow reads
+these from the `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, and
+`APPLE_MUSIC_PRIVATE_KEY_B64` secrets.
+
+The API boots without Apple credentials; Apple-specific endpoints return 503 until
+they are configured.
+
+### Supabase (Sign in with Apple)
+
+Local: export `SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID` (the Services ID) and
+`SUPABASE_AUTH_EXTERNAL_APPLE_SECRET` (the client-secret JWT) before
+`supabase start`. Hosted: configure the Apple provider in the Supabase dashboard.
+
+### Recurring rotation
+
+Two Apple credentials expire and must be rotated on a calendar:
+
+- The **Supabase Apple client secret** JWT — Apple caps validity at 6 months.
+- The **MusicKit developer token** — capped at 180 days; the API signs it with a
+  150-day lifetime and regenerates automatically, so this only matters if the
+  signing key itself is revoked.
+
+Music User Tokens (per-user Apple Music grants) are long-lived with no refresh
+flow; the app assumes ~150 days and prompts users to reconnect near expiry.
+
 ## Limitations
 
 - Not all explicit tracks have clean alternatives available on Spotify
@@ -229,7 +277,7 @@ The application follows clean architecture principles:
 - Batch processing of multiple playlists
 - Custom filtering options (profanity, themes, etc.)
 - User preferences for replacement strategies
-- Support for Apple Music and other streaming platforms
+- Support for additional streaming platforms (Apple Music shipped; see below)
 
 ## License
 

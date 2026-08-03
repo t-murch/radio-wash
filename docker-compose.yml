@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   api:
     build:
@@ -10,7 +8,30 @@ services:
       - '5159:8080'
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=54322;Database=postgres;Username=postgres;Password=postgres
+      # `.dockerignore` excludes appsettings.*.json so local secrets are never baked into an
+      # image. The only config left inside the container is appsettings.json, which points at
+      # production Supabase — so every local token fails signature validation and every browser
+      # request is blocked by CORS. Inject the local values at runtime instead.
+      #
+      # Defaults below match a stock `supabase start`. Override any of them in .env (see
+      # .env.example) — e.g. when running several Supabase projects on shifted ports.
+      - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=${SUPABASE_DB_PORT:-54322};Database=postgres;Username=postgres;Password=postgres
+      # CORS admits exactly one origin (Program.cs: WithOrigins(frontendUrl)).
+      - FrontendUrl=${FRONTEND_URL:-https://127.0.0.1:3000}
+      # Supabase:Url is the container-to-container address used for JWKS; Supabase:PublicUrl is
+      # the browser-facing address that GoTrue stamps as the JWT issuer. They differ under Docker.
+      - Supabase__Url=http://${SUPABASE_KONG_HOST:-supabase_kong_RadioWash}:8000
+      - Supabase__PublicUrl=http://127.0.0.1:${SUPABASE_API_PORT:-54321}
+      - Supabase__JwtIssuer=http://127.0.0.1:${SUPABASE_API_PORT:-54321}/auth/v1
+      - Supabase__JwtSecret=${SUPABASE_JWT_SECRET:-}
+      - Supabase__AnonKey=${SUPABASE_ANON_KEY:-}
+      - Supabase__ServiceRoleKey=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - Spotify__ClientId=${SPOTIFY_CLIENT_ID:-}
+      - Spotify__ClientSecret=${SPOTIFY_CLIENT_SECRET:-}
+      # Apple Music (optional locally — the API boots without it; Apple features 503 until set)
+      - AppleMusic__TeamId=${APPLE_MUSIC_TEAM_ID:-}
+      - AppleMusic__KeyId=${APPLE_MUSIC_KEY_ID:-}
+      - AppleMusic__PrivateKeyBase64=${APPLE_MUSIC_PRIVATE_KEY_B64:-}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks:

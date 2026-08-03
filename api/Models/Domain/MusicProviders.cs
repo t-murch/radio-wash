@@ -3,11 +3,29 @@ namespace RadioWash.Api.Models.Domain;
 public static class MusicProviders
 {
   public const string Spotify = "spotify";
+  public const string AppleMusic = "apple_music";
 
   private static readonly Dictionary<string, string> SupportedProviders = new(StringComparer.OrdinalIgnoreCase)
   {
-    [Spotify] = Spotify
+    [Spotify] = Spotify,
+    [AppleMusic] = AppleMusic
   };
+
+  // Providers whose credentials can be renewed without user interaction. Apple Music is
+  // absent by design: a Music User Token has no refresh flow and no expiry signal, so its
+  // stored ExpiresAt is an assumed lifetime rather than an authority.
+  private static readonly HashSet<string> ProvidersWithTokenRefresh = new(StringComparer.OrdinalIgnoreCase)
+  {
+    Spotify
+  };
+
+  /// <summary>
+  /// Whether the provider offers a token refresh flow. False means a stored expiry is a
+  /// local assumption, so callers should defer to the provider's own authorization response
+  /// instead of preemptively rejecting the token.
+  /// </summary>
+  public static bool SupportsTokenRefresh(string provider) =>
+    TryNormalize(provider, out var normalized) && ProvidersWithTokenRefresh.Contains(normalized);
 
   public static bool TryNormalize(string provider, out string normalizedProvider)
   {
