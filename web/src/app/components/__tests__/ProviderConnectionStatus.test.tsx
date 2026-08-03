@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { ProviderConnectionStatus } from '../ProviderConnectionStatus';
 import {
+  disconnectProvider,
   getConnectionStatus,
   storeProviderTokens,
 } from '../../services/api';
@@ -12,6 +13,7 @@ import { signInWithSpotify } from '../../auth/actions';
 vi.mock('../../services/api', () => ({
   getConnectionStatus: vi.fn(),
   storeProviderTokens: vi.fn(),
+  disconnectProvider: vi.fn(),
 }));
 
 // Server action — invoked directly so a signed-in user isn't bounced off /auth.
@@ -29,14 +31,17 @@ vi.mock('@/components/ui/ClientDate', () => ({
 
 describe('ProviderConnectionStatus', () => {
   let mockAuthorize: Mock;
+  let mockUnauthorize: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuthorize = vi.fn().mockResolvedValue('mut-token');
+    mockUnauthorize = vi.fn().mockResolvedValue(undefined);
     (useMusicKit as Mock).mockReturnValue({
       ready: true,
       error: null,
       authorize: mockAuthorize,
+      unauthorize: mockUnauthorize,
     });
   });
 
@@ -237,5 +242,81 @@ describe('ProviderConnectionStatus', () => {
     // would bounce back without doing anything.
     await user.click(screen.getByText('Reconnect'));
     expect(signInWithSpotify).toHaveBeenCalledOnce();
+  });
+
+  it('disconnects Spotify: deletes stored tokens and refreshes the card', async () => {
+    (getConnectionStatus as Mock)
+      .mockResolvedValueOnce(connectedStatus())
+      .mockResolvedValueOnce(connectedStatus({ connected: false }));
+    (disconnectProvider as Mock).mockResolvedValue({ success: true });
+    const user = userEvent.setup();
+
+    render(<ProviderConnectionStatus provider="spotify" />);
+    await waitFor(() =>
+      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: /disconnect/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Spotify Not Connected')).toBeInTheDocument()
+    );
+    expect(disconnectProvider).toHaveBeenCalledWith('spotify');
+    // MusicKit is an Apple-only concern.
+    expect(mockUnauthorize).not.toHaveBeenCalled();
+  });
+
+  it('disconnecting Apple Music also drops the browser-side MusicKit grant', async () => {
+    // Without unauthorize(), the next authorize() silently reissues a Music User Token
+    // with no consent popup — "disconnected" in our DB but not in the browser.
+    const farExpiry = new Date(Date.now() + 100 * 24 * 3600 * 1000).toISOString();
+    (getConnectionStatus as Mock)
+      .mockResolvedValueOnce(
+        connectedStatus({
+          provider: 'apple_music',
+          connected: true,
+          canRefresh: false,
+          expiresAt: farExpiry,
+        })
+      )
+      .mockResolvedValueOnce(
+        connectedStatus({ provider: 'apple_music', connected: false })
+      );
+    (disconnectProvider as Mock).mockResolvedValue({ success: true });
+    const user = userEvent.setup();
+
+    render(<ProviderConnectionStatus provider="apple_music" />);
+    await waitFor(() =>
+      expect(screen.getByText('Apple Music Connected')).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: /disconnect/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Apple Music Not Connected')).toBeInTheDocument()
+    );
+    expect(disconnectProvider).toHaveBeenCalledWith('apple_music');
+    expect(mockUnauthorize).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces a failed disconnect and stays connected', async () => {
+    (getConnectionStatus as Mock).mockResolvedValue(connectedStatus());
+    (disconnectProvider as Mock).mockRejectedValue(
+      new Error('API Error: 500 Internal Server Error')
+    );
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(<ProviderConnectionStatus provider="spotify" />);
+    await waitFor(() =>
+      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: /disconnect/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent(/failed to disconnect spotify/i);
+    expect(screen.getByText('Spotify Connected')).toBeInTheDocument();
+    consoleSpy.mockRestore();
   });
 });
