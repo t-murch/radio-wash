@@ -176,6 +176,41 @@ public class AppleDeveloperTokenProviderTests : IDisposable
     Assert.Contains("private key", ex.Message, StringComparison.OrdinalIgnoreCase);
   }
 
+  // Every mis-configuration must surface as InvalidOperationException — the devtoken
+  // endpoint maps exactly that to 503 apple_music_not_configured. A raw FormatException or
+  // FileNotFoundException would escape as an unexplained 500 instead.
+
+  [Fact]
+  public async Task GetDeveloperTokenAsync_WithInvalidBase64_ThrowsActionableError()
+  {
+    using var provider = CreateProvider(s =>
+    {
+      s.PrivateKey = null;
+      s.PrivateKeyBase64 = "%%% definitely not base64 %%%";
+    });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+      async () => await provider.GetDeveloperTokenAsync());
+    Assert.Contains("PrivateKeyBase64", ex.Message);
+    Assert.IsType<FormatException>(ex.InnerException);
+  }
+
+  [Fact]
+  public async Task GetDeveloperTokenAsync_WithMissingKeyFile_ThrowsActionableError()
+  {
+    var missingPath = Path.Combine(Path.GetTempPath(), $"apple-musickit-missing-{Guid.NewGuid():N}.p8");
+    using var provider = CreateProvider(s =>
+    {
+      s.PrivateKey = null;
+      s.PrivateKeyPath = missingPath;
+    });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+      async () => await provider.GetDeveloperTokenAsync());
+    Assert.Contains("PrivateKeyPath", ex.Message);
+    Assert.Contains(missingPath, ex.Message);
+  }
+
   [Fact]
   public void IsConfigured_TrueWhenAnyKeySourcePresent()
   {

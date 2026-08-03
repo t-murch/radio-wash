@@ -104,6 +104,10 @@ public class AppleDeveloperTokenProvider : IAppleDeveloperTokenProvider, IDispos
 
   private ECDsa LoadPrivateKey()
   {
+    // Every mis-configuration is surfaced as InvalidOperationException: that is what the
+    // devtoken endpoint maps to 503 "apple_music_not_configured". Letting FormatException
+    // (bad base64) or IOException (bad path) escape instead turns a config problem into an
+    // unexplained 500.
     string pem;
     if (!string.IsNullOrWhiteSpace(_settings.PrivateKey))
     {
@@ -111,11 +115,29 @@ public class AppleDeveloperTokenProvider : IAppleDeveloperTokenProvider, IDispos
     }
     else if (!string.IsNullOrWhiteSpace(_settings.PrivateKeyBase64))
     {
-      pem = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(_settings.PrivateKeyBase64));
+      try
+      {
+        pem = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(_settings.PrivateKeyBase64));
+      }
+      catch (FormatException ex)
+      {
+        throw new InvalidOperationException(
+          "AppleMusic:PrivateKeyBase64 is not valid base64. Encode the whole .p8 file, e.g. " +
+          "`base64 -w0 AuthKey_XXXXXXXXXX.p8`.", ex);
+      }
     }
     else
     {
-      pem = File.ReadAllText(_settings.PrivateKeyPath!);
+      try
+      {
+        pem = File.ReadAllText(_settings.PrivateKeyPath!);
+      }
+      catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+      {
+        throw new InvalidOperationException(
+          $"The Apple Music private key could not be read from AppleMusic:PrivateKeyPath " +
+          $"('{_settings.PrivateKeyPath}').", ex);
+      }
     }
 
     var key = ECDsa.Create();
