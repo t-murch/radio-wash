@@ -6,7 +6,8 @@
  */
 
 export const SUBSCRIPTION_PRICING = {
-  // Base subscription plan
+  // The only plan offered today. Add a tier here when one exists in Stripe — the shape is
+  // kept keyed so a second tier does not require changing every call site.
   MONTHLY: {
     // The actual price charged (what Stripe charges). Must match the unit_amount of the
     // Stripe price referenced by Stripe:PricePlanId — the checkout session is created from
@@ -28,23 +29,6 @@ export const SUBSCRIPTION_PRICING = {
       PRIORITY_SUPPORT: false,
     }
   },
-  
-  // Future pricing tiers (for easy expansion).
-  // NOTE: unused — CURRENT_PLAN is MONTHLY and no yearly Stripe price exists. These figures
-  // were derived from the old $2.99 monthly and have not been restated for $5.00; set them
-  // deliberately (and create the Stripe price) before offering an annual plan.
-  YEARLY: {
-    AMOUNT_CENTS: 2990, // $29.90 — stale: ~17% off the previous $2.99/month
-    AMOUNT_DOLLARS: 29.90,
-    DISPLAY_PRICE: '$29.90',
-    MARKETING_PRICE: '$30',
-    STRIPE_PRICE_ID: process.env.NEXT_PUBLIC_STRIPE_YEARLY_PRICE_ID || '',
-    FEATURES: {
-      DAILY_SYNC: true,
-      MAX_PLAYLISTS: 25,
-      PRIORITY_SUPPORT: true,
-    }
-  }
 } as const;
 
 // Helper functions for formatting
@@ -67,7 +51,8 @@ export const FEATURE_DESCRIPTIONS = {
   PRIORITY_SUPPORT: '🆘 Priority support',
 } as const;
 
-// Current active plan (easy to switch)
+// The plan the UI reads. Every price shown to a user resolves through here, so switching
+// plans is a one-line change rather than a search across components.
 export const CURRENT_PLAN = SUBSCRIPTION_PRICING.MONTHLY;
 
 /**
