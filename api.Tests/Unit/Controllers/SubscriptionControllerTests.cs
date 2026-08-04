@@ -7,6 +7,7 @@ using RadioWash.Api.Controllers;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Interfaces;
 using System.Security.Claims;
 using Xunit;
@@ -260,11 +261,11 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task HandleStripeWebhook_WhenServiceThrows_ShouldReturnBadRequest()
+  public async Task HandleStripeWebhook_WhenServiceThrows_ShouldReturnInternalServerError()
   {
-    // Arrange
-    var payload = "invalid_payload";
-    var signature = "invalid_signature";
+    // Arrange - a generic processing failure must return 500 so Stripe redelivers
+    var payload = "{\"type\": \"invoice.payment_succeeded\"}";
+    var signature = "t=1234567890,v1=abcd1234";
 
     // Setup HTTP context
     var context = new DefaultHttpContext();
@@ -273,14 +274,41 @@ public class SubscriptionControllerTests : IDisposable
     _controller.ControllerContext.HttpContext = context;
 
     _mockPaymentService.Setup(x => x.HandleWebhookAsync(payload, signature))
-        .ThrowsAsync(new Exception("Invalid webhook"));
+        .ThrowsAsync(new Exception("Transient processing failure"));
+
+    // Act
+    var result = await _controller.HandleStripeWebhook();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+    Assert.Equal("Webhook processing failed", objectResult.Value);
+  }
+
+  [Fact]
+  public async Task HandleStripeWebhook_WithInvalidSignature_ShouldReturnBadRequest()
+  {
+    // Arrange - a signature verification failure is a permanent rejection (400)
+    var payload = "tampered_payload";
+    var signature = "t=1234567890,v1=invalid";
+
+    // Setup HTTP context
+    var context = new DefaultHttpContext();
+    context.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(payload));
+    context.Request.Headers["Stripe-Signature"] = signature;
+    _controller.ControllerContext.HttpContext = context;
+
+    _mockPaymentService.Setup(x => x.HandleWebhookAsync(payload, signature))
+        .ThrowsAsync(new WebhookSignatureVerificationException(
+            "Stripe webhook signature verification failed",
+            new Stripe.StripeException("Signature mismatch")));
 
     // Act
     var result = await _controller.HandleStripeWebhook();
 
     // Assert
     var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    Assert.Equal("Webhook processing failed", badRequestResult.Value);
+    Assert.Equal("Invalid Stripe signature", badRequestResult.Value);
   }
 
   private static SubscriptionPlan CreateSubscriptionPlan(int id, string name)

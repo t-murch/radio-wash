@@ -6,8 +6,18 @@ public interface ISubscriptionService
 {
   Task<UserSubscription?> GetActiveSubscriptionAsync(int userId);
   Task<bool> HasActiveSubscriptionAsync(int userId);
+  Task<UserSubscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId);
   Task<UserSubscription> CreateSubscriptionAsync(int userId, int planId, string stripeSubscriptionId, string stripeCustomerId);
   Task<UserSubscription> UpdateSubscriptionStatusAsync(string stripeSubscriptionId, string status);
+  // Creates or updates the local subscription row from Stripe's current view of the
+  // subscription — the single write path for webhook events, checkout reconciliation, and
+  // the reconciliation job. Keyed on StripeSubscriptionId, so event ordering doesn't
+  // matter: an `updated` arriving before `created` simply creates the row. Status goes
+  // through SubscriptionStatusMapper and transition side effects (disabling or
+  // re-enabling sync configs) are applied here. resolveUserIdFallback is invoked only
+  // when a row must be created and the subscription's metadata carries no userId
+  // (e.g. a Stripe API lookup of the customer's metadata).
+  Task<UserSubscription> SyncFromStripeAsync(Stripe.Subscription stripeSubscription, Func<Task<int?>>? resolveUserIdFallback = null);
   Task<UserSubscription> UpdateSubscriptionDatesAsync(string stripeSubscriptionId, DateTime currentPeriodStart, DateTime currentPeriodEnd);
   Task<UserSubscription> CancelSubscriptionAsync(int userId);
   Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();

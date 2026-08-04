@@ -9,4 +9,9 @@ public class EventUtilityWrapper : IEventUtility
   {
     return EventUtility.ConstructEvent(payload, signature, secret);
   }
+
+  public Event ParseEvent(string payload)
+  {
+    return EventUtility.ParseEvent(payload, throwOnApiVersionMismatch: false);
+  }
 }

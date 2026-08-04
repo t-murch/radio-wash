@@ -159,6 +159,12 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
     modelBuilder.Entity<ProcessedWebhookEvent>()
         .HasIndex(pwe => pwe.ProcessedAt);
 
+    // Status doubles as the claim state: takeover of a Failed/stale-Processing row is a
+    // compare-and-swap on this column, so concurrent claimants can't both win.
+    modelBuilder.Entity<ProcessedWebhookEvent>()
+        .Property(pwe => pwe.Status)
+        .IsConcurrencyToken();
+
     // Webhook Retry configuration
     modelBuilder.Entity<WebhookRetry>()
         .HasIndex(wr => wr.EventId);

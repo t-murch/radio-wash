@@ -11,10 +11,12 @@ public class WebhookRetryService : IWebhookRetryService
   private readonly RadioWashDbContext _dbContext;
   private readonly ILogger<WebhookRetryService> _logger;
   private readonly IWebhookProcessor _webhookProcessor;
+  private readonly IEventUtility _eventUtility;
+  private readonly IIdempotencyService _idempotencyService;
   private readonly IDateTimeProvider _dateTimeProvider;
   private readonly IRandomProvider _randomProvider;
   private readonly IErrorClassifier _errorClassifier;
-  
+
   // Configuration constants
   private const int DefaultMaxRetries = 5;
   private const int BaseDelayMinutes = 1;
@@ -25,6 +27,8 @@ public class WebhookRetryService : IWebhookRetryService
     RadioWashDbContext dbContext,
     ILogger<WebhookRetryService> logger,
     IWebhookProcessor webhookProcessor,
+    IEventUtility eventUtility,
+    IIdempotencyService idempotencyService,
     IDateTimeProvider dateTimeProvider,
     IRandomProvider randomProvider,
     IErrorClassifier errorClassifier)
@@ -32,6 +36,8 @@ public class WebhookRetryService : IWebhookRetryService
     _dbContext = dbContext;
     _logger = logger;
     _webhookProcessor = webhookProcessor;
+    _eventUtility = eventUtility;
+    _idempotencyService = idempotencyService;
     _dateTimeProvider = dateTimeProvider;
     _randomProvider = randomProvider;
     _errorClassifier = errorClassifier;
@@ -113,28 +119,47 @@ public class WebhookRetryService : IWebhookRetryService
 
   public async Task ProcessRetryAsync(WebhookRetry retry)
   {
+    // Mark as processing to prevent concurrent processing
+    retry.Status = WebhookRetryStatus.Processing;
+    retry.UpdatedAt = _dateTimeProvider.UtcNow;
+    _dbContext.WebhookRetries.Update(retry);
+    await _dbContext.SaveChangesAsync();
+
+    // The idempotency claim gates this path too: a Stripe redelivery (we return 500 on
+    // failure, so Stripe keeps redelivering) may be processing the same event right now.
+    var claimed = await _idempotencyService.TryProcessEventAsync(retry.EventId, retry.EventType);
+    if (!claimed)
+    {
+      // Another handler owns the event or it already succeeded. If that handler fails,
+      // it schedules its own retry (updating this row back to Pending), so this attempt
+      // can be closed out as superseded.
+      _logger.LogInformation(
+        "Webhook retry for event {EventId} superseded: event already processed or claimed by another handler",
+        retry.EventId);
+      await MarkRetrySucceededAsync(retry.Id);
+      return;
+    }
+
     try
     {
-      // Mark as processing to prevent concurrent processing
-      retry.Status = WebhookRetryStatus.Processing;
-      retry.UpdatedAt = _dateTimeProvider.UtcNow;
-      _dbContext.WebhookRetries.Update(retry);
-      await _dbContext.SaveChangesAsync();
-
-      _logger.LogInformation("Processing webhook retry for event {EventId}, attempt {AttemptNumber}", 
+      _logger.LogInformation("Processing webhook retry for event {EventId}, attempt {AttemptNumber}",
         retry.EventId, retry.AttemptNumber);
 
-      // Process the webhook
-      await _webhookProcessor.ProcessWebhookAsync(retry.Payload, retry.Signature);
-      
-      // Mark as succeeded
+      // The stored payload was signature-verified when first received; Stripe's timestamp
+      // tolerance (5 min) makes re-verification impossible here by design, so parse only.
+      var stripeEvent = _eventUtility.ParseEvent(retry.Payload);
+      await _webhookProcessor.ProcessEventAsync(stripeEvent);
+
+      await _idempotencyService.MarkEventSuccessfulAsync(retry.EventId);
       await MarkRetrySucceededAsync(retry.Id);
     }
     catch (Exception ex)
     {
-      _logger.LogWarning(ex, "Webhook retry failed for event {EventId}, attempt {AttemptNumber}: {ErrorMessage}", 
+      _logger.LogWarning(ex, "Webhook retry failed for event {EventId}, attempt {AttemptNumber}: {ErrorMessage}",
         retry.EventId, retry.AttemptNumber, ex.Message);
-      
+
+      await _idempotencyService.MarkEventFailedAsync(retry.EventId, ex.Message);
+
       // Mark as failed and potentially schedule next retry
       await MarkRetryFailedAsync(retry.Id, ex.Message);
     }

@@ -176,12 +176,111 @@ public class SubscriptionServiceTests
   }
 
   [Fact]
-  public async Task UpdateSubscriptionStatusAsync_WithValidSubscription_ShouldUpdateStatus()
+  public async Task UpdateSubscriptionStatusAsync_ActiveToCanceled_UpdatesStatusStampsCanceledAtAndDisablesConfigs()
   {
     // Arrange
+    var userId = 1;
     var stripeSubscriptionId = "sub_123";
-    var newStatus = SubscriptionStatus.Canceled;
-    var subscription = CreateUserSubscription(1);
+    var subscription = CreateUserSubscription(userId);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
+    var enabledConfig = new PlaylistSyncConfig { Id = 1, UserId = userId, IsActive = true };
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
+        .ReturnsAsync(new[] { enabledConfig });
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, SubscriptionStatus.Canceled);
+
+    // Assert
+    Assert.NotNull(result);
+    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.NotNull(result.CanceledAt);
+
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.Is<UserSubscription>(
+        s => s.Status == SubscriptionStatus.Canceled)), Times.Once);
+    // Transitioning out of active must disable running sync configs
+    _mockUnitOfWork.Verify(
+        x => x.SyncConfigs.DisableConfigAsync(enabledConfig.Id, AutoDisableReason.SubscriptionInactive),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task UpdateSubscriptionStatusAsync_ActiveToPastDue_DisablesEnabledConfigs()
+  {
+    // Arrange
+    var userId = 2;
+    var stripeSubscriptionId = "sub_past_due";
+    var subscription = CreateUserSubscription(userId);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
+    var enabledConfig = new PlaylistSyncConfig { Id = 21, UserId = userId, IsActive = true };
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
+        .ReturnsAsync(new[] { enabledConfig });
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, SubscriptionStatus.PastDue);
+
+    // Assert
+    Assert.Equal(SubscriptionStatus.PastDue, result.Status);
+    Assert.Null(result.CanceledAt); // only canceled stamps CanceledAt
+    _mockUnitOfWork.Verify(
+        x => x.SyncConfigs.DisableConfigAsync(enabledConfig.Id, AutoDisableReason.SubscriptionInactive),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task UpdateSubscriptionStatusAsync_CanceledToActive_ReenablesAutoDisabledConfigs()
+  {
+    // Arrange
+    var userId = 3;
+    var stripeSubscriptionId = "sub_reactivated";
+    var subscription = CreateUserSubscription(userId);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
+    subscription.Status = SubscriptionStatus.Canceled;
+    var autoDisabled = new PlaylistSyncConfig
+    {
+      Id = 31,
+      UserId = userId,
+      IsActive = false,
+      AutoDisabledReason = AutoDisableReason.SubscriptionInactive
+    };
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(new[] { autoDisabled });
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.EnableConfigAsync(It.IsAny<int>()))
+        .Returns(Task.CompletedTask);
+
+    // Act
+    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, SubscriptionStatus.Active);
+
+    // Assert
+    Assert.Equal(SubscriptionStatus.Active, result.Status);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.EnableConfigAsync(autoDisabled.Id), Times.Once);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.DisableConfigAsync(It.IsAny<int>(), It.IsAny<string?>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task UpdateSubscriptionStatusAsync_ActiveToActive_DoesNotTouchConfigs()
+  {
+    // Arrange - no entitlement transition means no config side effects
+    var stripeSubscriptionId = "sub_no_transition";
+    var subscription = CreateUserSubscription(4);
     subscription.StripeSubscriptionId = stripeSubscriptionId;
 
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
@@ -190,14 +289,60 @@ public class SubscriptionServiceTests
         .ReturnsAsync((UserSubscription s) => s);
 
     // Act
-    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, newStatus);
+    await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, SubscriptionStatus.Active);
 
     // Assert
-    Assert.NotNull(result);
-    Assert.Equal(newStatus, result.Status);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.GetEnabledByUserIdAsync(It.IsAny<int>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+  }
 
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.Is<UserSubscription>(
-        s => s.Status == newStatus)), Times.Once);
+  [Fact]
+  public async Task UpdateSubscriptionStatusAsync_WithIncompleteExpired_MapsToCanceled()
+  {
+    // Arrange
+    var userId = 5;
+    var stripeSubscriptionId = "sub_incomplete_expired";
+    var subscription = CreateUserSubscription(userId);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, "incomplete_expired");
+
+    // Assert - Stripe's incomplete_expired collapses into the local canceled status
+    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.NotNull(result.CanceledAt);
+  }
+
+  [Fact]
+  public async Task UpdateSubscriptionStatusAsync_WithExistingCanceledAt_PreservesOriginalTimestamp()
+  {
+    // Arrange
+    var userId = 6;
+    var stripeSubscriptionId = "sub_already_canceled";
+    var originalCanceledAt = DateTime.UtcNow.AddDays(-3);
+    var subscription = CreateUserSubscription(userId);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
+    subscription.Status = SubscriptionStatus.PastDue;
+    subscription.CanceledAt = originalCanceledAt;
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
+        .ReturnsAsync(subscription);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+
+    // Act
+    var result = await _subscriptionService.UpdateSubscriptionStatusAsync(stripeSubscriptionId, SubscriptionStatus.Canceled);
+
+    // Assert - CanceledAt is only stamped when null
+    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.Equal(originalCanceledAt, result.CanceledAt);
   }
 
   [Fact]
@@ -501,6 +646,269 @@ public class SubscriptionServiceTests
     // Act + Assert: no exception
     await _subscriptionService.EnforcePlanLimitAsync(userId);
     _mockUnitOfWork.Verify(x => x.SyncConfigs.CountEnabledByUserIdAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  #region SyncFromStripeAsync
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithExistingLocalRow_UpdatesStatusAndDatesWithoutCreating()
+  {
+    // Arrange
+    var userId = 1;
+    var periodStart = DateTime.UtcNow.AddDays(-1);
+    var periodEnd = DateTime.UtcNow.AddDays(29);
+    var existing = CreateUserSubscription(userId);
+    existing.Status = SubscriptionStatus.Trialing;
+
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_123", "cus_123", SubscriptionStatus.Active, "price_x", periodStart, periodEnd);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_123"))
+        .ReturnsAsync(existing);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(stripeSubscription);
+
+    // Assert
+    Assert.Equal(SubscriptionStatus.Active, result.Status);
+    Assert.Equal(periodStart, result.CurrentPeriodStart);
+    Assert.Equal(periodEnd, result.CurrentPeriodEnd);
+
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(existing), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithNoLocalRowAndMetadataUserId_CreatesSubscription()
+  {
+    // Arrange - out-of-order `updated` event arriving before `created` must still create the row
+    var userId = 42;
+    var planId = 7;
+    var periodStart = DateTime.UtcNow;
+    var periodEnd = DateTime.UtcNow.AddDays(30);
+
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_new", "cus_new", SubscriptionStatus.Active, "price_x", periodStart, periodEnd, userId);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_new"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(planId, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(false);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => { s.Id = 99; return s; });
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(stripeSubscription);
+
+    // Assert
+    Assert.Equal(userId, result.UserId);
+    Assert.Equal(planId, result.PlanId);
+    Assert.Equal(SubscriptionStatus.Active, result.Status);
+
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
+        s => s.UserId == userId &&
+             s.PlanId == planId &&
+             s.StripeSubscriptionId == "sub_new" &&
+             s.StripeCustomerId == "cus_new" &&
+             s.Status == SubscriptionStatus.Active &&
+             s.CurrentPeriodStart == periodStart &&
+             s.CurrentPeriodEnd == periodEnd)), Times.Once);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithNoMetadataUserId_UsesFallbackResolver()
+  {
+    // Arrange
+    var fallbackUserId = 55;
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_fallback", "cus_fallback", SubscriptionStatus.Active, "price_x",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_fallback"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(fallbackUserId))
+        .ReturnsAsync(false);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(fallbackUserId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(
+        stripeSubscription, () => Task.FromResult<int?>(fallbackUserId));
+
+    // Assert
+    Assert.Equal(fallbackUserId, result.UserId);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
+        s => s.UserId == fallbackUserId)), Times.Once);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithUnresolvableUser_Throws()
+  {
+    // Arrange - no metadata userId and the fallback resolver comes up empty
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_no_user", "cus_no_user", SubscriptionStatus.Active, "price_x",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_no_user"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.SyncFromStripeAsync(
+            stripeSubscription, () => Task.FromResult<int?>(null)));
+
+    Assert.Contains("Could not determine user", exception.Message);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_NewSubscriptionWithoutItems_Throws()
+  {
+    // Arrange - no items means no price, so no local plan can be resolved
+    var stripeSubscription = new Stripe.Subscription
+    {
+      Id = "sub_no_items",
+      CustomerId = "cus_no_items",
+      Status = SubscriptionStatus.Active
+    };
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_no_items"))
+        .ReturnsAsync((UserSubscription?)null);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.SyncFromStripeAsync(stripeSubscription));
+
+    Assert.Contains("no items with a price", exception.Message);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithUnknownPlanPrice_Throws()
+  {
+    // Arrange
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_unknown_price", "cus_x", SubscriptionStatus.Active, "price_unknown",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30), userId: 1);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_unknown_price"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_unknown"))
+        .ReturnsAsync((SubscriptionPlan?)null);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.SyncFromStripeAsync(stripeSubscription));
+
+    Assert.Contains("No local plan matches Stripe price", exception.Message);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WithIncompleteExpired_StoresCanceled()
+  {
+    // Arrange
+    var userId = 8;
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_expired", "cus_expired", "incomplete_expired", "price_x",
+        DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, userId);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_expired"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(false);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(stripeSubscription);
+
+    // Assert - incomplete_expired collapses into the local canceled status
+    Assert.Equal(SubscriptionStatus.Canceled, result.Status);
+    Assert.NotNull(result.CanceledAt);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WhenUserAlreadyHasActiveSubscription_StillCreates()
+  {
+    // Arrange - the user paid on Stripe's side; a conflicting local subscription is logged,
+    // not a reason to drop the record
+    var userId = 9;
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_conflict", "cus_conflict", SubscriptionStatus.Active, "price_x",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30), userId);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_conflict"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(true);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
+        .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(stripeSubscription);
+
+    // Assert - created despite the conflict, no throw
+    Assert.Equal(userId, result.UserId);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Once);
+  }
+
+  #endregion
+
+  private static Stripe.Subscription CreateStripeSubscription(
+      string subscriptionId,
+      string customerId,
+      string status,
+      string priceId,
+      DateTime periodStart,
+      DateTime periodEnd,
+      int? userId = null)
+  {
+    var subscription = new Stripe.Subscription
+    {
+      Id = subscriptionId,
+      CustomerId = customerId,
+      Status = status,
+      Items = new Stripe.StripeList<Stripe.SubscriptionItem>
+      {
+        Data = new List<Stripe.SubscriptionItem>
+        {
+          new Stripe.SubscriptionItem
+          {
+            Price = new Stripe.Price { Id = priceId },
+            CurrentPeriodStart = periodStart,
+            CurrentPeriodEnd = periodEnd
+          }
+        }
+      }
+    };
+
+    if (userId.HasValue)
+    {
+      subscription.Metadata = new Dictionary<string, string> { { "userId", userId.Value.ToString() } };
+    }
+
+    return subscription;
   }
 
   private static SubscriptionPlan CreateSubscriptionPlanWithLimit(int id, string name, int? maxPlaylists)
