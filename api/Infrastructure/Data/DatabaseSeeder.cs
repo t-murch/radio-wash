@@ -23,7 +23,9 @@ public static class DatabaseSeeder
         var syncPlan = new SubscriptionPlan
         {
             Name = "Sync Plan",
-            PriceInCents = 299, // $5.00/month
+            // Must match the unit_amount of the Stripe price in Stripe:PricePlanId; checkout
+            // bills from Stripe, so a mismatch here only misreports the price to the user.
+            PriceInCents = 500, // $5.00/month
             BillingPeriod = "monthly",
             StripePriceId = stripePriceId,
             MaxPlaylists = 10, // 10 playlists maximum
