@@ -46,7 +46,20 @@ public class StripeReconciliationService : IStripeReconciliationService
   // lost status/date/cancel-flag webhook heals within one interval.
   private async Task ReconcileLocalSubscriptionsAsync(StripeReconciliationResult result, CancellationToken cancellationToken)
   {
-    var localSubscriptions = await _subscriptionService.GetReconcilableSubscriptionsAsync();
+    var localSubscriptions = (await _subscriptionService.GetReconcilableSubscriptionsAsync()).ToList();
+
+    // A user with more than one entitled subscription is being double-billed. Logged as an
+    // error on EVERY sweep (not just at creation time) so the alert repeats until a human
+    // resolves it — see the runbook's duplicate-active-subscription entry.
+    foreach (var duplicates in localSubscriptions
+      .Where(s => SubscriptionStatusMapper.IsEntitled(s.Status))
+      .GroupBy(s => s.UserId)
+      .Where(g => g.Count() > 1))
+    {
+      _logger.LogError(
+        "User {UserId} has {Count} entitled subscriptions ({SubscriptionIds}) — double billing; cancel the older one in the Stripe Dashboard",
+        duplicates.Key, duplicates.Count(), string.Join(", ", duplicates.Select(s => s.StripeSubscriptionId)));
+    }
 
     foreach (var local in localSubscriptions)
     {
@@ -110,6 +123,21 @@ public class StripeReconciliationService : IStripeReconciliationService
         var local = await _subscriptionService.GetByStripeSubscriptionIdAsync(stripeSubscription.Id);
         if (local != null)
         {
+          // Stripe says active but the local row is not entitled — e.g. the expiry sweep
+          // canceled a paying user while Stripe was unreachable. Pass 1 skips canceled rows,
+          // so without this branch a wrongly-canceled subscription would never heal.
+          if (!SubscriptionStatusMapper.IsEntitled(local.Status))
+          {
+            _logger.LogWarning(
+              "Stripe subscription {StripeSubscriptionId} is active but local status is {LocalStatus}; healing from Stripe state",
+              stripeSubscription.Id, local.Status);
+
+            await _subscriptionService.SyncFromStripeAsync(
+              stripeSubscription,
+              () => ResolveUserIdFromCustomerAsync(stripeSubscription.CustomerId));
+            result.LocalUpdated++;
+          }
+
           continue;
         }
 
