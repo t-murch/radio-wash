@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { getJobDetails, Job, User } from '../../services/api';
+import { ApiError, getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings';
 import { jobTypeLabel, playlistUrl, providerLabel } from '@/lib/providers';
 import { GlobalHeader } from '@/components/GlobalHeader';
@@ -70,7 +70,17 @@ export function JobDetailsClient({
       await enableSyncMutation.mutateAsync(jobId);
       toast.success('Sync enabled successfully! Your playlist will be synchronized daily.');
     } catch (error) {
-      toast.error('Failed to enable sync. Please try again.');
+      // 403 = plan limit reached, 400 = subscription required — both carry a
+      // human-readable detail from the API.
+      if (
+        error instanceof ApiError &&
+        (error.status === 403 || error.status === 400) &&
+        error.detail
+      ) {
+        toast.error(error.detail);
+      } else {
+        toast.error('Failed to enable sync. Please try again.');
+      }
       console.error('Enable sync error:', error);
     } finally {
       setIsEnablingSync(false);

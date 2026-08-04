@@ -56,10 +56,11 @@ export interface TrackMapping {
 
 export interface SubscriptionStatus {
   hasActiveSubscription: boolean;
-  subscriptionId?: string;
-  planName?: string;
-  status?: string;
-  currentPeriodEnd?: string;
+  subscriptionId: number | null;
+  planName: string | null;
+  status: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 }
 
 export interface UserSubscriptionDto {
@@ -68,6 +69,7 @@ export interface UserSubscriptionDto {
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
   canceledAt?: string;
+  cancelAtPeriodEnd?: boolean;
   plan: SubscriptionPlanDto;
   createdAt: string;
 }
@@ -112,6 +114,50 @@ export interface SyncHistory {
 export const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159') + '/api';
 
+// Typed API error carrying the HTTP status and, when the backend returned an
+// RFC 7807 Problem Details body, its human-readable detail and problem type.
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly detail?: string,
+    public readonly problemType?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// Builds an ApiError from a non-ok response body. Problem Details bodies
+// (title/detail/type) are unpacked; anything else falls back to the raw text.
+const toApiError = (
+  status: number,
+  statusText: string,
+  body: string
+): ApiError => {
+  try {
+    const parsed = JSON.parse(body);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      (typeof parsed.title === 'string' || typeof parsed.detail === 'string')
+    ) {
+      return new ApiError(
+        status,
+        parsed.title ?? parsed.detail,
+        parsed.detail,
+        typeof parsed.type === 'string' ? parsed.type : undefined
+      );
+    }
+  } catch {
+    // Not JSON — fall through to the raw-text fallback.
+  }
+  return new ApiError(
+    status,
+    body || statusText || `Request failed with status ${status}`
+  );
+};
+
 // Server-side API function
 export const fetchWithSupabaseAuthServer = async (
   url: string,
@@ -144,7 +190,7 @@ export const fetchWithSupabaseAuthServer = async (
       `Error Body: "${errorBody}"`,
       `URL: "${url}"`
     );
-    throw new Error(`Request failed: ${response.statusText}`);
+    throw toApiError(response.status, response.statusText, errorBody);
   }
 
   const contentType = response.headers.get('content-type');
@@ -187,7 +233,7 @@ export const fetchWithSupabaseAuth = async (
       `Error Body: "${errorBody}"`,
       `URL: "${url}"`
     );
-    throw new Error(`Request failed: ${response.statusText}`);
+    throw toApiError(response.status, response.statusText, errorBody);
   }
 
   const contentType = response.headers.get('content-type');
@@ -342,22 +388,40 @@ export const getAvailablePlans = (): Promise<SubscriptionPlanDto[]> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
 };
 
-export const subscribeToSync = async (): Promise<{ checkoutUrl: string }> => {
-  // Get available plans first
-  const plans = await fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/plans`);
-  if (!plans || plans.length === 0) {
-    throw new Error('No subscription plans available');
-  }
-  
-  // Use the first available plan's Stripe price ID
-  const defaultPlan = plans[0];
+export const subscribeToSync = (): Promise<{ checkoutUrl?: string }> => {
+  // planId null lets the backend pick the default plan; the Stripe price is
+  // resolved server-side. clientRequestId makes the checkout idempotent.
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
     method: 'POST',
-    body: JSON.stringify({ planPriceId: defaultPlan.stripePriceId }),
+    body: JSON.stringify({ planId: null, clientRequestId: crypto.randomUUID() }),
   });
 };
 
-export const cancelSubscription = (): Promise<{ success: boolean }> => {
+// Reconciles a completed Stripe Checkout session with the local subscription
+// state. Idempotent — safe to call repeatedly.
+export const completeCheckout = (
+  sessionId: string
+): Promise<SubscriptionStatus> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/subscription/checkout/complete`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }
+  );
+};
+
+export const createPortalSession = (): Promise<{ portalUrl?: string }> => {
+  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/portal`, {
+    method: 'POST',
+  });
+};
+
+export const cancelSubscription = (): Promise<{
+  message: string;
+  activeUntil?: string;
+  cancelAtPeriodEnd?: boolean;
+}> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/cancel`, {
     method: 'POST',
   });
@@ -399,7 +463,7 @@ export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => 
 
 export const getSyncHistory = (
   syncConfigId: number,
-  limit: number = 20
+  limit = 20
 ): Promise<SyncHistory[]> => {
   return fetchWithSupabaseAuth(
     `${API_BASE_URL}/playlistsync/${syncConfigId}/history?limit=${limit}`
