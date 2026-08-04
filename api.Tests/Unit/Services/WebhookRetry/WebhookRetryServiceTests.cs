@@ -399,7 +399,7 @@ public class WebhookRetryServiceTests : IDisposable
     #region ProcessRetryAsync Tests
 
     [Fact]
-    public async Task ProcessRetryAsync_WhenEventAlreadyClaimed_ShouldMarkSucceededWithoutProcessing()
+    public async Task ProcessRetryAsync_WhenEventAlreadyClaimed_ShouldMarkSupersededWithoutProcessing()
     {
         // Arrange
         var retry = await AddRetryAsync("evt_superseded");
@@ -409,9 +409,10 @@ public class WebhookRetryServiceTests : IDisposable
         // Act
         await _webhookRetryService.ProcessRetryAsync(retry);
 
-        // Assert - Superseded retries close out as Succeeded without touching the processor
+        // Assert - closed out as Superseded (not Succeeded: this retry did no work) without
+        // touching the processor
         var stored = await _dbContext.WebhookRetries.FindAsync(retry.Id);
-        Assert.Equal(WebhookRetryStatus.Succeeded, stored!.Status);
+        Assert.Equal(WebhookRetryStatus.Superseded, stored!.Status);
         _mockEventUtility.Verify(x => x.ParseEvent(It.IsAny<string>()), Times.Never);
         _mockWebhookProcessor.Verify(x => x.ProcessEventAsync(It.IsAny<Event>()), Times.Never);
         _mockIdempotencyService.Verify(x => x.MarkEventSuccessfulAsync(It.IsAny<string>()), Times.Never);

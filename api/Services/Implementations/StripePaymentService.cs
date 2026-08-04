@@ -131,12 +131,22 @@ public class StripePaymentService : IPaymentService
     }
     catch (Exception processingEx)
     {
-      // Marking the event failed releases the idempotency claim so Stripe's redelivery
-      // (triggered by the controller's 500) can re-attempt it.
-      await _idempotencyService.MarkEventFailedAsync(stripeEvent.Id, processingEx.Message);
-
+      // Log the original failure first — if releasing the claim below also fails (DB down),
+      // that secondary error must not mask this one.
       _logger.LogError(processingEx, "Failed to process webhook event {EventId} of type {EventType}: {ErrorMessage}",
           stripeEvent.Id, stripeEvent.Type, processingEx.Message);
+
+      try
+      {
+        // Marking the event failed releases the idempotency claim so Stripe's redelivery
+        // (triggered by the controller's 500) can re-attempt it.
+        await _idempotencyService.MarkEventFailedAsync(stripeEvent.Id, processingEx.Message);
+      }
+      catch (Exception markEx)
+      {
+        // Claim stays Processing; the stale-claim takeover unblocks it after 15 minutes.
+        _logger.LogError(markEx, "Failed to release idempotency claim for webhook event {EventId}", stripeEvent.Id);
+      }
 
       // Schedule retry if the error is retryable
       if (_webhookRetryService.IsRetryableError(processingEx))

@@ -12,7 +12,7 @@ using RadioWash.Api.Infrastructure.Data;
 namespace RadioWash.Api.Migrations
 {
     [DbContext(typeof(RadioWashDbContext))]
-    [Migration("20260804122803_RestructureProcessedWebhookEventClaims")]
+    [Migration("20260804130406_RestructureProcessedWebhookEventClaims")]
     partial class RestructureProcessedWebhookEventClaims
     {
         /// <inheritdoc />
@@ -269,6 +269,7 @@ namespace RadioWash.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("LastAttemptAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("ProcessedAt")

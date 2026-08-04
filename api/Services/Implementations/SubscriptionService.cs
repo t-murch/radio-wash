@@ -110,7 +110,7 @@ public class SubscriptionService : ISubscriptionService
         userId.Value, stripeSubscription.Id);
     }
 
-    var created = await _unitOfWork.UserSubscriptions.CreateAsync(new UserSubscription
+    var created = await _unitOfWork.UserSubscriptions.TryCreateAsync(new UserSubscription
     {
       UserId = userId.Value,
       PlanId = plan.Id,
@@ -123,6 +123,17 @@ public class SubscriptionService : ISubscriptionService
       CreatedAt = DateTime.UtcNow,
       UpdatedAt = DateTime.UtcNow
     });
+
+    if (created == null)
+    {
+      // Lost the create race: the webhook, the checkout/complete endpoint, and the
+      // reconciliation sweep can all try to materialize a brand-new subscription within
+      // seconds of payment. The unique index arbitrates; rerun to take the update path.
+      _logger.LogInformation(
+        "Concurrent writer created the row for Stripe subscription {SubscriptionId} first; syncing instead",
+        stripeSubscription.Id);
+      return await SyncFromStripeAsync(stripeSubscription, resolveUserIdFallback);
+    }
 
     await ApplyStatusTransitionSideEffectsAsync(userId.Value, previousStatus: null, status);
 

@@ -132,7 +132,7 @@ public class StripeWebhookProcessor : IWebhookProcessor
         _logger.LogWarning("Payment failed for subscription {SubscriptionId} from invoice {InvoiceId}",
             subscriptionId, invoice.Id);
 
-        await UpdateOrSyncSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.PastDue);
+        await SyncSubscriptionFromStripeAsync(subscriptionId);
     }
 
     private async Task HandlePaymentSucceededAsync(Event stripeEvent)
@@ -151,30 +151,20 @@ public class StripeWebhookProcessor : IWebhookProcessor
         _logger.LogInformation("Payment succeeded for subscription {SubscriptionId}, invoice {InvoiceId}",
             subscriptionId, invoice.Id);
 
-        // Reset to active in case the subscription was past_due/incomplete.
-        await UpdateOrSyncSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.Active);
+        await SyncSubscriptionFromStripeAsync(subscriptionId);
     }
 
-    // Updates the local status; when no local row exists (invoice event arrived before the
-    // subscription event), fetches the subscription from Stripe and creates the row from its
-    // real current state instead of failing.
-    private async Task UpdateOrSyncSubscriptionStatusAsync(string subscriptionId, string status)
+    // Invoice events carry no subscription state, only a pointer — so always fetch the
+    // subscription's CURRENT state from Stripe and upsert that. Deriving a status from the
+    // event type instead (e.g. payment_succeeded => active) breaks on delayed redeliveries:
+    // Stripe can redeliver an old invoice event for up to 3 days, and forcing "active" then
+    // would resurrect a subscription that was since canceled.
+    private async Task SyncSubscriptionFromStripeAsync(string subscriptionId)
     {
-        var local = await _subscriptionService.GetByStripeSubscriptionIdAsync(subscriptionId);
-        if (local == null)
-        {
-            _logger.LogInformation(
-                "No local record for subscription {SubscriptionId}; fetching from Stripe to create it",
-                subscriptionId);
-
-            var stripeSubscription = await _stripeSubscriptionService.GetAsync(subscriptionId);
-            await _subscriptionService.SyncFromStripeAsync(
-                stripeSubscription,
-                () => ResolveUserIdFromCustomerAsync(stripeSubscription.CustomerId, subscriptionId));
-            return;
-        }
-
-        await _subscriptionService.UpdateSubscriptionStatusAsync(subscriptionId, status);
+        var stripeSubscription = await _stripeSubscriptionService.GetAsync(subscriptionId);
+        await _subscriptionService.SyncFromStripeAsync(
+            stripeSubscription,
+            () => ResolveUserIdFromCustomerAsync(stripeSubscription.CustomerId, subscriptionId));
     }
 
     // Fallback userId resolution for subscriptions without userId metadata (e.g. created

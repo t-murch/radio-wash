@@ -111,6 +111,30 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
     return subscription;
   }
 
+  public async Task<UserSubscription?> TryCreateAsync(UserSubscription subscription)
+  {
+    _dbContext.UserSubscriptions.Add(subscription);
+    try
+    {
+      await _dbContext.SaveChangesAsync();
+      return subscription;
+    }
+    catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+    {
+      _dbContext.Entry(subscription).State = EntityState.Detached;
+      return null;
+    }
+  }
+
+  private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+  {
+    // Postgres reports unique violations via SqlState 23505; the message checks cover the
+    // EF InMemory provider used in unit tests.
+    return ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"
+        || ex.InnerException?.Message?.Contains("unique", StringComparison.OrdinalIgnoreCase) == true
+        || ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase);
+  }
+
   public async Task<UserSubscription> UpdateAsync(UserSubscription subscription)
   {
     subscription.UpdatedAt = DateTime.UtcNow;

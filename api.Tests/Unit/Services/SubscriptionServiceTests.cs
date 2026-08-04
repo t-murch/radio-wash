@@ -677,7 +677,7 @@ public class SubscriptionServiceTests
     Assert.Equal(periodEnd, result.CurrentPeriodEnd);
 
     _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(existing), Times.Once);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
   [Fact]
@@ -698,7 +698,7 @@ public class SubscriptionServiceTests
         .ReturnsAsync(CreateSubscriptionPlan(planId, "Pro"));
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
         .ReturnsAsync(false);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => { s.Id = 99; return s; });
     _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
         .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
@@ -711,7 +711,7 @@ public class SubscriptionServiceTests
     Assert.Equal(planId, result.PlanId);
     Assert.Equal(SubscriptionStatus.Active, result.Status);
 
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.Is<UserSubscription>(
         s => s.UserId == userId &&
              s.PlanId == planId &&
              s.StripeSubscriptionId == "sub_new" &&
@@ -719,6 +719,41 @@ public class SubscriptionServiceTests
              s.Status == SubscriptionStatus.Active &&
              s.CurrentPeriodStart == periodStart &&
              s.CurrentPeriodEnd == periodEnd)), Times.Once);
+  }
+
+  [Fact]
+  public async Task SyncFromStripeAsync_WhenCreateRaceIsLost_FallsBackToUpdatingWinnersRow()
+  {
+    // Arrange - the webhook, checkout/complete, and reconciliation can race to create the
+    // same brand-new subscription. The loser's TryCreateAsync returns null (unique index);
+    // the rerun must find the winner's row and take the update path.
+    var userId = 42;
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_race", "cus_race", SubscriptionStatus.Active, "price_x",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30), userId);
+
+    var winnersRow = CreateUserSubscription(userId);
+    winnersRow.StripeSubscriptionId = "sub_race";
+
+    _mockUnitOfWork.SetupSequence(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_race"))
+        .ReturnsAsync((UserSubscription?)null)
+        .ReturnsAsync(winnersRow);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(7, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(false);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription s) => s);
+
+    // Act
+    var result = await _subscriptionService.SyncFromStripeAsync(stripeSubscription);
+
+    // Assert - exactly one create attempt, then the winner's row was updated instead
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(winnersRow), Times.Once);
+    Assert.Equal(winnersRow.Id, result.Id);
   }
 
   [Fact]
@@ -736,7 +771,7 @@ public class SubscriptionServiceTests
         .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(fallbackUserId))
         .ReturnsAsync(false);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
     _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(fallbackUserId, AutoDisableReason.SubscriptionInactive))
         .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
@@ -747,7 +782,7 @@ public class SubscriptionServiceTests
 
     // Assert
     Assert.Equal(fallbackUserId, result.UserId);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.Is<UserSubscription>(
         s => s.UserId == fallbackUserId)), Times.Once);
   }
 
@@ -770,7 +805,7 @@ public class SubscriptionServiceTests
             stripeSubscription, () => Task.FromResult<int?>(null)));
 
     Assert.Contains("Could not determine user", exception.Message);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
   [Fact]
@@ -792,7 +827,7 @@ public class SubscriptionServiceTests
         () => _subscriptionService.SyncFromStripeAsync(stripeSubscription));
 
     Assert.Contains("no items with a price", exception.Message);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
   [Fact]
@@ -813,7 +848,7 @@ public class SubscriptionServiceTests
         () => _subscriptionService.SyncFromStripeAsync(stripeSubscription));
 
     Assert.Contains("No local plan matches Stripe price", exception.Message);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Never);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
   [Fact]
@@ -831,7 +866,7 @@ public class SubscriptionServiceTests
         .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
         .ReturnsAsync(false);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
     _mockUnitOfWork.Setup(x => x.SyncConfigs.GetEnabledByUserIdAsync(userId))
         .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
@@ -860,7 +895,7 @@ public class SubscriptionServiceTests
         .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
         .ReturnsAsync(true);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
     _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
         .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
@@ -870,7 +905,7 @@ public class SubscriptionServiceTests
 
     // Assert - created despite the conflict, no throw
     Assert.Equal(userId, result.UserId);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Once);
   }
 
   #endregion

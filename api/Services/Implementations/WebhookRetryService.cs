@@ -22,6 +22,9 @@ public class WebhookRetryService : IWebhookRetryService
   private const int BaseDelayMinutes = 1;
   private const int MaxDelayMinutes = 60;
   private const double JitterFactor = 0.1;
+  // A retry stuck in Processing longer than this (crash between the status write and the
+  // outcome write) is picked up again by GetPendingRetriesAsync.
+  private static readonly TimeSpan StaleProcessingThreshold = TimeSpan.FromMinutes(15);
 
   public WebhookRetryService(
     RadioWashDbContext dbContext,
@@ -101,10 +104,13 @@ public class WebhookRetryService : IWebhookRetryService
     try
     {
       var currentTime = _dateTimeProvider.UtcNow;
-      
+      var staleCutoff = currentTime - StaleProcessingThreshold;
+
       return await _dbContext.WebhookRetries
-        .Where(wr => wr.Status == WebhookRetryStatus.Pending && 
-                     wr.NextRetryAt <= currentTime &&
+        .Where(wr => (wr.Status == WebhookRetryStatus.Pending &&
+                      wr.NextRetryAt <= currentTime
+                      || wr.Status == WebhookRetryStatus.Processing &&
+                      wr.UpdatedAt <= staleCutoff) &&
                      wr.AttemptNumber <= wr.MaxRetries)
         .OrderBy(wr => wr.NextRetryAt)
         .Take(50) // Process in batches to avoid overwhelming system
@@ -136,7 +142,7 @@ public class WebhookRetryService : IWebhookRetryService
       _logger.LogInformation(
         "Webhook retry for event {EventId} superseded: event already processed or claimed by another handler",
         retry.EventId);
-      await MarkRetrySucceededAsync(retry.Id);
+      await MarkRetrySupersededAsync(retry.Id);
       return;
     }
 
@@ -158,11 +164,38 @@ public class WebhookRetryService : IWebhookRetryService
       _logger.LogWarning(ex, "Webhook retry failed for event {EventId}, attempt {AttemptNumber}: {ErrorMessage}",
         retry.EventId, retry.AttemptNumber, ex.Message);
 
-      await _idempotencyService.MarkEventFailedAsync(retry.EventId, ex.Message);
+      // The two outcome writes are independent: a failure releasing the event claim must
+      // not leave this retry row wedged in Processing (nothing else would resurrect it
+      // before the stale sweep).
+      try
+      {
+        await _idempotencyService.MarkEventFailedAsync(retry.EventId, ex.Message);
+      }
+      catch (Exception markEx)
+      {
+        _logger.LogError(markEx, "Failed to release idempotency claim for event {EventId} after retry failure",
+          retry.EventId);
+      }
 
       // Mark as failed and potentially schedule next retry
       await MarkRetryFailedAsync(retry.Id, ex.Message);
     }
+  }
+
+  private async Task MarkRetrySupersededAsync(int retryId)
+  {
+    var retry = await _dbContext.WebhookRetries.FindAsync(retryId);
+    if (retry == null)
+    {
+      _logger.LogWarning("Webhook retry with ID {RetryId} not found when marking as superseded", retryId);
+      return;
+    }
+
+    retry.Status = WebhookRetryStatus.Superseded;
+    retry.UpdatedAt = _dateTimeProvider.UtcNow;
+
+    _dbContext.WebhookRetries.Update(retry);
+    await _dbContext.SaveChangesAsync();
   }
 
   public async Task MarkRetrySucceededAsync(int retryId)

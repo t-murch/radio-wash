@@ -100,7 +100,8 @@ public class WebhookTableRetentionBackgroundService : BackgroundService
             var deleted = await dbContext.WebhookRetries
                 .Where(wr => (wr.Status == WebhookRetryStatus.Succeeded
                               || wr.Status == WebhookRetryStatus.Failed
-                              || wr.Status == WebhookRetryStatus.MaxRetriesExceeded)
+                              || wr.Status == WebhookRetryStatus.MaxRetriesExceeded
+                              || wr.Status == WebhookRetryStatus.Superseded)
                               && wr.UpdatedAt < cutoff)
                 .OrderBy(wr => wr.UpdatedAt)
                 .Take(BatchSize)

@@ -266,6 +266,7 @@ namespace RadioWash.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("LastAttemptAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("ProcessedAt")

@@ -236,6 +236,85 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task TryProcessEventAsync_StaleProcessingRow_TakeoverIsExclusive()
+    {
+        // Arrange - a stale Processing claim (owner crashed 20 minutes ago).
+        var eventId = "evt_stale_race";
+        var eventType = "customer.subscription.updated";
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = eventType,
+            ProcessedAt = DateTime.UtcNow.AddMinutes(-20),
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = DateTime.UtcNow.AddMinutes(-20),
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        using var context1 = new RadioWashDbContext(_dbOptions);
+        using var context2 = new RadioWashDbContext(_dbOptions);
+        using var service1 = new DatabaseIdempotencyService(context1, _mockLogger.Object);
+        using var service2 = new DatabaseIdempotencyService(context2, _mockLogger.Object);
+
+        // Act - both instances race to take over the stale claim
+        var results = await Task.WhenAll(
+            service1.TryProcessEventAsync(eventId, eventType),
+            service2.TryProcessEventAsync(eventId, eventType));
+
+        // Assert - exactly one wins
+        Assert.Equal(1, results.Count(r => r));
+
+        using var verifyContext = new RadioWashDbContext(_dbOptions);
+        var processedEvent = await verifyContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(2, processedEvent.AttemptCount);
+    }
+
+    [Fact]
+    public async Task StaleProcessingTakeover_CompareAndSwap_LoserGetsConcurrencyException()
+    {
+        // Arrange - pins the DB-level CAS itself, bypassing the in-process semaphore that
+        // serializes the service-level race. A stale takeover writes Processing -> Processing,
+        // so with Status as the only concurrency token BOTH writers would commit; the
+        // LastAttemptAt token (changed on every claim) is what makes this a real CAS.
+        var eventId = "evt_cas_race";
+        var staleTime = DateTime.UtcNow.AddMinutes(-20);
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = "customer.subscription.updated",
+            ProcessedAt = staleTime,
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = staleTime,
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        using var context1 = new RadioWashDbContext(_dbOptions);
+        using var context2 = new RadioWashDbContext(_dbOptions);
+        var row1 = await context1.ProcessedWebhookEvents.FirstAsync(e => e.EventId == eventId);
+        var row2 = await context2.ProcessedWebhookEvents.FirstAsync(e => e.EventId == eventId);
+
+        // Act - both contexts observed the same stale claim and try to take it over
+        row1.Status = WebhookEventStatus.Processing;
+        row1.LastAttemptAt = DateTime.UtcNow;
+        row1.AttemptCount++;
+        await context1.SaveChangesAsync();
+
+        row2.Status = WebhookEventStatus.Processing;
+        row2.LastAttemptAt = DateTime.UtcNow;
+        row2.AttemptCount++;
+
+        // Assert - the second writer's original values no longer match the row
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => context2.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task MarkEventSuccessfulAsync_WithExistingEvent_ShouldSetSucceededStatus()
     {
         // Arrange

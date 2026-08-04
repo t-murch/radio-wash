@@ -183,28 +183,33 @@ public class StripeWebhookProcessorTests
     #region Invoice Payment Tests
 
     [Theory]
-    [InlineData("invoice.payment_failed", "past_due")]
-    [InlineData("invoice.payment_succeeded", "active")]
-    public async Task ProcessEventAsync_WithInvoiceEventAndLocalRecord_ShouldUpdateStatus(string eventType, string expectedStatus)
+    [InlineData("invoice.payment_failed")]
+    [InlineData("invoice.payment_succeeded")]
+    public async Task ProcessEventAsync_WithInvoiceEvent_ShouldSyncCurrentStateFromStripe(string eventType)
     {
-        // Arrange
+        // Arrange - invoice events only carry a subscription pointer; the processor must
+        // fetch the subscription's CURRENT state from Stripe rather than deriving a status
+        // from the event type (a delayed redelivery of payment_succeeded must not resurrect
+        // a since-canceled subscription).
         var subscriptionId = "sub_123";
         var payload = eventType == "invoice.payment_failed"
             ? StripeWebhookPayloadBuilder.CreateInvoicePaymentFailedWebhook("in_123", subscriptionId)
             : StripeWebhookPayloadBuilder.CreateInvoicePaymentSucceededWebhook("in_123", subscriptionId);
         var stripeEvent = ParseEvent(payload);
+        var currentStripeState = new Stripe.Subscription { Id = subscriptionId, Status = "past_due" };
 
-        _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync(subscriptionId))
-            .ReturnsAsync(CreateUserSubscription());
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, expectedStatus))
-            .ReturnsAsync(CreateUserSubscription());
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentStripeState);
 
         // Act
         await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, expectedStatus), Times.Once);
-        _mockSubscriptionService.Verify(x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()), Times.Never);
+        _mockSubscriptionService.Verify(
+            x => x.SyncFromStripeAsync(currentStripeState, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+        _mockSubscriptionService.Verify(
+            x => x.UpdateSubscriptionStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Theory]

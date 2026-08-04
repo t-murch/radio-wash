@@ -6,7 +6,11 @@ public enum WebhookRetryStatus
   Processing = 1,
   Succeeded = 2,
   Failed = 3,
-  MaxRetriesExceeded = 4
+  MaxRetriesExceeded = 4,
+  // Another delivery path (Stripe redelivery, or a concurrent handler) processed the event
+  // before this retry ran — distinct from Succeeded so ops data doesn't claim this retry
+  // did the work.
+  Superseded = 5
 }
 
 public class WebhookRetry

@@ -159,10 +159,16 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
     modelBuilder.Entity<ProcessedWebhookEvent>()
         .HasIndex(pwe => pwe.ProcessedAt);
 
-    // Status doubles as the claim state: takeover of a Failed/stale-Processing row is a
-    // compare-and-swap on this column, so concurrent claimants can't both win.
+    // Status + LastAttemptAt together form the claim state for compare-and-swap takeovers.
+    // Status alone is NOT enough: a stale-Processing takeover writes Processing -> Processing
+    // (value unchanged), so only LastAttemptAt — which changes on every claim — makes that
+    // CAS real. With both as concurrency tokens, concurrent claimants can't all win.
     modelBuilder.Entity<ProcessedWebhookEvent>()
         .Property(pwe => pwe.Status)
+        .IsConcurrencyToken();
+
+    modelBuilder.Entity<ProcessedWebhookEvent>()
+        .Property(pwe => pwe.LastAttemptAt)
         .IsConcurrencyToken();
 
     // Webhook Retry configuration

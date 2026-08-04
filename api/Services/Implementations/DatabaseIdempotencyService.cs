@@ -7,12 +7,16 @@ using RadioWash.Api.Services.Interfaces;
 namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
-/// Database-backed idempotency service with application-level locking for webhook events.
-/// A row acts as a processing claim: Processing rows are owned by a live handler, Succeeded
-/// rows are terminal, and Failed rows are re-claimable so Stripe redeliveries and internal
-/// retries can attempt the event again. Stale Processing rows (crashed instance) are taken
-/// over after a threshold. Takeovers are compare-and-swaps on Status (a concurrency token),
-/// so two claimants can never both win.
+/// Database-backed idempotency service for webhook events. A row acts as a processing claim:
+/// Processing rows are owned by a live handler, Succeeded rows are terminal, and Failed rows
+/// are re-claimable so Stripe redeliveries and internal retries can attempt the event again.
+/// Stale Processing rows (crashed instance) are taken over after a threshold.
+///
+/// Cross-instance correctness comes from the database alone: the unique index on EventId
+/// arbitrates first claims, and takeovers are compare-and-swaps on the Status+LastAttemptAt
+/// concurrency tokens. The process-wide (static) semaphore map only serializes same-process
+/// duplicates to avoid needless DB round-trips. The overall guarantee is at-least-once
+/// processing — handlers must be idempotent.
 /// </summary>
 public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
 {
@@ -20,10 +24,13 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
     // mid-event) and may be taken over. Normal webhook processing completes in seconds.
     private static readonly TimeSpan StaleClaimThreshold = TimeSpan.FromMinutes(15);
 
+    // Static: the service is scoped (one instance per request), so instance-level locks
+    // would never contend and would only manufacture false confidence.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> EventLocks = new();
+    private static readonly SemaphoreSlim LockCleanupSemaphore = new(1, 1);
+
     private readonly RadioWashDbContext _dbContext;
     private readonly ILogger<DatabaseIdempotencyService> _logger;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _eventLocks = new();
-    private readonly SemaphoreSlim _lockCleanupSemaphore = new(1, 1);
     private volatile bool _disposed = false;
 
     public DatabaseIdempotencyService(
@@ -42,7 +49,7 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
         }
 
         // Get or create a semaphore for this specific event ID
-        var eventLock = _eventLocks.GetOrAdd(eventId, _ => new SemaphoreSlim(1, 1));
+        var eventLock = EventLocks.GetOrAdd(eventId, _ => new SemaphoreSlim(1, 1));
 
         // Acquire the lock for this event
         await eventLock.WaitAsync();
@@ -128,8 +135,10 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
 
     private async Task<bool> TryTakeOverClaimAsync(ProcessedWebhookEvent existingEvent, string reason)
     {
-        // Status is a concurrency token, so this update only commits if the row still holds
-        // the status we read — a concurrent takeover loses with DbUpdateConcurrencyException.
+        // Status and LastAttemptAt are concurrency tokens, so this update only commits if
+        // the row still holds the values we read — a concurrent takeover loses with
+        // DbUpdateConcurrencyException. LastAttemptAt is what makes the stale-Processing
+        // takeover a real CAS (Status alone would be Processing -> Processing, unchanged).
         existingEvent.Status = WebhookEventStatus.Processing;
         existingEvent.LastAttemptAt = DateTime.UtcNow;
         existingEvent.AttemptCount++;
@@ -222,17 +231,17 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
         }
     }
 
-    private async Task CleanupEventLockIfUnusedAsync(string eventId)
+    private static async Task CleanupEventLockIfUnusedAsync(string eventId)
     {
-        await _lockCleanupSemaphore.WaitAsync();
+        await LockCleanupSemaphore.WaitAsync();
         try
         {
-            if (_eventLocks.TryGetValue(eventId, out var semaphore))
+            if (EventLocks.TryGetValue(eventId, out var semaphore))
             {
                 // If no one is waiting and the current count is 1 (meaning it's available)
                 if (semaphore.CurrentCount == 1)
                 {
-                    if (_eventLocks.TryRemove(eventId, out var removedSemaphore))
+                    if (EventLocks.TryRemove(eventId, out var removedSemaphore))
                     {
                         removedSemaphore.Dispose();
                     }
@@ -241,7 +250,7 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
         }
         finally
         {
-            _lockCleanupSemaphore.Release();
+            LockCleanupSemaphore.Release();
         }
     }
 
@@ -262,20 +271,8 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
+        // The lock structures are process-wide and shared across scoped instances, so
+        // disposing an instance must not tear them down; it only invalidates this instance.
         _disposed = true;
-
-        // Dispose all semaphores
-        foreach (var semaphore in _eventLocks.Values)
-        {
-            semaphore.Dispose();
-        }
-        _eventLocks.Clear();
-
-        _lockCleanupSemaphore.Dispose();
     }
 }
