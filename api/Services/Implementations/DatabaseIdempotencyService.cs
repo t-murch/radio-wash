@@ -122,7 +122,7 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
                 eventId, eventType);
             return true;
         }
-        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
         {
             // Another concurrent request already claimed this event
             _dbContext.Entry(webhookEvent).State = EntityState.Detached;
@@ -241,10 +241,15 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
                 // If no one is waiting and the current count is 1 (meaning it's available)
                 if (semaphore.CurrentCount == 1)
                 {
-                    if (EventLocks.TryRemove(eventId, out var removedSemaphore))
-                    {
-                        removedSemaphore.Dispose();
-                    }
+                    // Removed but deliberately NOT disposed: a concurrent claimant may have
+                    // GetOrAdd'd this same instance between the count check and the removal,
+                    // and disposing it under that claimant would throw ObjectDisposedException
+                    // from WaitAsync/Release. An undisposed SemaphoreSlim that never
+                    // materialized its WaitHandle holds no unmanaged state, so dropping the
+                    // reference is safe. If two claimants briefly hold different semaphores
+                    // for the same event, the DB unique index / concurrency tokens still
+                    // arbitrate correctly.
+                    EventLocks.TryRemove(eventId, out _);
                 }
             }
         }
@@ -252,21 +257,6 @@ public class DatabaseIdempotencyService : IIdempotencyService, IDisposable
         {
             LockCleanupSemaphore.Release();
         }
-    }
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        // Postgres reports unique violations via SqlState 23505 — match on that, not on
-        // locale-dependent message text.
-        if (ex.InnerException is Npgsql.PostgresException pgEx)
-        {
-            return pgEx.SqlState == "23505";
-        }
-
-        // Fallback for the EF InMemory provider used in unit tests, which surfaces unique
-        // index violations as a plain exception message.
-        return ex.InnerException?.Message?.Contains("unique", StringComparison.OrdinalIgnoreCase) == true
-            || ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()

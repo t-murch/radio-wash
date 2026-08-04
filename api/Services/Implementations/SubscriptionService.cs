@@ -53,27 +53,7 @@ public class SubscriptionService : ISubscriptionService
     var existing = await _unitOfWork.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscription.Id);
     if (existing != null)
     {
-      var previousStatus = existing.Status;
-
-      existing.Status = status;
-      existing.StripeCustomerId ??= stripeSubscription.CustomerId;
-      if (periodStart.HasValue && periodEnd.HasValue)
-      {
-        existing.CurrentPeriodStart = periodStart;
-        existing.CurrentPeriodEnd = periodEnd;
-      }
-      if (status == SubscriptionStatus.Canceled && existing.CanceledAt == null)
-      {
-        existing.CanceledAt = DateTime.UtcNow;
-      }
-
-      var updated = await _unitOfWork.UserSubscriptions.UpdateAsync(existing);
-      await ApplyStatusTransitionSideEffectsAsync(existing.UserId, previousStatus, status);
-
-      _logger.LogInformation(
-        "Synced subscription {SubscriptionId} from Stripe: {PreviousStatus} -> {Status}",
-        stripeSubscription.Id, previousStatus, status);
-      return updated;
+      return await UpdateExistingFromStripeAsync(existing, stripeSubscription, status, periodStart, periodEnd);
     }
 
     // No local row yet — either the `created` event, or a later event that arrived first.
@@ -128,11 +108,20 @@ public class SubscriptionService : ISubscriptionService
     {
       // Lost the create race: the webhook, the checkout/complete endpoint, and the
       // reconciliation sweep can all try to materialize a brand-new subscription within
-      // seconds of payment. The unique index arbitrates; rerun to take the update path.
+      // seconds of payment. The unique index arbitrates; the winner's committed row must be
+      // readable now, so take the update path against it directly (bounded — no re-entry
+      // into the create path, which could loop if the violation ever came from another
+      // constraint).
       _logger.LogInformation(
         "Concurrent writer created the row for Stripe subscription {SubscriptionId} first; syncing instead",
         stripeSubscription.Id);
-      return await SyncFromStripeAsync(stripeSubscription, resolveUserIdFallback);
+
+      var winner = await _unitOfWork.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscription.Id)
+        ?? throw new InvalidOperationException(
+          $"Insert for Stripe subscription {stripeSubscription.Id} hit a unique violation, " +
+          "but no row with that StripeSubscriptionId exists — the violation came from a different constraint");
+
+      return await UpdateExistingFromStripeAsync(winner, stripeSubscription, status, periodStart, periodEnd);
     }
 
     await ApplyStatusTransitionSideEffectsAsync(userId.Value, previousStatus: null, status);
@@ -141,6 +130,36 @@ public class SubscriptionService : ISubscriptionService
       "Created subscription record for user {UserId} from Stripe subscription {SubscriptionId} with status {Status}",
       userId.Value, stripeSubscription.Id, status);
     return created;
+  }
+
+  private async Task<UserSubscription> UpdateExistingFromStripeAsync(
+      UserSubscription existing,
+      Stripe.Subscription stripeSubscription,
+      string status,
+      DateTime? periodStart,
+      DateTime? periodEnd)
+  {
+    var previousStatus = existing.Status;
+
+    existing.Status = status;
+    existing.StripeCustomerId ??= stripeSubscription.CustomerId;
+    if (periodStart.HasValue && periodEnd.HasValue)
+    {
+      existing.CurrentPeriodStart = periodStart;
+      existing.CurrentPeriodEnd = periodEnd;
+    }
+    if (status == SubscriptionStatus.Canceled && existing.CanceledAt == null)
+    {
+      existing.CanceledAt = DateTime.UtcNow;
+    }
+
+    var updated = await _unitOfWork.UserSubscriptions.UpdateAsync(existing);
+    await ApplyStatusTransitionSideEffectsAsync(existing.UserId, previousStatus, status);
+
+    _logger.LogInformation(
+      "Synced subscription {SubscriptionId} from Stripe: {PreviousStatus} -> {Status}",
+      stripeSubscription.Id, previousStatus, status);
+    return updated;
   }
 
   private static (DateTime? Start, DateTime? End) GetPeriodDates(Stripe.Subscription stripeSubscription)

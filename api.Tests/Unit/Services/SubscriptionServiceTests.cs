@@ -757,6 +757,36 @@ public class SubscriptionServiceTests
   }
 
   [Fact]
+  public async Task SyncFromStripeAsync_WhenLostRaceButNoWinnerRowExists_ThrowsInsteadOfLooping()
+  {
+    // Arrange - TryCreateAsync reports a unique violation, but no row with this
+    // StripeSubscriptionId can be found. That means the violation came from some other
+    // constraint; retrying the create path would loop forever, so it must throw.
+    var userId = 42;
+    var stripeSubscription = CreateStripeSubscription(
+        "sub_phantom", "cus_phantom", SubscriptionStatus.Active, "price_x",
+        DateTime.UtcNow, DateTime.UtcNow.AddDays(30), userId);
+
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync("sub_phantom"))
+        .ReturnsAsync((UserSubscription?)null);
+    _mockUnitOfWork.Setup(x => x.SubscriptionPlans.GetByStripePriceIdAsync("price_x"))
+        .ReturnsAsync(CreateSubscriptionPlan(7, "Pro"));
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
+        .ReturnsAsync(false);
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
+        .ReturnsAsync((UserSubscription?)null);
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _subscriptionService.SyncFromStripeAsync(stripeSubscription));
+
+    Assert.Contains("different constraint", exception.Message);
+    // Exactly one create attempt — no unbounded re-entry
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()), Times.Once);
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()), Times.Never);
+  }
+
+  [Fact]
   public async Task SyncFromStripeAsync_WithNoMetadataUserId_UsesFallbackResolver()
   {
     // Arrange

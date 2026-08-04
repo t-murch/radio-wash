@@ -56,13 +56,25 @@ public class WebhookRetryService : IWebhookRetryService
 
       if (existingRetry != null)
       {
-        // Update existing retry with new attempt
-        existingRetry.AttemptNumber = attemptNumber;
+        if (existingRetry.Status == WebhookRetryStatus.MaxRetriesExceeded)
+        {
+          // The internal loop already gave up on this event; Stripe's own redelivery (we
+          // return 500 on failure) is the remaining recovery path. Re-arming here would let
+          // every failing redelivery bypass the MaxRetries bound.
+          _logger.LogInformation(
+            "Not re-arming webhook retry for event {EventId}: internal retries exhausted, deferring to Stripe redelivery",
+            eventId);
+          return;
+        }
+
+        // Re-arm the retry, but never lower the attempt counter: a failing live redelivery
+        // must not reset the internal loop's escalation and backoff progress.
+        existingRetry.AttemptNumber = Math.Max(existingRetry.AttemptNumber, attemptNumber);
         existingRetry.LastErrorMessage = errorMessage;
-        existingRetry.NextRetryAt = CalculateNextRetryTime(attemptNumber);
+        existingRetry.NextRetryAt = CalculateNextRetryTime(existingRetry.AttemptNumber);
         existingRetry.Status = WebhookRetryStatus.Pending;
         existingRetry.UpdatedAt = _dateTimeProvider.UtcNow;
-        
+
         _dbContext.WebhookRetries.Update(existingRetry);
       }
       else

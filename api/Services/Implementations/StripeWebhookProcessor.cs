@@ -86,15 +86,17 @@ public class StripeWebhookProcessor : IWebhookProcessor
 
     // Handles both customer.subscription.created and .updated: SyncFromStripeAsync upserts
     // keyed on the Stripe subscription id, so ordering between the two doesn't matter.
+    // The event's embedded subscription is only used as a pointer — the state written comes
+    // from a fresh fetch (see SyncSubscriptionFromStripeAsync), because a delayed redelivery
+    // of an old `updated` event (status active) after cancellation would otherwise
+    // resurrect the canceled subscription.
     private async Task HandleSubscriptionChangedAsync(Event stripeEvent)
     {
         var subscription = stripeEvent.Data.Object as Stripe.Subscription
             ?? throw new InvalidOperationException(
                 $"Event {stripeEvent.Id} ({stripeEvent.Type}) has no subscription object");
 
-        await _subscriptionService.SyncFromStripeAsync(
-            subscription,
-            () => ResolveUserIdFromCustomerAsync(subscription.CustomerId, subscription.Id));
+        await SyncSubscriptionFromStripeAsync(subscription.Id);
     }
 
     private async Task HandleSubscriptionDeletedAsync(Event stripeEvent)
@@ -154,11 +156,13 @@ public class StripeWebhookProcessor : IWebhookProcessor
         await SyncSubscriptionFromStripeAsync(subscriptionId);
     }
 
-    // Invoice events carry no subscription state, only a pointer — so always fetch the
-    // subscription's CURRENT state from Stripe and upsert that. Deriving a status from the
-    // event type instead (e.g. payment_succeeded => active) breaks on delayed redeliveries:
-    // Stripe can redeliver an old invoice event for up to 3 days, and forcing "active" then
-    // would resurrect a subscription that was since canceled.
+    // Events are treated as pointers, never as state: always fetch the subscription's
+    // CURRENT state from Stripe and upsert that. Applying an event's embedded snapshot (or
+    // deriving a status from the event type, e.g. payment_succeeded => active) breaks on
+    // delayed redeliveries: Stripe can redeliver an old event for up to 3 days, and a stale
+    // "active" then would resurrect a subscription that was since canceled. Canceled
+    // subscriptions stay retrievable via GetAsync, so the fetch works for every lifecycle
+    // stage this processor handles.
     private async Task SyncSubscriptionFromStripeAsync(string subscriptionId)
     {
         var stripeSubscription = await _stripeSubscriptionService.GetAsync(subscriptionId);

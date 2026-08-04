@@ -233,6 +233,82 @@ public class WebhookRetryServiceTests : IDisposable
         Assert.Equal(baseTime.AddMinutes(2), retry.UpdatedAt);
     }
 
+    [Fact]
+    public async Task ScheduleRetryAsync_WithLowerAttemptNumber_ShouldNotResetEscalation()
+    {
+        // Arrange - the internal loop has already escalated this event to attempt 4; a
+        // failing Stripe redelivery then calls ScheduleRetryAsync with the default attempt
+        // number (1). The escalation and backoff progress must not be reset, otherwise the
+        // MaxRetries bound never terminates while Stripe keeps redelivering.
+        var eventId = "evt_no_reset";
+        var baseTime = new DateTime(2024, 10, 25, 12, 0, 0, DateTimeKind.Utc);
+        _testDateTimeProvider.SetUtcNow(baseTime);
+        _testRandomProvider.SetFixedValue(0.5);
+
+        _dbContext.WebhookRetries.Add(new RadioWash.Api.Models.Domain.WebhookRetry
+        {
+            EventId = eventId,
+            EventType = "customer.subscription.updated",
+            Payload = "test_payload",
+            Signature = "test_signature",
+            AttemptNumber = 4,
+            MaxRetries = 5,
+            Status = WebhookRetryStatus.Failed,
+            NextRetryAt = baseTime,
+            LastErrorMessage = "attempt 4 failed",
+            CreatedAt = baseTime.AddHours(-1),
+            UpdatedAt = baseTime
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Act - live redelivery failure re-arms with the default attemptNumber of 1
+        await _webhookRetryService.ScheduleRetryAsync(
+            eventId, "customer.subscription.updated", "test_payload", "test_signature", "redelivery failed");
+
+        // Assert - counter kept at 4, backoff calculated from attempt 4 (8 minutes), re-armed
+        var retry = await _dbContext.WebhookRetries.FirstAsync(wr => wr.EventId == eventId);
+        Assert.Equal(4, retry.AttemptNumber);
+        Assert.Equal(WebhookRetryStatus.Pending, retry.Status);
+        Assert.Equal(baseTime.AddMinutes(8), retry.NextRetryAt); // 1 * 2^(4-1) = 8 minutes
+    }
+
+    [Fact]
+    public async Task ScheduleRetryAsync_WhenMaxRetriesExceeded_ShouldNotReArm()
+    {
+        // Arrange - the internal loop already gave up; Stripe's own redelivery is the
+        // remaining recovery path. Re-arming would bypass the MaxRetries bound on every
+        // failing redelivery.
+        var eventId = "evt_exhausted";
+        var baseTime = new DateTime(2024, 10, 25, 12, 0, 0, DateTimeKind.Utc);
+        _testDateTimeProvider.SetUtcNow(baseTime);
+
+        _dbContext.WebhookRetries.Add(new RadioWash.Api.Models.Domain.WebhookRetry
+        {
+            EventId = eventId,
+            EventType = "customer.subscription.updated",
+            Payload = "test_payload",
+            Signature = "test_signature",
+            AttemptNumber = 5,
+            MaxRetries = 5,
+            Status = WebhookRetryStatus.MaxRetriesExceeded,
+            NextRetryAt = baseTime.AddHours(-1),
+            LastErrorMessage = "gave up",
+            CreatedAt = baseTime.AddHours(-2),
+            UpdatedAt = baseTime.AddHours(-1)
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Act
+        await _webhookRetryService.ScheduleRetryAsync(
+            eventId, "customer.subscription.updated", "test_payload", "test_signature", "redelivery failed");
+
+        // Assert - untouched
+        var retry = await _dbContext.WebhookRetries.FirstAsync(wr => wr.EventId == eventId);
+        Assert.Equal(WebhookRetryStatus.MaxRetriesExceeded, retry.Status);
+        Assert.Equal(5, retry.AttemptNumber);
+        Assert.Equal("gave up", retry.LastErrorMessage);
+    }
+
     #endregion
 
     #region GetPendingRetriesAsync Tests
