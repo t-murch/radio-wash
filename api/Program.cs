@@ -381,6 +381,8 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
 builder.Services.AddHostedService<WebhookRetryBackgroundService>();
 builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
 builder.Services.AddHostedService<WebhookTableRetentionBackgroundService>();
+builder.Services.AddScoped<IStripeReconciliationService, StripeReconciliationService>();
+builder.Services.AddHostedService<StripeReconciliationBackgroundService>();
 
 // Rate limiting: per-authenticated-user bucket for subscription checkout/portal endpoints.
 // The Stripe webhook endpoint is deliberately NOT rate-limited — Stripe retries aggressively
