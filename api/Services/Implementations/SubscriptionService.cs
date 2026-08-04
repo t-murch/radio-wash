@@ -97,6 +97,7 @@ public class SubscriptionService : ISubscriptionService
       StripeSubscriptionId = stripeSubscription.Id,
       StripeCustomerId = stripeSubscription.CustomerId,
       Status = status,
+      CancelAtPeriodEnd = stripeSubscription.CancelAtPeriodEnd,
       CurrentPeriodStart = periodStart,
       CurrentPeriodEnd = periodEnd,
       CanceledAt = status == SubscriptionStatus.Canceled ? DateTime.UtcNow : null,
@@ -143,6 +144,8 @@ public class SubscriptionService : ISubscriptionService
 
     existing.Status = status;
     existing.StripeCustomerId ??= stripeSubscription.CustomerId;
+    // Stripe owns this flag: a portal-side "resume" clears it here automatically.
+    existing.CancelAtPeriodEnd = stripeSubscription.CancelAtPeriodEnd;
     if (periodStart.HasValue && periodEnd.HasValue)
     {
       existing.CurrentPeriodStart = periodStart;
@@ -269,20 +272,21 @@ public class SubscriptionService : ISubscriptionService
     return await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
   }
 
-  public async Task<UserSubscription> CancelSubscriptionAsync(int userId)
+  public async Task<UserSubscription> MarkCancellationRequestedAsync(int userId)
   {
     var subscription = await _unitOfWork.UserSubscriptions.GetByUserIdAsync(userId);
     if (subscription == null)
     {
-      throw new InvalidOperationException($"No active subscription found for user {userId}");
+      throw new InvalidOperationException($"No subscription found for user {userId}");
     }
 
-    _logger.LogInformation("Canceling subscription {SubscriptionId} for user {UserId}", subscription.Id, userId);
+    _logger.LogInformation(
+      "Marking subscription {SubscriptionId} for user {UserId} as cancel-at-period-end (active until {PeriodEnd})",
+      subscription.Id, userId, subscription.CurrentPeriodEnd);
 
-    subscription.Status = SubscriptionStatus.Canceled;
-    subscription.CanceledAt = DateTime.UtcNow;
-
-    await DisableSyncConfigsForUserAsync(userId);
+    // Deliberately no status change and no sync-config disabling: the user paid for the
+    // rest of the period. customer.subscription.deleted performs the real deactivation.
+    subscription.CancelAtPeriodEnd = true;
 
     return await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
   }

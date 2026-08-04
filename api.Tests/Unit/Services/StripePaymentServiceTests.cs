@@ -10,8 +10,9 @@ using Xunit;
 namespace RadioWash.Api.Tests.Unit.Services;
 
 /// <summary>
-/// Tests HandleWebhookAsync orchestration: signature verification, idempotency claiming,
-/// processor dispatch, success/failure marking, and retry scheduling. Per-event-type
+/// Tests HandleWebhookAsync orchestration (signature verification, idempotency claiming,
+/// processor dispatch, success/failure marking, retry scheduling) plus the Stripe client
+/// calls behind checkout, portal, cancel-at-period-end, and session retrieval. Per-event-type
 /// dispatch behavior is covered by the StripeWebhookProcessor tests.
 /// </summary>
 public class StripePaymentServiceTests
@@ -19,12 +20,16 @@ public class StripePaymentServiceTests
   private const string Payload = "{\"id\":\"evt_test\"}";
   private const string Signature = "test_signature";
   private const string WebhookSecret = "whsec_123";
+  private const string FrontendUrl = "https://example.com";
 
   private readonly Mock<IConfiguration> _mockConfiguration;
   private readonly Mock<IEventUtility> _mockEventUtility;
   private readonly Mock<IIdempotencyService> _mockIdempotencyService;
   private readonly Mock<IWebhookRetryService> _mockWebhookRetryService;
   private readonly Mock<IWebhookProcessor> _mockWebhookProcessor;
+  private readonly Mock<Stripe.Checkout.SessionService> _mockCheckoutSessionService;
+  private readonly Mock<Stripe.BillingPortal.SessionService> _mockPortalSessionService;
+  private readonly Mock<Stripe.SubscriptionService> _mockStripeSubscriptionService;
   private readonly Mock<ILogger<StripePaymentService>> _mockLogger;
   private readonly StripePaymentService _stripePaymentService;
 
@@ -35,11 +40,14 @@ public class StripePaymentServiceTests
     _mockIdempotencyService = new Mock<IIdempotencyService>();
     _mockWebhookRetryService = new Mock<IWebhookRetryService>();
     _mockWebhookProcessor = new Mock<IWebhookProcessor>();
+    _mockCheckoutSessionService = new Mock<Stripe.Checkout.SessionService>();
+    _mockPortalSessionService = new Mock<Stripe.BillingPortal.SessionService>();
+    _mockStripeSubscriptionService = new Mock<Stripe.SubscriptionService>();
     _mockLogger = new Mock<ILogger<StripePaymentService>>();
 
     _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
     _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns(WebhookSecret);
-    _mockConfiguration.Setup(x => x["FrontendUrl"]).Returns("https://example.com");
+    _mockConfiguration.Setup(x => x["FrontendUrl"]).Returns(FrontendUrl);
 
     _stripePaymentService = new StripePaymentService(
         _mockConfiguration.Object,
@@ -47,6 +55,9 @@ public class StripePaymentServiceTests
         _mockIdempotencyService.Object,
         _mockWebhookRetryService.Object,
         _mockWebhookProcessor.Object,
+        _mockCheckoutSessionService.Object,
+        _mockPortalSessionService.Object,
+        _mockStripeSubscriptionService.Object,
         _mockLogger.Object
     );
   }
@@ -321,6 +332,178 @@ public class StripePaymentServiceTests
         () => _stripePaymentService.HandleWebhookAsync(Payload, Signature));
 
     _mockEventUtility.Verify(x => x.ConstructEvent(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+  }
+
+  #endregion
+
+  #region CreateCheckoutSessionAsync
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_BuildsSessionOptionsFromPlanAndUser()
+  {
+    // Arrange
+    Stripe.Checkout.SessionCreateOptions? capturedOptions = null;
+    _mockCheckoutSessionService
+        .Setup(x => x.CreateAsync(
+            It.IsAny<Stripe.Checkout.SessionCreateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .Callback<Stripe.Checkout.SessionCreateOptions, RequestOptions, CancellationToken>(
+            (options, _, _) => capturedOptions = options)
+        .ReturnsAsync(new Stripe.Checkout.Session { Id = "cs_1", Url = "https://checkout.stripe.com/x" });
+
+    // Act
+    var url = await _stripePaymentService.CreateCheckoutSessionAsync(42, "price_abc");
+
+    // Assert
+    Assert.Equal("https://checkout.stripe.com/x", url);
+    Assert.NotNull(capturedOptions);
+    // Literal {CHECKOUT_SESSION_ID} placeholder is substituted by Stripe, not by us
+    Assert.Equal($"{FrontendUrl}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}", capturedOptions!.SuccessUrl);
+    Assert.Equal($"{FrontendUrl}/subscription/cancel", capturedOptions.CancelUrl);
+    Assert.Equal("subscription", capturedOptions.Mode);
+    var lineItem = Assert.Single(capturedOptions.LineItems);
+    Assert.Equal("price_abc", lineItem.Price);
+    // userId metadata must be on both the session and the subscription it creates
+    Assert.Equal("42", capturedOptions.Metadata["userId"]);
+    Assert.Equal("42", capturedOptions.SubscriptionData.Metadata["userId"]);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_WithClientRequestId_SendsIdempotencyKey()
+  {
+    // Arrange
+    RequestOptions? capturedRequestOptions = null;
+    _mockCheckoutSessionService
+        .Setup(x => x.CreateAsync(
+            It.IsAny<Stripe.Checkout.SessionCreateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .Callback<Stripe.Checkout.SessionCreateOptions, RequestOptions, CancellationToken>(
+            (_, requestOptions, _) => capturedRequestOptions = requestOptions)
+        .ReturnsAsync(new Stripe.Checkout.Session { Id = "cs_1", Url = "https://checkout.stripe.com/x" });
+
+    // Act
+    await _stripePaymentService.CreateCheckoutSessionAsync(42, "price_abc", "abc");
+
+    // Assert
+    Assert.NotNull(capturedRequestOptions);
+    Assert.Equal("checkout-42-abc", capturedRequestOptions!.IdempotencyKey);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_WithoutClientRequestId_SendsNoRequestOptions()
+  {
+    // Arrange
+    var requestOptionsCaptured = false;
+    RequestOptions? capturedRequestOptions = null;
+    _mockCheckoutSessionService
+        .Setup(x => x.CreateAsync(
+            It.IsAny<Stripe.Checkout.SessionCreateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .Callback<Stripe.Checkout.SessionCreateOptions, RequestOptions, CancellationToken>(
+            (_, requestOptions, _) => { requestOptionsCaptured = true; capturedRequestOptions = requestOptions; })
+        .ReturnsAsync(new Stripe.Checkout.Session { Id = "cs_1", Url = "https://checkout.stripe.com/x" });
+
+    // Act
+    await _stripePaymentService.CreateCheckoutSessionAsync(42, "price_abc", clientRequestId: null);
+
+    // Assert - no idempotency key means no RequestOptions at all
+    Assert.True(requestOptionsCaptured);
+    Assert.Null(capturedRequestOptions);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSessionAsync_WhenSessionHasNoUrl_ThrowsInvalidOperationException()
+  {
+    // Arrange - a session without a redirect URL is unusable for the frontend
+    _mockCheckoutSessionService
+        .Setup(x => x.CreateAsync(
+            It.IsAny<Stripe.Checkout.SessionCreateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new Stripe.Checkout.Session { Id = "cs_no_url", Url = null });
+
+    // Act & Assert
+    var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => _stripePaymentService.CreateCheckoutSessionAsync(42, "price_abc"));
+    Assert.Contains("cs_no_url", exception.Message);
+  }
+
+  #endregion
+
+  #region CancelAtPeriodEndAsync / GetCheckoutSessionAsync / CreatePortalSessionAsync
+
+  [Fact]
+  public async Task CancelAtPeriodEndAsync_UpdatesStripeSubscriptionWithCancelFlag()
+  {
+    // Arrange
+    _mockStripeSubscriptionService
+        .Setup(x => x.UpdateAsync(
+            "sub_1",
+            It.IsAny<SubscriptionUpdateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new Subscription { Id = "sub_1" });
+
+    // Act
+    await _stripePaymentService.CancelAtPeriodEndAsync("sub_1");
+
+    // Assert
+    _mockStripeSubscriptionService.Verify(x => x.UpdateAsync(
+        "sub_1",
+        It.Is<SubscriptionUpdateOptions>(o => o.CancelAtPeriodEnd == true),
+        It.IsAny<RequestOptions>(),
+        It.IsAny<CancellationToken>()), Times.Once);
+  }
+
+  [Fact]
+  public async Task GetCheckoutSessionAsync_RetrievesSessionWithSubscriptionExpanded()
+  {
+    // Arrange
+    var session = new Stripe.Checkout.Session { Id = "cs_1" };
+    _mockCheckoutSessionService
+        .Setup(x => x.GetAsync(
+            "cs_1",
+            It.IsAny<Stripe.Checkout.SessionGetOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .ReturnsAsync(session);
+
+    // Act
+    var result = await _stripePaymentService.GetCheckoutSessionAsync("cs_1");
+
+    // Assert
+    Assert.Same(session, result);
+    _mockCheckoutSessionService.Verify(x => x.GetAsync(
+        "cs_1",
+        It.Is<Stripe.Checkout.SessionGetOptions>(o => o.Expand.Contains("subscription")),
+        It.IsAny<RequestOptions>(),
+        It.IsAny<CancellationToken>()), Times.Once);
+  }
+
+  [Fact]
+  public async Task CreatePortalSessionAsync_CreatesPortalSessionForCustomer()
+  {
+    // Arrange
+    _mockPortalSessionService
+        .Setup(x => x.CreateAsync(
+            It.IsAny<Stripe.BillingPortal.SessionCreateOptions>(),
+            It.IsAny<RequestOptions>(),
+            It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new Stripe.BillingPortal.Session { Url = "https://billing.stripe.com/p/session" });
+
+    // Act
+    var url = await _stripePaymentService.CreatePortalSessionAsync("cus_1");
+
+    // Assert
+    Assert.Equal("https://billing.stripe.com/p/session", url);
+    _mockPortalSessionService.Verify(x => x.CreateAsync(
+        It.Is<Stripe.BillingPortal.SessionCreateOptions>(o =>
+            o.Customer == "cus_1" && o.ReturnUrl == $"{FrontendUrl}/dashboard"),
+        It.IsAny<RequestOptions>(),
+        It.IsAny<CancellationToken>()), Times.Once);
   }
 
   #endregion

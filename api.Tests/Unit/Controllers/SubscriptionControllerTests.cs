@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Controllers;
@@ -33,15 +34,8 @@ public class SubscriptionControllerTests : IDisposable
     _mockPaymentService = new Mock<IPaymentService>();
     _mockLogger = new Mock<ILogger<SubscriptionController>>();
 
-    _controller = new SubscriptionController(
-        _context,
-        _mockSubscriptionService.Object,
-        _mockPaymentService.Object,
-        _mockLogger.Object
-    );
-
-    // Setup authenticated user context
-    SetupAuthenticatedUser();
+    SeedAuthenticatedUser();
+    _controller = CreateController(checkoutEnabled: true);
   }
 
   public void Dispose()
@@ -49,7 +43,7 @@ public class SubscriptionControllerTests : IDisposable
     _context.Dispose();
   }
 
-  private void SetupAuthenticatedUser()
+  private void SeedAuthenticatedUser()
   {
     var user = new User
     {
@@ -61,6 +55,24 @@ public class SubscriptionControllerTests : IDisposable
     };
     _context.Users.Add(user);
     _context.SaveChanges();
+  }
+
+  private SubscriptionController CreateController(bool checkoutEnabled)
+  {
+    var configuration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
+        {
+          ["Features:CheckoutEnabled"] = checkoutEnabled.ToString().ToLowerInvariant()
+        })
+        .Build();
+
+    var controller = new SubscriptionController(
+        _context,
+        _mockSubscriptionService.Object,
+        _mockPaymentService.Object,
+        configuration,
+        _mockLogger.Object
+    );
 
     var claims = new List<Claim>
         {
@@ -69,10 +81,17 @@ public class SubscriptionControllerTests : IDisposable
     var identity = new ClaimsIdentity(claims, "TestAuth");
     var principal = new ClaimsPrincipal(identity);
 
-    _controller.ControllerContext = new ControllerContext()
+    controller.ControllerContext = new ControllerContext()
     {
       HttpContext = new DefaultHttpContext() { User = principal }
     };
+
+    return controller;
+  }
+
+  private static object? GetProperty(object response, string name)
+  {
+    return response.GetType().GetProperty(name)?.GetValue(response);
   }
 
   [Fact]
@@ -111,6 +130,25 @@ public class SubscriptionControllerTests : IDisposable
     var okResult = Assert.IsType<OkObjectResult>(result.Result);
     var returnedSubscription = Assert.IsType<UserSubscriptionDto>(okResult.Value);
     Assert.Equal(SubscriptionStatus.Active, returnedSubscription.Status);
+    Assert.False(returnedSubscription.CancelAtPeriodEnd);
+  }
+
+  [Fact]
+  public async Task GetCurrentSubscription_WithCancellationScheduled_ShouldExposeCancelAtPeriodEnd()
+  {
+    // Arrange
+    var subscription = CreateUserSubscriptionWithPlan(1);
+    subscription.CancelAtPeriodEnd = true;
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+
+    // Act
+    var result = await _controller.GetCurrentSubscription();
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result.Result);
+    var returnedSubscription = Assert.IsType<UserSubscriptionDto>(okResult.Value);
+    Assert.True(returnedSubscription.CancelAtPeriodEnd);
   }
 
   [Fact]
@@ -128,52 +166,293 @@ public class SubscriptionControllerTests : IDisposable
     Assert.Null(okResult.Value);
   }
 
+  #region CreateCheckoutSession
+
   [Fact]
-  public async Task CreateCheckoutSession_WithValidRequest_ShouldReturnOkWithCheckoutUrl()
+  public async Task CreateCheckoutSession_WithCheckoutDisabled_ShouldReturnServiceUnavailable()
+  {
+    // Arrange - the kill switch short-circuits before any service call
+    var controller = CreateController(checkoutEnabled: false);
+
+    // Act
+    var result = await controller.CreateCheckoutSession(new CreateCheckoutDto());
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status503ServiceUnavailable, problem.Status);
+    _mockPaymentService.Verify(
+        x => x.CreateCheckoutSessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()),
+        Times.Never);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WithActiveSubscription_ShouldReturnConflict()
   {
     // Arrange
-    var request = new CreateCheckoutDto
-    {
-      PlanPriceId = "price_test123"
-    };
+    _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(1))
+        .ReturnsAsync(true);
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto());
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
+    _mockPaymentService.Verify(
+        x => x.CreateCheckoutSessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()),
+        Times.Never);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WithNullPlanId_ShouldUseFirstAvailablePlan()
+  {
+    // Arrange
+    var plan = CreateSubscriptionPlan(1, "Basic", stripePriceId: "price_default");
     var checkoutUrl = "https://checkout.stripe.com/test";
 
-    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanPriceId))
+    _mockSubscriptionService.Setup(x => x.GetAvailablePlansAsync())
+        .ReturnsAsync(new[] { plan });
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, "price_default", "req-1"))
         .ReturnsAsync(checkoutUrl);
 
     // Act
-    var result = await _controller.CreateCheckoutSession(request);
+    var result = await _controller.CreateCheckoutSession(
+        new CreateCheckoutDto { PlanId = null, ClientRequestId = "req-1" });
 
     // Assert
     var okResult = Assert.IsType<OkObjectResult>(result);
-    var response = okResult.Value;
-    Assert.NotNull(response);
-    var checkoutUrlProperty = response.GetType().GetProperty("checkoutUrl");
-    Assert.Equal(checkoutUrl, checkoutUrlProperty?.GetValue(response));
+    Assert.NotNull(okResult.Value);
+    Assert.Equal(checkoutUrl, GetProperty(okResult.Value!, "checkoutUrl"));
+    _mockPaymentService.Verify(x => x.CreateCheckoutSessionAsync(1, "price_default", "req-1"), Times.Once);
+    _mockSubscriptionService.Verify(x => x.GetPlanByIdAsync(It.IsAny<int>()), Times.Never);
   }
 
   [Fact]
-  public async Task CreateCheckoutSession_WhenPaymentServiceThrows_ShouldReturnBadRequest()
+  public async Task CreateCheckoutSession_WithExplicitPlanId_ShouldResolvePlanById()
   {
     // Arrange
-    var request = new CreateCheckoutDto
-    {
-      PlanPriceId = "invalid_price_id"
-    };
+    var plan = CreateSubscriptionPlan(2, "Premium", stripePriceId: "price_premium");
+    var checkoutUrl = "https://checkout.stripe.com/test";
 
-    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, request.PlanPriceId))
-        .ThrowsAsync(new Exception("Invalid price ID"));
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(2))
+        .ReturnsAsync(plan);
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, "price_premium", null))
+        .ReturnsAsync(checkoutUrl);
 
     // Act
-    var result = await _controller.CreateCheckoutSession(request);
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto { PlanId = 2 });
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to create checkout session", errorProperty?.GetValue(response));
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    Assert.Equal(checkoutUrl, GetProperty(okResult.Value!, "checkoutUrl"));
+    _mockSubscriptionService.Verify(x => x.GetAvailablePlansAsync(), Times.Never);
   }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WithUnknownPlanId_ShouldReturnBadRequest()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(99))
+        .ReturnsAsync((SubscriptionPlan?)null);
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto { PlanId = 99 });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WithInactivePlan_ShouldReturnBadRequest()
+  {
+    // Arrange
+    var plan = CreateSubscriptionPlan(2, "Retired", stripePriceId: "price_retired");
+    plan.IsActive = false;
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(2))
+        .ReturnsAsync(plan);
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto { PlanId = 2 });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+    _mockPaymentService.Verify(
+        x => x.CreateCheckoutSessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()),
+        Times.Never);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WithPlanMissingStripePrice_ShouldReturnBadRequest()
+  {
+    // Arrange
+    var plan = CreateSubscriptionPlan(2, "Unpriced", stripePriceId: null);
+    _mockSubscriptionService.Setup(x => x.GetPlanByIdAsync(2))
+        .ReturnsAsync(plan);
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto { PlanId = 2 });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+  }
+
+  [Fact]
+  public async Task CreateCheckoutSession_WhenPaymentServiceThrows_ShouldReturnInternalServerError()
+  {
+    // Arrange
+    var plan = CreateSubscriptionPlan(1, "Basic", stripePriceId: "price_default");
+    _mockSubscriptionService.Setup(x => x.GetAvailablePlansAsync())
+        .ReturnsAsync(new[] { plan });
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, "price_default", null))
+        .ThrowsAsync(new Exception("Stripe unavailable"));
+
+    // Act
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto());
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status500InternalServerError, problem.Status);
+  }
+
+  #endregion
+
+  #region CompleteCheckout
+
+  [Fact]
+  public async Task CompleteCheckout_WithEmptySessionId_ShouldReturnBadRequest()
+  {
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "" });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+    _mockPaymentService.Verify(x => x.GetCheckoutSessionAsync(It.IsAny<string>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WhenSessionNotFoundOnStripe_ShouldReturnNotFound()
+  {
+    // Arrange
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_missing"))
+        .ThrowsAsync(new Stripe.StripeException("No such checkout session"));
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_missing" });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WithMissingUserMetadata_ShouldReturnForbidden()
+  {
+    // Arrange - a session without a userId claim can't be attributed to the caller
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_1"))
+        .ReturnsAsync(new Stripe.Checkout.Session { Id = "cs_1" });
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_1" });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status403Forbidden, problem.Status);
+    _mockSubscriptionService.Verify(
+        x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()),
+        Times.Never);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WithAnotherUsersSession_ShouldReturnForbidden()
+  {
+    // Arrange
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_1"))
+        .ReturnsAsync(new Stripe.Checkout.Session
+        {
+          Id = "cs_1",
+          Metadata = new Dictionary<string, string> { { "userId", "999" } }
+        });
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_1" });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status403Forbidden, problem.Status);
+    _mockSubscriptionService.Verify(
+        x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()),
+        Times.Never);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WithSubscription_ShouldSyncAndReturnStatus()
+  {
+    // Arrange
+    var stripeSubscription = new Stripe.Subscription { Id = "sub_1" };
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_1"))
+        .ReturnsAsync(new Stripe.Checkout.Session
+        {
+          Id = "cs_1",
+          Metadata = new Dictionary<string, string> { { "userId", "1" } },
+          Subscription = stripeSubscription
+        });
+    _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(1))
+        .ReturnsAsync(true);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(CreateUserSubscriptionWithPlan(1));
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_1" });
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    Assert.NotNull(okResult.Value);
+    Assert.True((bool)GetProperty(okResult.Value!, "hasActiveSubscription")!);
+    Assert.Equal("Basic", GetProperty(okResult.Value!, "planName"));
+    _mockSubscriptionService.Verify(
+        x => x.SyncFromStripeAsync(stripeSubscription, It.IsAny<Func<Task<int?>>?>()),
+        Times.Once);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WithoutSubscriptionOnSession_ShouldNotSyncButStillReturnOk()
+  {
+    // Arrange - payment may still be processing; the webhook will finish the job
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_1"))
+        .ReturnsAsync(new Stripe.Checkout.Session
+        {
+          Id = "cs_1",
+          Metadata = new Dictionary<string, string> { { "userId", "1" } },
+          Subscription = null
+        });
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_1" });
+
+    // Assert
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    Assert.NotNull(okResult.Value);
+    Assert.False((bool)GetProperty(okResult.Value!, "hasActiveSubscription")!);
+    _mockSubscriptionService.Verify(
+        x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()),
+        Times.Never);
+  }
+
+  #endregion
 
   [Fact]
   public async Task CreatePortalSession_WithActiveSubscription_ShouldReturnOkWithPortalUrl()
@@ -195,46 +474,137 @@ public class SubscriptionControllerTests : IDisposable
     var okResult = Assert.IsType<OkObjectResult>(result);
     var response = okResult.Value;
     Assert.NotNull(response);
-    var portalUrlProperty = response.GetType().GetProperty("portalUrl");
-    Assert.Equal(portalUrl, portalUrlProperty?.GetValue(response));
+    Assert.Equal(portalUrl, GetProperty(response!, "portalUrl"));
+  }
+
+  #region CancelSubscription
+
+  [Fact]
+  public async Task CancelSubscription_WithNoSubscription_ShouldReturnNotFound()
+  {
+    // Arrange
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync((UserSubscription?)null);
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+    _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync(It.IsAny<string>()), Times.Never);
   }
 
   [Fact]
-  public async Task CancelSubscription_WithValidUserId_ShouldReturnOk()
+  public async Task CancelSubscription_WithNonEntitledStatus_ShouldReturnNotFound()
+  {
+    // Arrange - a canceled/past_due subscription has nothing left to cancel
+    var subscription = CreateUserSubscription(1, SubscriptionStatus.Canceled);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+    _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync(It.IsAny<string>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task CancelSubscription_WithMissingStripeSubscriptionId_ShouldReturnNotFound()
   {
     // Arrange
-    var canceledSubscription = CreateUserSubscription(1, SubscriptionStatus.Canceled);
-    _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
-        .ReturnsAsync(canceledSubscription);
+    var subscription = CreateUserSubscription(1);
+    subscription.StripeSubscriptionId = null;
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+  }
+
+  [Fact]
+  public async Task CancelSubscription_WhenAlreadyScheduled_ShouldReturnOkWithoutCallingStripe()
+  {
+    // Arrange - idempotent success, no second Stripe round-trip
+    var subscription = CreateUserSubscription(1);
+    subscription.CancelAtPeriodEnd = true;
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
 
     // Act
     var result = await _controller.CancelSubscription();
 
     // Assert
     var okResult = Assert.IsType<OkObjectResult>(result);
-    var response = okResult.Value;
-    Assert.NotNull(response);
-    var messageProperty = response.GetType().GetProperty("message");
-    Assert.Equal("Subscription canceled successfully", messageProperty?.GetValue(response));
+    Assert.NotNull(okResult.Value);
+    Assert.True((bool)GetProperty(okResult.Value!, "cancelAtPeriodEnd")!);
+    Assert.Equal(subscription.CurrentPeriodEnd, GetProperty(okResult.Value!, "activeUntil"));
+    _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync(It.IsAny<string>()), Times.Never);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<int>()), Times.Never);
   }
 
   [Fact]
-  public async Task CancelSubscription_WhenServiceThrows_ShouldReturnBadRequest()
+  public async Task CancelSubscription_HappyPath_ShouldCallStripeBeforePersistingLocalFlag()
   {
     // Arrange
-    _mockSubscriptionService.Setup(x => x.CancelSubscriptionAsync(1))
-        .ThrowsAsync(new Exception("Cancellation failed"));
+    var subscription = CreateUserSubscription(1);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+
+    var callOrder = new List<string>();
+    _mockPaymentService.Setup(x => x.CancelAtPeriodEndAsync("sub_test123"))
+        .Callback(() => callOrder.Add("stripe"))
+        .Returns(Task.CompletedTask);
+    _mockSubscriptionService.Setup(x => x.MarkCancellationRequestedAsync(1))
+        .Callback(() => callOrder.Add("local"))
+        .ReturnsAsync(subscription);
 
     // Act
     var result = await _controller.CancelSubscription();
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("Failed to cancel subscription", errorProperty?.GetValue(response));
+    var okResult = Assert.IsType<OkObjectResult>(result);
+    Assert.NotNull(okResult.Value);
+    Assert.True((bool)GetProperty(okResult.Value!, "cancelAtPeriodEnd")!);
+    Assert.Equal(subscription.CurrentPeriodEnd, GetProperty(okResult.Value!, "activeUntil"));
+
+    _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync("sub_test123"), Times.Once);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(1), Times.Once);
+    // Stripe must accept the cancellation before the local flag is persisted
+    Assert.Equal(new[] { "stripe", "local" }, callOrder);
   }
+
+  [Fact]
+  public async Task CancelSubscription_WhenStripeCallFails_ShouldReturn500AndNotPersistLocalFlag()
+  {
+    // Arrange
+    var subscription = CreateUserSubscription(1);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+    _mockPaymentService.Setup(x => x.CancelAtPeriodEndAsync("sub_test123"))
+        .ThrowsAsync(new Stripe.StripeException("Stripe API unavailable"));
+
+    // Act
+    var result = await _controller.CancelSubscription();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status500InternalServerError, problem.Status);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<int>()), Times.Never);
+  }
+
+  #endregion
 
   [Fact]
   public async Task HandleStripeWebhook_WithValidPayload_ShouldReturnOk()
@@ -311,7 +681,7 @@ public class SubscriptionControllerTests : IDisposable
     Assert.Equal("Invalid Stripe signature", badRequestResult.Value);
   }
 
-  private static SubscriptionPlan CreateSubscriptionPlan(int id, string name)
+  private static SubscriptionPlan CreateSubscriptionPlan(int id, string name, string? stripePriceId = "price_test")
   {
     return new SubscriptionPlan
     {
@@ -319,6 +689,7 @@ public class SubscriptionControllerTests : IDisposable
       Name = name,
       PriceInCents = 999,
       BillingPeriod = "monthly",
+      StripePriceId = stripePriceId,
       IsActive = true,
       CreatedAt = DateTime.UtcNow,
       UpdatedAt = DateTime.UtcNow
@@ -344,20 +715,9 @@ public class SubscriptionControllerTests : IDisposable
 
   private static UserSubscription CreateUserSubscriptionWithPlan(int userId)
   {
-    return new UserSubscription
-    {
-      Id = 1,
-      UserId = userId,
-      PlanId = 1,
-      Plan = CreateSubscriptionPlan(1, "Basic"),
-      StripeSubscriptionId = "sub_test123",
-      StripeCustomerId = "cus_test123",
-      Status = SubscriptionStatus.Active,
-      CurrentPeriodStart = DateTime.UtcNow.AddDays(-30),
-      CurrentPeriodEnd = DateTime.UtcNow.AddDays(30),
-      CreatedAt = DateTime.UtcNow,
-      UpdatedAt = DateTime.UtcNow
-    };
+    var subscription = CreateUserSubscription(userId);
+    subscription.Plan = CreateSubscriptionPlan(1, "Basic");
+    return subscription;
   }
 
   [Fact]
@@ -374,16 +734,19 @@ public class SubscriptionControllerTests : IDisposable
     var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
     var response = badRequestResult.Value;
     Assert.NotNull(response);
-    var errorProperty = response.GetType().GetProperty("error");
-    Assert.Equal("No active subscription found", errorProperty?.GetValue(response));
+    Assert.Equal("No active subscription found", GetProperty(response!, "error"));
   }
 
   [Fact]
-  public async Task GetSubscriptionStatus_WithActiveSubscription_ShouldReturnOkWithTrue()
+  public async Task GetSubscriptionStatus_WithActiveSubscription_ShouldReturnFullPayload()
   {
     // Arrange
+    var subscription = CreateUserSubscriptionWithPlan(1);
+    subscription.CancelAtPeriodEnd = true;
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(1))
         .ReturnsAsync(true);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
 
     // Act
     var result = await _controller.GetSubscriptionStatus();
@@ -392,16 +755,22 @@ public class SubscriptionControllerTests : IDisposable
     var okResult = Assert.IsType<OkObjectResult>(result);
     var response = okResult.Value;
     Assert.NotNull(response);
-    var hasActiveSubscriptionProperty = response.GetType().GetProperty("hasActiveSubscription");
-    Assert.True((bool)hasActiveSubscriptionProperty?.GetValue(response)!);
+    Assert.True((bool)GetProperty(response!, "hasActiveSubscription")!);
+    Assert.Equal(subscription.Id, GetProperty(response!, "subscriptionId"));
+    Assert.Equal("Basic", GetProperty(response!, "planName"));
+    Assert.Equal(SubscriptionStatus.Active, GetProperty(response!, "status"));
+    Assert.Equal(subscription.CurrentPeriodEnd, GetProperty(response!, "currentPeriodEnd"));
+    Assert.True((bool)GetProperty(response!, "cancelAtPeriodEnd")!);
   }
 
   [Fact]
-  public async Task GetSubscriptionStatus_WithNoActiveSubscription_ShouldReturnOkWithFalse()
+  public async Task GetSubscriptionStatus_WithNoActiveSubscription_ShouldReturnEmptyPayload()
   {
     // Arrange
     _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(1))
         .ReturnsAsync(false);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync((UserSubscription?)null);
 
     // Act
     var result = await _controller.GetSubscriptionStatus();
@@ -410,8 +779,11 @@ public class SubscriptionControllerTests : IDisposable
     var okResult = Assert.IsType<OkObjectResult>(result);
     var response = okResult.Value;
     Assert.NotNull(response);
-    var hasActiveSubscriptionProperty = response.GetType().GetProperty("hasActiveSubscription");
-    Assert.False((bool)hasActiveSubscriptionProperty?.GetValue(response)!);
+    Assert.False((bool)GetProperty(response!, "hasActiveSubscription")!);
+    Assert.Null(GetProperty(response!, "subscriptionId"));
+    Assert.Null(GetProperty(response!, "planName"));
+    Assert.Null(GetProperty(response!, "status"));
+    Assert.False((bool)GetProperty(response!, "cancelAtPeriodEnd")!);
   }
 
   [Fact]
