@@ -187,6 +187,69 @@ public class StripeReconciliationServiceTests
   }
 
   [Fact]
+  public async Task ReconcileAsync_WhenStripeActiveButLocalCanceled_ShouldHealFromStripe()
+  {
+    // Arrange - a wrongly-canceled local row (e.g. expiry sweep fired during a Stripe
+    // outage) must heal: pass 1 skips canceled rows, so pass 2 owns this case.
+    var stripeActive = new Stripe.Subscription { Id = "sub_wronglycanceled", CustomerId = "cus_1", Status = "active" };
+    var localCanceled = CreateLocalSubscription("sub_wronglycanceled");
+    localCanceled.Status = SubscriptionStatus.Canceled;
+
+    _mockStripeSubscriptionService
+      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+      .Returns(ToAsyncEnumerable(new[] { stripeActive }));
+    _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_wronglycanceled"))
+      .ReturnsAsync(localCanceled);
+
+    // Act
+    var result = await _service.ReconcileAsync();
+
+    // Assert
+    _mockSubscriptionService.Verify(
+      x => x.SyncFromStripeAsync(stripeActive, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+    Assert.Equal(1, result.LocalUpdated);
+    Assert.Equal(0, result.MissingCreated);
+  }
+
+  [Fact]
+  public async Task ReconcileAsync_WithDuplicateEntitledSubscriptions_ShouldLogErrorEverySweep()
+  {
+    // Arrange - two entitled rows for the same user = double billing; must be flagged as an
+    // error on every sweep until resolved
+    var first = CreateLocalSubscription("sub_a", 1);
+    var second = CreateLocalSubscription("sub_b", 2);
+
+    _mockSubscriptionService.Setup(x => x.GetReconcilableSubscriptionsAsync())
+      .ReturnsAsync(new List<UserSubscription> { first, second });
+    _mockStripeSubscriptionService
+      .Setup(x => x.GetAsync(It.IsAny<string>(), It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync((string id, SubscriptionGetOptions _, RequestOptions _, CancellationToken _) =>
+        new Stripe.Subscription { Id = id, Status = "active" });
+
+    var mockLogger = new Mock<ILogger<StripeReconciliationService>>();
+    var configuration = new ConfigurationBuilder()
+      .AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:SecretKey"] = "sk_test_123" })
+      .Build();
+    var service = new StripeReconciliationService(
+      configuration,
+      _mockSubscriptionService.Object,
+      _mockStripeSubscriptionService.Object,
+      _mockCustomerService.Object,
+      mockLogger.Object);
+
+    // Act
+    await service.ReconcileAsync();
+
+    // Assert - an error-level log (reaches Sentry) mentioning both subscriptions
+    mockLogger.Verify(l => l.Log(
+      LogLevel.Error,
+      It.IsAny<EventId>(),
+      It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("sub_a") && state.ToString()!.Contains("sub_b")),
+      It.IsAny<Exception?>(),
+      It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+  }
+
+  [Fact]
   public async Task ReconcileAsync_WhenOrphanSyncFails_ShouldCountErrorAndContinue()
   {
     // Arrange - two orphans; the first cannot resolve a user, the second succeeds.
