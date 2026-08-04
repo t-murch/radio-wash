@@ -12,8 +12,10 @@ redirects back to `/subscription/success?session_id=...`, where the frontend cal
 `POST /api/subscription/checkout/complete` to reconcile the subscription immediately instead of
 waiting for the webhook. Webhooks land on `POST /api/subscription/webhook`: signature failures
 return 400 (permanent reject), processing failures return 500 so Stripe redelivers for up to
-3 days; a `ProcessedWebhookEvents` claim row guarantees exactly-once processing while allowing
-failed events to be re-claimed. Subscription state is upserted from Stripe's view
+3 days; a `ProcessedWebhookEvents` claim row deduplicates deliveries while allowing failed
+events to be re-claimed. The delivery guarantee is **at-least-once** — released claims, retry
+replays, and the reconcile sweep can each re-run an event, so every handler must stay
+idempotent. Subscription state is upserted from Stripe's view
 (`SyncFromStripeAsync`), so event ordering doesn't matter. Cancellation sets
 `cancel_at_period_end` on Stripe; access continues until `customer.subscription.deleted`
 arrives. An hourly reconciliation job sweeps local state against Stripe both ways.
@@ -83,6 +85,10 @@ cancellation keep working. Remove the setting (or set `true`) to re-enable.
   page usually fixes it instantly; the hourly reconciliation job (`StripeReconciliation`)
   creates any missing rows from Stripe's active-subscription list. To force it, check the
   Stripe Dashboard for the subscription and its `userId` metadata.
+- **Duplicate active subscription** (Sentry: "already has an active subscription but Stripe
+  subscription ... arrived", or the reconciliation sweep's duplicate-entitlement error): the
+  user is being billed twice. In the Stripe Dashboard, cancel the **older** subscription and
+  refund its unused overlap; the webhook/reconciliation will sync the local rows.
 - **Disable payments entirely**: kill switch (above).
 
 ## Event → state mapping

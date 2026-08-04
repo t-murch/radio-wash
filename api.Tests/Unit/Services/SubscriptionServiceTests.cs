@@ -759,7 +759,7 @@ public class SubscriptionServiceTests
         .ReturnsAsync(CreateSubscriptionPlan(1, "Pro"));
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.HasActiveSubscriptionAsync(userId))
         .ReturnsAsync(false);
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.CreateAsync(It.IsAny<UserSubscription>()))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.TryCreateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
     _mockUnitOfWork.Setup(x => x.SyncConfigs.GetAutoDisabledByUserIdAsync(userId, AutoDisableReason.SubscriptionInactive))
         .ReturnsAsync(Array.Empty<PlaylistSyncConfig>());
@@ -769,7 +769,7 @@ public class SubscriptionServiceTests
 
     // Assert
     Assert.True(result.CancelAtPeriodEnd);
-    _mockUnitOfWork.Verify(x => x.UserSubscriptions.CreateAsync(It.Is<UserSubscription>(
+    _mockUnitOfWork.Verify(x => x.UserSubscriptions.TryCreateAsync(It.Is<UserSubscription>(
         s => s.CancelAtPeriodEnd)), Times.Once);
   }
 

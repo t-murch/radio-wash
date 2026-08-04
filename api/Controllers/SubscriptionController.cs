@@ -167,13 +167,25 @@ public class SubscriptionController : AuthenticatedControllerBase
     {
       session = await _paymentService.GetCheckoutSessionAsync(dto.SessionId);
     }
-    catch (Stripe.StripeException ex)
+    catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing"
+        || ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
     {
       _logger.LogWarning(ex, "Checkout session {SessionId} could not be retrieved for user {UserId}", dto.SessionId, userId);
       return Problem(
         title: "Unknown checkout session",
         detail: "The checkout session could not be found.",
         statusCode: StatusCodes.Status404NotFound);
+    }
+    catch (Stripe.StripeException ex)
+    {
+      // Transient Stripe failure (5xx, rate limit, connection): the user just PAID — a
+      // "not found" here would be both wrong and alarming. 500 lets the success page fall
+      // back to polling and retry.
+      _logger.LogError(ex, "Failed to retrieve checkout session {SessionId} for user {UserId}", dto.SessionId, userId);
+      return Problem(
+        title: "Checkout verification failed",
+        detail: "Could not verify the checkout session. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
     }
 
     if (session.Metadata == null
@@ -210,7 +222,10 @@ public class SubscriptionController : AuthenticatedControllerBase
 
     if (subscription?.StripeCustomerId == null)
     {
-      return BadRequest(new { error = "No active subscription found" });
+      return Problem(
+        title: "No subscription",
+        detail: "There is no subscription to manage billing for.",
+        statusCode: StatusCodes.Status404NotFound);
     }
 
     try
@@ -220,8 +235,13 @@ public class SubscriptionController : AuthenticatedControllerBase
     }
     catch (Exception ex)
     {
+      // Server-side failure (Stripe outage, unconfigured Dashboard portal) — not a client
+      // error, and the 500 is what monitoring alerts on.
       _logger.LogError(ex, "Failed to create portal session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create portal session" });
+      return Problem(
+        title: "Billing portal unavailable",
+        detail: "Could not open the billing portal. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
     }
   }
 
