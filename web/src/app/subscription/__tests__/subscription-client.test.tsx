@@ -209,8 +209,9 @@ describe('SubscriptionClient', () => {
 
   it('toasts an error when the portal session cannot be created', async () => {
     setStatus(activeStatus);
+    // The backend returns 404 when no subscription exists for the user.
     (createPortalSession as Mock).mockRejectedValue(
-      new ApiError(400, 'No active subscription found')
+      new ApiError(404, 'No active subscription found')
     );
     const consoleErrorSpy = vi
       .spyOn(console, 'error')

@@ -128,6 +128,15 @@ export class ApiError extends Error {
   }
 }
 
+// Raw (non-Problem-Details) error bodies can be huge HTML pages — keep only
+// enough to be useful in a message.
+const MAX_RAW_ERROR_BODY_LENGTH = 200;
+
+const truncate = (text: string) =>
+  text.length > MAX_RAW_ERROR_BODY_LENGTH
+    ? `${text.slice(0, MAX_RAW_ERROR_BODY_LENGTH)}…`
+    : text;
+
 // Builds an ApiError from a non-ok response body. Problem Details bodies
 // (title/detail/type) are unpacked; anything else falls back to the raw text.
 const toApiError = (
@@ -137,24 +146,28 @@ const toApiError = (
 ): ApiError => {
   try {
     const parsed = JSON.parse(body);
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      (typeof parsed.title === 'string' || typeof parsed.detail === 'string')
-    ) {
-      return new ApiError(
-        status,
-        parsed.title ?? parsed.detail,
-        parsed.detail,
-        typeof parsed.type === 'string' ? parsed.type : undefined
-      );
+    if (parsed && typeof parsed === 'object') {
+      // Only trust string fields — a numeric or object title/detail must
+      // never become the error message.
+      const title = typeof parsed.title === 'string' ? parsed.title : undefined;
+      const detail =
+        typeof parsed.detail === 'string' ? parsed.detail : undefined;
+      const message = title ?? detail;
+      if (message) {
+        return new ApiError(
+          status,
+          message,
+          detail,
+          typeof parsed.type === 'string' ? parsed.type : undefined
+        );
+      }
     }
   } catch {
     // Not JSON — fall through to the raw-text fallback.
   }
   return new ApiError(
     status,
-    body || statusText || `Request failed with status ${status}`
+    truncate(body) || statusText || `Request failed with status ${status}`
   );
 };
 

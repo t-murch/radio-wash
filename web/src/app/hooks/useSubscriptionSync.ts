@@ -16,6 +16,11 @@ export const useSubscriptionStatus = () => {
   return useQuery<SubscriptionStatus>({
     queryKey: ['subscription-status'],
     queryFn: getSubscriptionStatus,
+    // Subscription state changes outside the app (Stripe billing portal,
+    // webhooks), so a 5-minute-stale cache can show outdated banners.
+    // Always refetch when a consumer mounts or the window regains focus.
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 

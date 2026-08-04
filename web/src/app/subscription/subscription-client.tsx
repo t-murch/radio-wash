@@ -77,10 +77,6 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
           toast.error(
             'Subscriptions are temporarily unavailable — please try again later'
           );
-        } else if (error.status === 404) {
-          toast.error(
-            'Subscription service not yet configured. Please contact support.'
-          );
         } else {
           toast.error(error.detail ?? 'Subscription failed. Please try again.');
         }

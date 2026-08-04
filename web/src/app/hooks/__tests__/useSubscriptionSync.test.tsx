@@ -2,8 +2,11 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
-import { useSubscribeToSync } from '../useSubscriptionSync';
-import { subscribeToSync } from '@/services/api';
+import {
+  useSubscribeToSync,
+  useSubscriptionStatus,
+} from '../useSubscriptionSync';
+import { getSubscriptionStatus, subscribeToSync } from '@/services/api';
 
 vi.mock('@/services/api', () => ({
   getSubscriptionStatus: vi.fn(),
@@ -27,6 +30,39 @@ const createRetryingWrapper = () => {
   );
   return RetryingWrapper;
 };
+
+describe('useSubscriptionStatus', () => {
+  it('refetches on mount even when cached data is still fresh', async () => {
+    (getSubscriptionStatus as Mock).mockResolvedValue({
+      hasActiveSubscription: true,
+    });
+    // Mirror QueryProvider's 5-minute staleTime: without refetchOnMount
+    // 'always', a mounting manage view would show the stale cached value
+    // (e.g. after changes in the Stripe billing portal).
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 1000 * 60 * 5 },
+      },
+    });
+    queryClient.setQueryData(['subscription-status'], {
+      hasActiveSubscription: false,
+    });
+    const StaleWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useSubscriptionStatus(), {
+      wrapper: StaleWrapper,
+    });
+
+    await waitFor(() => {
+      expect(getSubscriptionStatus).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.data?.hasActiveSubscription).toBe(true);
+    });
+  });
+});
 
 describe('useSubscribeToSync', () => {
   let locationStub: { href: string };

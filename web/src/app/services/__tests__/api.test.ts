@@ -103,6 +103,42 @@ describe('api error handling', () => {
     expect(error.detail).toBeUndefined();
   });
 
+  it('ignores non-string title/detail and falls back to the raw body', async () => {
+    mockFetch.mockResolvedValue(
+      problemResponse(500, { title: 123, detail: { nested: true } })
+    );
+
+    const error = await fetchWithSupabaseAuth(`${API_BASE_URL}/test`).catch(
+      (e) => e
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(typeof error.message).toBe('string');
+    expect(error.message).toBe(
+      JSON.stringify({ title: 123, detail: { nested: true } })
+    );
+    expect(error.detail).toBeUndefined();
+  });
+
+  it('truncates long non-JSON error bodies to ~200 chars', async () => {
+    const longBody = 'x'.repeat(1000);
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: async () => longBody,
+      headers: new Headers({ 'content-type': 'text/html' }),
+    });
+
+    const error = await fetchWithSupabaseAuth(`${API_BASE_URL}/test`).catch(
+      (e) => e
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.message.length).toBeLessThanOrEqual(201);
+    expect(error.message.startsWith('x'.repeat(200))).toBe(true);
+  });
+
   it('falls back to statusText when the error body is empty', async () => {
     mockFetch.mockResolvedValue({
       ok: false,

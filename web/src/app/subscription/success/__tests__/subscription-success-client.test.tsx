@@ -1,12 +1,38 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { SubscriptionSuccessClient } from '../subscription-success-client';
-import { completeCheckout, getSubscriptionStatus } from '@/services/api';
+import { ApiError, completeCheckout, getSubscriptionStatus } from '@/services/api';
 import { QueryWrapper } from '@/test-utils/react-query-wrapper';
 
-vi.mock('@/services/api', () => ({
-  completeCheckout: vi.fn(),
-  getSubscriptionStatus: vi.fn(),
+// The real app router identity is stable across renders — mirror that, or the
+// effect (which depends on `router`) re-runs on every render.
+const { mockRouter, mockReplace } = vi.hoisted(() => {
+  const replace = vi.fn();
+  return {
+    mockReplace: replace,
+    mockRouter: { refresh: vi.fn(), push: vi.fn(), replace },
+  };
+});
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => mockRouter,
+}));
+
+vi.mock('@/services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api')>();
+  return {
+    ...actual,
+    completeCheckout: vi.fn(),
+    getSubscriptionStatus: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn(),
+}));
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: vi.fn(),
 }));
 
 vi.mock('@/components/GlobalHeader', () => ({
@@ -44,7 +70,13 @@ const renderClient = (sessionId: string | null) =>
     { wrapper: QueryWrapper }
   );
 
-describe('SubscriptionSuccessClient', () => {
+const expectNoPaymentClaims = () => {
+  expect(screen.queryByText(/payment received/i)).toBeNull();
+  expect(screen.queryByText(/confirming your payment/i)).toBeNull();
+  expect(screen.queryByText(/Subscription Successful!/i)).toBeNull();
+};
+
+describe('SubscriptionSuccessClient with a checkout session', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -75,8 +107,10 @@ describe('SubscriptionSuccessClient', () => {
     expect(getSubscriptionStatus).not.toHaveBeenCalled();
   });
 
-  it('falls back to polling when completeCheckout fails, then activates', async () => {
-    (completeCheckout as Mock).mockRejectedValue(new Error('404'));
+  it('falls back to polling when completeCheckout fails transiently, then activates', async () => {
+    (completeCheckout as Mock).mockRejectedValue(
+      new ApiError(500, 'Internal Server Error')
+    );
     (getSubscriptionStatus as Mock).mockResolvedValue(activeStatus);
     const consoleErrorSpy = vi
       .spyOn(console, 'error')
@@ -93,46 +127,173 @@ describe('SubscriptionSuccessClient', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('shows the delayed state after polling times out without activation', async () => {
+  it('retries completeCheckout during the poll window after a 500, then activates', async () => {
+    (completeCheckout as Mock)
+      .mockRejectedValueOnce(new ApiError(500, 'Internal Server Error'))
+      .mockResolvedValue(activeStatus);
+    (getSubscriptionStatus as Mock).mockResolvedValue(inactiveStatus);
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    // Tick 1 polls GET /status (inactive); tick 2 retries the idempotent
+    // checkout/complete, which now succeeds.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+
+    expect(completeCheckout).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/Subscription Successful!/i)).toBeInTheDocument();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('shows a neutral unverified state on 404 without polling or payment claims', async () => {
+    (completeCheckout as Mock).mockRejectedValue(
+      new ApiError(404, 'Checkout session not found')
+    );
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      screen.getByText(/couldn.t verify this checkout session/i)
+    ).toBeInTheDocument();
+    expectNoPaymentClaims();
+    expect(
+      screen.getByRole('button', { name: /Go to Subscription/i })
+    ).toBeInTheDocument();
+
+    // No poll loop starts on behalf of a rejected session.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(getSubscriptionStatus).not.toHaveBeenCalled();
+    expect(completeCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a neutral unverified state on 403 without polling or payment claims', async () => {
+    (completeCheckout as Mock).mockRejectedValue(
+      new ApiError(403, 'Session belongs to another user')
+    );
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(
+      screen.getByText(/couldn.t verify this checkout session/i)
+    ).toBeInTheDocument();
+    expectNoPaymentClaims();
+    expect(getSubscriptionStatus).not.toHaveBeenCalled();
+  });
+
+  it('keeps polling in the delayed state and activates when the status flips', async () => {
+    (completeCheckout as Mock).mockResolvedValue(inactiveStatus);
     (getSubscriptionStatus as Mock).mockResolvedValue(inactiveStatus);
 
     vi.useFakeTimers();
-    // No session id (old bookmark) — goes straight to polling.
-    renderClient(null);
-
-    expect(
-      screen.getByText(/Activating your subscription/i)
-    ).toBeInTheDocument();
+    renderClient('cs_test_123');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(31000);
     });
 
-    expect(screen.getByText(/Payment received/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/activation is taking longer than expected/i)
-    ).toBeInTheDocument();
-    // Reassurance, not an error: the dashboard link is offered.
+    // Copy matches behavior: the page says it keeps checking, and it does.
+    expect(screen.getByText(/Still activating/i)).toBeInTheDocument();
+    expect(screen.getByText(/keeps checking automatically/i)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Go to Dashboard/i })
     ).toBeInTheDocument();
-    expect(completeCheckout).not.toHaveBeenCalled();
-    expect(getSubscriptionStatus).toHaveBeenCalled();
+
+    const pollsBeforeDelay = (getSubscriptionStatus as Mock).mock.calls.length;
+    (getSubscriptionStatus as Mock).mockResolvedValue(activeStatus);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+
+    expect((getSubscriptionStatus as Mock).mock.calls.length).toBeGreaterThan(
+      pollsBeforeDelay
+    );
+    expect(screen.getByText(/Subscription Successful!/i)).toBeInTheDocument();
   });
 
   it('activates from polling as soon as the status flips', async () => {
+    (completeCheckout as Mock).mockResolvedValue(inactiveStatus);
     (getSubscriptionStatus as Mock)
       .mockResolvedValueOnce(inactiveStatus)
       .mockResolvedValue(activeStatus);
 
     vi.useFakeTimers();
-    renderClient(null);
+    renderClient('cs_test_123');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
 
     expect(screen.getByText(/Subscription Successful!/i)).toBeInTheDocument();
+  });
+});
+
+describe('SubscriptionSuccessClient without a checkout session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('checks the status neutrally and redirects inactive users to /subscription', async () => {
+    (getSubscriptionStatus as Mock).mockResolvedValue(inactiveStatus);
+
+    renderClient(null);
+
+    // Neutral copy while checking — no payment language on a direct visit.
+    expect(
+      screen.getByText(/Checking subscription status/i)
+    ).toBeInTheDocument();
+    expectNoPaymentClaims();
+    expect(screen.queryByText(/Activating your subscription/i)).toBeNull();
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/subscription');
+    });
+    expectNoPaymentClaims();
+    expect(completeCheckout).not.toHaveBeenCalled();
+  });
+
+  it('shows the success view when the subscription is already active', async () => {
+    (getSubscriptionStatus as Mock).mockResolvedValue(activeStatus);
+
+    renderClient(null);
+
+    expect(await screen.findByText(/Subscription Successful!/i)).toBeVisible();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(completeCheckout).not.toHaveBeenCalled();
+  });
+
+  it('redirects to /subscription when the status check fails', async () => {
+    (getSubscriptionStatus as Mock).mockRejectedValue(
+      new ApiError(500, 'Internal Server Error')
+    );
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    renderClient(null);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/subscription');
+    });
+    expectNoPaymentClaims();
+    consoleErrorSpy.mockRestore();
   });
 });
 
