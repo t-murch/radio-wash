@@ -69,6 +69,10 @@ public class UserSubscription
   public DateTime? CurrentPeriodStart { get; set; }
   public DateTime? CurrentPeriodEnd { get; set; }
   public DateTime? CanceledAt { get; set; }
+  // Mirrors Stripe's cancel_at_period_end: the user requested cancellation but keeps access
+  // until CurrentPeriodEnd; the customer.subscription.deleted webhook performs the real
+  // deactivation. Cleared automatically if the user resumes via the billing portal.
+  public bool CancelAtPeriodEnd { get; set; }
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

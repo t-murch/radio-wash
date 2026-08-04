@@ -113,9 +113,11 @@ builder.Services.AddScoped<IPaymentService, StripePaymentService>();
 builder.Services.AddScoped<IEventUtility, EventUtilityWrapper>();
 builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>();
 
-// Stripe services
+// Stripe services (concrete Stripe.net clients; methods are virtual, so tests mock them)
 builder.Services.AddScoped<Stripe.CustomerService>();
 builder.Services.AddScoped<Stripe.SubscriptionService>();
+builder.Services.AddScoped<Stripe.Checkout.SessionService>();
+builder.Services.AddScoped<Stripe.BillingPortal.SessionService>();
 
 // Idempotency service for webhook race condition prevention
 builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();
@@ -545,6 +547,26 @@ if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
             if (!stripeConnectivityOk)
             {
                 migrationLogger.LogWarning("Stripe connectivity test failed - check network connectivity and API keys");
+            }
+        }
+
+        // Detect drift between the configured Stripe price and the seeded plan: the seeder
+        // only runs on an empty table, so a rotated Stripe:PricePlanId leaves a stale row
+        // that silently breaks subscription-created webhooks (no matching local plan).
+        var configuredPriceId = app.Configuration["Stripe:PricePlanId"];
+        if (!string.IsNullOrEmpty(configuredPriceId))
+        {
+            var priceDbContext = scope.ServiceProvider.GetRequiredService<RadioWashDbContext>();
+            var seededPriceIds = await priceDbContext.SubscriptionPlans
+                .Where(p => p.IsActive && p.StripePriceId != null)
+                .Select(p => p.StripePriceId!)
+                .ToListAsync();
+
+            if (seededPriceIds.Count > 0 && !seededPriceIds.Contains(configuredPriceId))
+            {
+                migrationLogger.LogError(
+                    "Stripe:PricePlanId {ConfiguredPriceId} does not match any seeded SubscriptionPlan price ({SeededPriceIds}) - subscription webhooks will fail to resolve a plan",
+                    configuredPriceId, string.Join(", ", seededPriceIds));
             }
         }
     }
