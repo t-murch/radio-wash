@@ -343,9 +343,12 @@ public class SubscriptionControllerTests : IDisposable
   [Fact]
   public async Task CompleteCheckout_WhenSessionNotFoundOnStripe_ShouldReturnNotFound()
   {
-    // Arrange
+    // Arrange - only a genuine resource_missing maps to 404
     _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_missing"))
-        .ThrowsAsync(new Stripe.StripeException("No such checkout session"));
+        .ThrowsAsync(new Stripe.StripeException("No such checkout session")
+        {
+          StripeError = new Stripe.StripeError { Code = "resource_missing" }
+        });
 
     // Act
     var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_missing" });
@@ -354,6 +357,23 @@ public class SubscriptionControllerTests : IDisposable
     var objectResult = Assert.IsType<ObjectResult>(result);
     var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
     Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+  }
+
+  [Fact]
+  public async Task CompleteCheckout_WhenStripeFailsTransiently_ShouldReturn500NotNotFound()
+  {
+    // Arrange - a Stripe outage right after the user PAID must read as retryable, not as
+    // "your session doesn't exist"
+    _mockPaymentService.Setup(x => x.GetCheckoutSessionAsync("cs_1"))
+        .ThrowsAsync(new Stripe.StripeException("Stripe unavailable"));
+
+    // Act
+    var result = await _controller.CompleteCheckout(new CompleteCheckoutDto { SessionId = "cs_1" });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status500InternalServerError, problem.Status);
   }
 
   [Fact]
@@ -721,7 +741,7 @@ public class SubscriptionControllerTests : IDisposable
   }
 
   [Fact]
-  public async Task CreatePortalSession_WithNoActiveSubscription_ShouldReturnBadRequest()
+  public async Task CreatePortalSession_WithNoActiveSubscription_ShouldReturnNotFound()
   {
     // Arrange
     _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
@@ -731,10 +751,29 @@ public class SubscriptionControllerTests : IDisposable
     var result = await _controller.CreatePortalSession();
 
     // Assert
-    var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-    var response = badRequestResult.Value;
-    Assert.NotNull(response);
-    Assert.Equal("No active subscription found", GetProperty(response!, "error"));
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+  }
+
+  [Fact]
+  public async Task CreatePortalSession_WhenStripeFails_ShouldReturn500()
+  {
+    // Arrange - portal failure is server-side (Stripe outage, unconfigured Dashboard
+    // portal), not a client error
+    var subscription = CreateUserSubscription(1);
+    _mockSubscriptionService.Setup(x => x.GetActiveSubscriptionAsync(1))
+        .ReturnsAsync(subscription);
+    _mockPaymentService.Setup(x => x.CreatePortalSessionAsync(It.IsAny<string>()))
+        .ThrowsAsync(new Stripe.StripeException("portal not configured"));
+
+    // Act
+    var result = await _controller.CreatePortalSession();
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status500InternalServerError, problem.Status);
   }
 
   [Fact]
