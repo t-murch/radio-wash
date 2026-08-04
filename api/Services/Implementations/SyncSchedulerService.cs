@@ -32,20 +32,49 @@ public class SyncSchedulerService : ISyncSchedulerService
         _logger.LogInformation("Initializing scheduled sync jobs");
 
         // Schedule main sync job to run daily at 00:01 (12:01 AM)
-        _recurringJobManager.AddOrUpdate(
+        TryScheduleRecurringJob(
             "playlist-sync-processor",
-            () => ProcessScheduledSyncsAsync(),
-            "1 0 * * *" // Daily at 00:01
-        );
+            () => _recurringJobManager.AddOrUpdate(
+                "playlist-sync-processor",
+                () => ProcessScheduledSyncsAsync(),
+                "1 0 * * *" // Daily at 00:01
+            ));
 
         // Schedule subscription validation job daily at 02:00
-        _recurringJobManager.AddOrUpdate(
+        TryScheduleRecurringJob(
             "subscription-validator",
-            () => ValidateSubscriptionsAsync(),
-            "0 2 * * *" // Daily at 2 AM
-        );
+            () => _recurringJobManager.AddOrUpdate(
+                "subscription-validator",
+                () => ValidateSubscriptionsAsync(),
+                "0 2 * * *" // Daily at 2 AM
+            ));
 
         _logger.LogInformation("Scheduled sync jobs initialized");
+    }
+
+    /// <summary>
+    /// Registration runs during startup, is idempotent, and the job definitions persist in
+    /// Hangfire storage across restarts — so a failure here must never take the API down.
+    /// The known offender: an API instance killed while holding Hangfire's distributed lock
+    /// for a recurring job leaves the lock row orphaned, and until Hangfire's staleness
+    /// cutoff (DistributedLockTimeout, 10 minutes) passes, every AddOrUpdate for that job
+    /// times out. Previously that surfaced as an unhandled exception in Program and a crash
+    /// loop. Already-registered jobs keep firing on their stored schedule; the next restart
+    /// retries registration.
+    /// </summary>
+    private void TryScheduleRecurringJob(string jobId, Action register)
+    {
+        try
+        {
+            register();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to register recurring job {JobId}; continuing startup. A previously " +
+                "stored schedule for this job keeps firing, and registration is retried on the " +
+                "next restart", jobId);
+        }
     }
 
     public async Task ProcessScheduledSyncsAsync()

@@ -156,6 +156,49 @@ public class AuthController : ControllerBase
   }
 
   /// <summary>
+  /// Disconnects a music provider by deleting the tokens stored for the authenticated user.
+  /// This is the extent of what the server can do: neither provider supports revoking the
+  /// credential itself from here — Spotify has no OAuth revocation endpoint (users remove
+  /// the app at spotify.com/account/apps) and Apple Music User Tokens are managed in Apple's
+  /// settings. The frontend additionally drops the browser-side MusicKit grant for Apple.
+  /// Idempotent: disconnecting an already-disconnected provider succeeds.
+  /// </summary>
+  [HttpDelete("tokens/{provider}")]
+  [Authorize]
+  public async Task<IActionResult> DisconnectProvider(string provider)
+  {
+    if (!MusicProviders.TryNormalize(provider, out var normalizedProvider))
+    {
+      return BadRequest(new { error = $"Provider '{provider}' is not supported." });
+    }
+
+    try
+    {
+      var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+      if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+      {
+        return Unauthorized(new { error = "User ID not found in token." });
+      }
+
+      var user = await _userService.GetUserBySupabaseIdAsync(userId);
+      if (user == null)
+      {
+        return NotFound(new { error = "User not found." });
+      }
+
+      await _musicTokenService.RevokeTokensAsync(user.Id, normalizedProvider);
+
+      _logger.LogInformation("Disconnected {Provider} for user {UserId}", normalizedProvider, user.Id);
+      return Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error disconnecting {Provider}", normalizedProvider);
+      return StatusCode(500, new { error = $"Failed to disconnect {normalizedProvider}" });
+    }
+  }
+
+  /// <summary>
   /// Returns the MusicKit developer token so the frontend can configure MusicKit JS and
   /// start Apple Music user authorization. The token is an app credential (not per-user
   /// secret) but is only needed inside the authenticated dashboard, so it stays gated.
@@ -243,7 +286,12 @@ public class AuthController : ControllerBase
         var user = await _userService.GetUserBySupabaseIdAsync(userId);
         if (user != null)
         {
-          await _musicTokenService.RevokeTokensAsync(user.Id, "spotify");
+          // Every provider, not a hardcoded list — this path previously only revoked
+          // Spotify and silently left Apple Music connected on shared devices.
+          foreach (var provider in MusicProviders.All)
+          {
+            await _musicTokenService.RevokeTokensAsync(user.Id, provider);
+          }
           tokensRevoked = true;
           _logger.LogInformation("Revoked music tokens for user {UserId} (explicit request)", user.Id);
         }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ClientDate } from '@/components/ui/ClientDate';
 import {
   ConnectionStatus,
+  disconnectProvider,
   getConnectionStatus,
   MusicProvider,
   storeProviderTokens,
@@ -55,6 +56,7 @@ export function ProviderConnectionStatus({
     Partial<ConnectionStatus> & { loading: boolean; error?: string }
   >({ connected: false, canRefresh: false, loading: true });
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const checkStatus = useCallback(async () => {
     try {
@@ -114,6 +116,32 @@ export function ProviderConnectionStatus({
       }));
     } finally {
       setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await disconnectProvider(provider);
+      if (isApple) {
+        try {
+          // Drop the browser-side MusicKit grant too, or the next authorize() silently
+          // reissues a token without the consent popup. Best-effort: the stored tokens are
+          // already gone, and full revocation lives in Apple's settings regardless.
+          await musicKit.unauthorize();
+        } catch (error) {
+          console.error('MusicKit unauthorize failed after disconnect:', error);
+        }
+      }
+      await checkStatus();
+    } catch (error) {
+      console.error(`Failed to disconnect ${provider}:`, error);
+      setStatus((prev) => ({
+        ...prev,
+        error: `Failed to disconnect ${label}. Please try again.`,
+      }));
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -191,14 +219,25 @@ export function ProviderConnectionStatus({
           </button>
         )}
 
-        {needsReconnect && (
-          <button
-            onClick={handleConnect}
-            disabled={connectDisabled}
-            className="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
-          >
-            Reconnect
-          </button>
+        {status.connected && (
+          <div className="flex gap-2">
+            {needsReconnect && (
+              <button
+                onClick={handleConnect}
+                disabled={connectDisabled}
+                className="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
+              >
+                Reconnect
+              </button>
+            )}
+            <button
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="px-4 py-2 text-muted-foreground rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
+            >
+              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          </div>
         )}
       </div>
 

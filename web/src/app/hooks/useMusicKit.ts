@@ -126,5 +126,13 @@ export function useMusicKit({ enabled = true }: { enabled?: boolean } = {}) {
     return instanceRef.current.authorize();
   }, []);
 
-  return { ready, error, authorize };
+  const unauthorize = useCallback(async (): Promise<void> => {
+    // Best-effort, unlike authorize: with MusicKit unavailable there is no browser-side
+    // grant to drop, and the caller's server-side disconnect already succeeded — the user
+    // can always sever the grant fully from Apple's settings.
+    if (!instanceRef.current) return;
+    await instanceRef.current.unauthorize();
+  }, []);
+
+  return { ready, error, authorize, unauthorize };
 }

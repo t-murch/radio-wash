@@ -11,6 +11,12 @@ public static class MusicProviders
     [AppleMusic] = AppleMusic
   };
 
+  /// <summary>
+  /// Every supported canonical provider key. For callers that act across providers (e.g.
+  /// revoking all connections on logout) so they can't silently miss one added later.
+  /// </summary>
+  public static IReadOnlyCollection<string> All { get; } = SupportedProviders.Values.Distinct().ToArray();
+
   // Providers whose credentials can be renewed without user interaction. Apple Music is
   // absent by design: a Music User Token has no refresh flow and no expiry signal, so its
   // stored ExpiresAt is an assumed lifetime rather than an authority.

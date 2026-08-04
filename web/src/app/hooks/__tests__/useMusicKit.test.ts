@@ -57,6 +57,32 @@ describe('useMusicKit', () => {
     expect(mockAuthorize).toHaveBeenCalledOnce();
   });
 
+  it('unauthorize drops the grant via the MusicKit instance', async () => {
+    const mockInstanceUnauthorize = vi.fn().mockResolvedValue(undefined);
+    mockConfigure.mockResolvedValue({
+      authorize: mockAuthorize,
+      unauthorize: mockInstanceUnauthorize,
+      isAuthorized: true,
+    });
+
+    const { result } = renderHook(() => useMusicKit());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await result.current.unauthorize();
+
+    expect(mockInstanceUnauthorize).toHaveBeenCalledOnce();
+  });
+
+  it('unauthorize is a no-op while MusicKit is not ready', async () => {
+    // Unlike authorize: with no instance there is no browser-side grant to drop, and the
+    // caller's server-side disconnect already succeeded — nothing to fail over.
+    (getMusicKitDeveloperToken as Mock).mockReturnValue(new Promise(() => undefined));
+
+    const { result } = renderHook(() => useMusicKit());
+
+    await expect(result.current.unauthorize()).resolves.toBeUndefined();
+  });
+
   it('authorize throws while MusicKit is not ready', async () => {
     // Keep the hook stuck in setup by never resolving the dev-token request.
     (getMusicKitDeveloperToken as Mock).mockReturnValue(new Promise(() => undefined));

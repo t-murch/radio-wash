@@ -260,6 +260,15 @@ export const storeProviderTokens = (
     body: JSON.stringify({ accessToken, refreshToken: refreshToken ?? null }),
   });
 
+// Deletes the tokens stored for the provider. The credential itself can only be revoked
+// provider-side (Spotify account page / Apple settings) — the API has no way to do that.
+export const disconnectProvider = (
+  provider: MusicProvider
+): Promise<{ success: boolean }> =>
+  fetchWithSupabaseAuth(`${API_BASE_URL}/auth/tokens/${provider}`, {
+    method: 'DELETE',
+  });
+
 export const getMusicKitDeveloperToken = (): Promise<{ token: string }> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/auth/musickit/devtoken`);
 
