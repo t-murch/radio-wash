@@ -14,6 +14,9 @@ public interface IUserSubscriptionRepository
   Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsAsync(DateTime before);
   Task<IEnumerable<UserSubscription>> GetExpiringSubscriptionsWithDetailsAsync(DateTime before);
   Task<IEnumerable<UserSubscription>> GetExpiredActiveSubscriptionsAsync(DateTime cutoff);
+  // Subscriptions worth re-checking against Stripe: everything with a Stripe id that isn't
+  // terminally canceled. Used by the reconciliation sweep.
+  Task<IEnumerable<UserSubscription>> GetReconcilableSubscriptionsAsync();
   Task<UserSubscription> CreateAsync(UserSubscription subscription);
   // Returns null when a concurrent writer already created a row for the same
   // StripeSubscriptionId (unique filtered index); the failed insert is detached so the
