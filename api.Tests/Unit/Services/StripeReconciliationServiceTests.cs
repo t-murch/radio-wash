@@ -54,6 +54,20 @@ public class StripeReconciliationServiceTests
     await Task.CompletedTask;
   }
 
+  /// <summary>
+  /// Pass 2 lists each entitled status separately, so setups must match on Status — an
+  /// any-options setup would feed the same items to every listing pass.
+  /// </summary>
+  private void SetupStripeList(string status, params Stripe.Subscription[] items)
+  {
+    _mockStripeSubscriptionService
+      .Setup(x => x.ListAutoPagingAsync(
+        It.Is<SubscriptionListOptions>(o => o.Status == status),
+        It.IsAny<RequestOptions>(),
+        It.IsAny<CancellationToken>()))
+      .Returns(ToAsyncEnumerable(items));
+  }
+
   private static UserSubscription CreateLocalSubscription(string stripeId = "sub_local", int id = 1) => new()
   {
     Id = id,
@@ -149,9 +163,7 @@ public class StripeReconciliationServiceTests
     // Arrange
     var orphan = new Stripe.Subscription { Id = "sub_orphan", CustomerId = "cus_1", Status = "active" };
 
-    _mockStripeSubscriptionService
-      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-      .Returns(ToAsyncEnumerable(new[] { orphan }));
+    SetupStripeList("active", orphan);
     _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_orphan"))
       .ReturnsAsync((UserSubscription?)null);
 
@@ -171,9 +183,7 @@ public class StripeReconciliationServiceTests
     // Arrange
     var known = new Stripe.Subscription { Id = "sub_known", Status = "active" };
 
-    _mockStripeSubscriptionService
-      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-      .Returns(ToAsyncEnumerable(new[] { known }));
+    SetupStripeList("active", known);
     _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_known"))
       .ReturnsAsync(CreateLocalSubscription("sub_known"));
 
@@ -195,9 +205,7 @@ public class StripeReconciliationServiceTests
     var localCanceled = CreateLocalSubscription("sub_wronglycanceled");
     localCanceled.Status = SubscriptionStatus.Canceled;
 
-    _mockStripeSubscriptionService
-      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-      .Returns(ToAsyncEnumerable(new[] { stripeActive }));
+    SetupStripeList("active", stripeActive);
     _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_wronglycanceled"))
       .ReturnsAsync(localCanceled);
 
@@ -209,6 +217,69 @@ public class StripeReconciliationServiceTests
       x => x.SyncFromStripeAsync(stripeActive, It.IsAny<Func<Task<int?>>?>()), Times.Once);
     Assert.Equal(1, result.LocalUpdated);
     Assert.Equal(0, result.MissingCreated);
+  }
+
+  [Fact]
+  public async Task ReconcileAsync_WithTrialingStripeSubscriptionMissingLocally_ShouldCreateFromStripe()
+  {
+    // Arrange - trialing is entitled everywhere else in the app (HasActiveSubscription,
+    // status mapper), so the sweep must also recover trialing subscriptions whose webhooks
+    // were lost, not just active ones.
+    var trialOrphan = new Stripe.Subscription { Id = "sub_trial", CustomerId = "cus_t", Status = "trialing" };
+
+    SetupStripeList("trialing", trialOrphan);
+    _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_trial"))
+      .ReturnsAsync((UserSubscription?)null);
+
+    // Act
+    var result = await _service.ReconcileAsync();
+
+    // Assert
+    _mockSubscriptionService.Verify(
+      x => x.SyncFromStripeAsync(trialOrphan, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+    Assert.Equal(1, result.MissingCreated);
+  }
+
+  [Fact]
+  public async Task ReconcileAsync_WhenStripeTrialingButLocalCanceled_ShouldHealFromStripe()
+  {
+    // Arrange - a wrongly-canceled trialing subscription: pass 1 skips canceled rows, so
+    // only the trialing listing pass can heal it.
+    var stripeTrialing = new Stripe.Subscription { Id = "sub_trial_healed", CustomerId = "cus_t", Status = "trialing" };
+    var localCanceled = CreateLocalSubscription("sub_trial_healed");
+    localCanceled.Status = SubscriptionStatus.Canceled;
+
+    SetupStripeList("trialing", stripeTrialing);
+    _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_trial_healed"))
+      .ReturnsAsync(localCanceled);
+
+    // Act
+    var result = await _service.ReconcileAsync();
+
+    // Assert
+    _mockSubscriptionService.Verify(
+      x => x.SyncFromStripeAsync(stripeTrialing, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+    Assert.Equal(1, result.LocalUpdated);
+    Assert.Equal(0, result.MissingCreated);
+  }
+
+  [Fact]
+  public async Task ReconcileAsync_ListsExactlyTheEntitledStatuses()
+  {
+    // Pins pass 2's Stripe listing filters: one pass per entitled status, nothing else.
+    // If this fails after an entitlement change, update EntitledStripeStatuses in the
+    // service to match SubscriptionStatusMapper.IsEntitled.
+    await _service.ReconcileAsync();
+
+    _mockStripeSubscriptionService.Verify(x => x.ListAutoPagingAsync(
+      It.Is<SubscriptionListOptions>(o => o.Status == "active"),
+      It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+    _mockStripeSubscriptionService.Verify(x => x.ListAutoPagingAsync(
+      It.Is<SubscriptionListOptions>(o => o.Status == "trialing"),
+      It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+    _mockStripeSubscriptionService.Verify(x => x.ListAutoPagingAsync(
+      It.IsAny<SubscriptionListOptions>(),
+      It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
   }
 
   [Fact]
@@ -256,9 +327,7 @@ public class StripeReconciliationServiceTests
     var badOrphan = new Stripe.Subscription { Id = "sub_bad", CustomerId = "cus_bad", Status = "active" };
     var goodOrphan = new Stripe.Subscription { Id = "sub_good", CustomerId = "cus_good", Status = "active" };
 
-    _mockStripeSubscriptionService
-      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-      .Returns(ToAsyncEnumerable(new[] { badOrphan, goodOrphan }));
+    SetupStripeList("active", badOrphan, goodOrphan);
     _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync(It.IsAny<string>()))
       .ReturnsAsync((UserSubscription?)null);
     _mockSubscriptionService
@@ -283,9 +352,7 @@ public class StripeReconciliationServiceTests
     var orphan = new Stripe.Subscription { Id = "sub_orphan", CustomerId = "cus_42", Status = "active" };
     Func<Task<int?>>? capturedFallback = null;
 
-    _mockStripeSubscriptionService
-      .Setup(x => x.ListAutoPagingAsync(It.IsAny<SubscriptionListOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-      .Returns(ToAsyncEnumerable(new[] { orphan }));
+    SetupStripeList("active", orphan);
     _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync("sub_orphan"))
       .ReturnsAsync((UserSubscription?)null);
     _mockSubscriptionService

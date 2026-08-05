@@ -15,8 +15,19 @@ public class StripeReconciliationBackgroundService : BackgroundService
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
-        _processingInterval = TimeSpan.FromMinutes(
-            configuration.GetValue("Stripe:ReconciliationIntervalMinutes", 60));
+
+        // Clamp: a negative value would make Task.Delay throw (unhandled exceptions in a
+        // BackgroundService stop the HOST since .NET 6), and 0 would turn the loop into a
+        // hot loop hammering Stripe's rate-limited API.
+        var intervalMinutes = configuration.GetValue("Stripe:ReconciliationIntervalMinutes", 60);
+        if (intervalMinutes < 1)
+        {
+            _logger.LogWarning(
+                "Stripe:ReconciliationIntervalMinutes value {Configured} is invalid; falling back to 60 minutes",
+                intervalMinutes);
+            intervalMinutes = 60;
+        }
+        _processingInterval = TimeSpan.FromMinutes(intervalMinutes);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
