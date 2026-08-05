@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.DTO;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Interfaces;
 using System.Text.Json;
 
@@ -148,23 +149,32 @@ public class SubscriptionController : AuthenticatedControllerBase
   [AllowAnonymous]
   public async Task<ActionResult> HandleStripeWebhook()
   {
+    var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+    var signature = Request.Headers["Stripe-Signature"].FirstOrDefault();
+
+    if (string.IsNullOrEmpty(signature))
+    {
+      return BadRequest("Missing Stripe signature");
+    }
+
     try
     {
-      var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-      var signature = Request.Headers["Stripe-Signature"].FirstOrDefault();
-
-      if (string.IsNullOrEmpty(signature))
-      {
-        return BadRequest("Missing Stripe signature");
-      }
-
       await _paymentService.HandleWebhookAsync(json, signature);
       return Ok();
     }
+    catch (WebhookSignatureVerificationException ex)
+    {
+      // 400 tells Stripe the delivery is permanently rejected — reserved for payloads
+      // that fail authentication.
+      _logger.LogWarning(ex, "Rejected Stripe webhook with invalid signature");
+      return BadRequest("Invalid Stripe signature");
+    }
     catch (Exception ex)
     {
+      // 500 makes Stripe redeliver with backoff for up to 3 days; combined with the
+      // released idempotency claim, transient failures self-heal.
       _logger.LogError(ex, "Error processing Stripe webhook");
-      return BadRequest("Webhook processing failed");
+      return StatusCode(StatusCodes.Status500InternalServerError, "Webhook processing failed");
     }
   }
 

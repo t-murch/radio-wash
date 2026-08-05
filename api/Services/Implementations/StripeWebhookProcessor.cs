@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Interfaces;
 using Stripe;
@@ -11,42 +9,29 @@ public class StripeWebhookProcessor : IWebhookProcessor
 {
     private readonly IConfiguration _configuration;
     private readonly ISubscriptionService _subscriptionService;
-    private readonly IEventUtility _eventUtility;
-    private readonly RadioWashDbContext _dbContext;
     private readonly CustomerService _customerService;
+    private readonly Stripe.SubscriptionService _stripeSubscriptionService;
     private readonly ILogger<StripeWebhookProcessor> _logger;
 
     public StripeWebhookProcessor(
         IConfiguration configuration,
         ISubscriptionService subscriptionService,
-        IEventUtility eventUtility,
-        RadioWashDbContext dbContext,
         CustomerService customerService,
+        Stripe.SubscriptionService stripeSubscriptionService,
         ILogger<StripeWebhookProcessor> logger)
     {
         _configuration = configuration;
         _subscriptionService = subscriptionService;
-        _eventUtility = eventUtility;
-        _dbContext = dbContext;
         _customerService = customerService;
+        _stripeSubscriptionService = stripeSubscriptionService;
         _logger = logger;
 
         StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
     }
 
-    public async Task ProcessWebhookAsync(string payload, string signature)
+    public async Task ProcessEventAsync(Event stripeEvent)
     {
-        var webhookSecret = _configuration["Stripe:WebhookSecret"];
-        
-        if (string.IsNullOrEmpty(webhookSecret))
-        {
-            _logger.LogError("Stripe webhook secret is not configured");
-            throw new InvalidOperationException("Stripe webhook secret is not configured");
-        }
-
-        var stripeEvent = _eventUtility.ConstructEvent(payload, signature, webhookSecret);
-
-        _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}", 
+        _logger.LogInformation("Processing Stripe webhook event: {EventType} with ID {EventId}",
             stripeEvent.Type, stripeEvent.Id);
 
         switch (stripeEvent.Type)
@@ -55,10 +40,8 @@ public class StripeWebhookProcessor : IWebhookProcessor
                 await HandleCheckoutCompletedAsync(stripeEvent);
                 break;
             case "customer.subscription.created":
-                await HandleSubscriptionCreatedAsync(stripeEvent);
-                break;
             case "customer.subscription.updated":
-                await HandleSubscriptionUpdatedAsync(stripeEvent);
+                await HandleSubscriptionChangedAsync(stripeEvent);
                 break;
             case "customer.subscription.deleted":
                 await HandleSubscriptionDeletedAsync(stripeEvent);
@@ -74,338 +57,158 @@ public class StripeWebhookProcessor : IWebhookProcessor
                 break;
         }
 
-        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}", 
+        _logger.LogInformation("Successfully processed webhook event {EventId} of type {EventType}",
             stripeEvent.Id, stripeEvent.Type);
     }
 
-    private async Task HandleCheckoutCompletedAsync(Event stripeEvent)
+    private Task HandleCheckoutCompletedAsync(Event stripeEvent)
     {
+        // The subscription itself is handled by customer.subscription.created/updated;
+        // checkout completion is informational only.
         var session = stripeEvent.Data.Object as Session;
         if (session == null)
         {
-            _logger.LogWarning("Checkout completed event received but session object is null");
-            return;
+            _logger.LogWarning("Checkout completed event {EventId} has no session object", stripeEvent.Id);
+            return Task.CompletedTask;
         }
 
-        try
+        if (session.Metadata?.TryGetValue("userId", out var userIdStr) == true && int.TryParse(userIdStr, out var userId))
         {
-            if (session.Metadata?.TryGetValue("userId", out var userIdStr) == true && int.TryParse(userIdStr, out var userId))
-            {
-                _logger.LogInformation("Checkout completed for user {UserId}, session {SessionId}", userId, session.Id);
-                // The subscription will be handled by the subscription.created event
-                // For now, we just log the successful checkout
-            }
-            else
-            {
-                _logger.LogWarning("Checkout completed for session {SessionId} but no valid userId found in metadata", session.Id);
-            }
+            _logger.LogInformation("Checkout completed for user {UserId}, session {SessionId}", userId, session.Id);
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Error processing checkout completed event for session {SessionId}", session.Id);
-            throw;
+            _logger.LogWarning("Checkout completed for session {SessionId} but no valid userId found in metadata", session.Id);
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
-    private async Task HandleSubscriptionUpdatedAsync(Event stripeEvent)
+    // Handles both customer.subscription.created and .updated: SyncFromStripeAsync upserts
+    // keyed on the Stripe subscription id, so ordering between the two doesn't matter.
+    // The event's embedded subscription is only used as a pointer — the state written comes
+    // from a fresh fetch (see SyncSubscriptionFromStripeAsync), because a delayed redelivery
+    // of an old `updated` event (status active) after cancellation would otherwise
+    // resurrect the canceled subscription.
+    private async Task HandleSubscriptionChangedAsync(Event stripeEvent)
     {
-        var subscription = stripeEvent.Data.Object as Stripe.Subscription;
-        if (subscription == null) return;
+        var subscription = stripeEvent.Data.Object as Stripe.Subscription
+            ?? throw new InvalidOperationException(
+                $"Event {stripeEvent.Id} ({stripeEvent.Type}) has no subscription object");
 
-        var existing = await _dbContext.UserSubscriptions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(us => us.StripeSubscriptionId == subscription.Id);
-        var previousStatus = existing?.Status;
-        var userId = existing?.UserId;
-
-        await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, subscription.Status);
-
-        if (userId.HasValue
-            && subscription.Status == SubscriptionStatus.Active
-            && IsInactiveStatus(previousStatus))
-        {
-            await _subscriptionService.ReactivateSyncConfigsAsync(userId.Value);
-        }
-
-        // Get period dates from subscription items (v49 compatibility)
-        DateTime? currentPeriodStart = null;
-        DateTime? currentPeriodEnd = null;
-
-        try
-        {
-            if (subscription.Items?.Data?.Any() == true)
-            {
-                // For single-item subscriptions, use the first item's period dates
-                // For multi-item subscriptions, use the latest period end
-                var subscriptionItem = subscription.Items.Data.First();
-                currentPeriodStart = subscriptionItem.CurrentPeriodStart;
-                currentPeriodEnd = subscription.Items.Data.Max(x => x.CurrentPeriodEnd);
-
-                _logger.LogInformation("Retrieved period dates from subscription items for {SubscriptionId}: Start={Start}, End={End}",
-                    subscription.Id, currentPeriodStart, currentPeriodEnd);
-            }
-            else
-            {
-                _logger.LogWarning("No subscription items found for subscription {SubscriptionId}, cannot update period dates",
-                    subscription.Id);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving period dates from subscription items for {SubscriptionId}",
-                subscription.Id);
-        }
-
-        // Only update dates if we successfully retrieved them
-        if (currentPeriodStart.HasValue && currentPeriodEnd.HasValue)
-        {
-            await _subscriptionService.UpdateSubscriptionDatesAsync(
-                subscription.Id,
-                currentPeriodStart.Value,
-                currentPeriodEnd.Value
-            );
-        }
-
-        _logger.LogInformation("Updated subscription {SubscriptionId} status to {Status}",
-            subscription.Id, subscription.Status);
+        await SyncSubscriptionFromStripeAsync(subscription.Id);
     }
 
     private async Task HandleSubscriptionDeletedAsync(Event stripeEvent)
     {
-        var subscription = stripeEvent.Data.Object as Stripe.Subscription;
-        if (subscription == null) return;
+        var subscription = stripeEvent.Data.Object as Stripe.Subscription
+            ?? throw new InvalidOperationException(
+                $"Event {stripeEvent.Id} (customer.subscription.deleted) has no subscription object");
 
-        await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, "canceled");
+        var local = await _subscriptionService.GetByStripeSubscriptionIdAsync(subscription.Id);
+        if (local == null)
+        {
+            // Nothing to cancel locally; the reconciliation job owns any remaining drift.
+            _logger.LogWarning("Subscription {SubscriptionId} deleted on Stripe but no local record exists", subscription.Id);
+            return;
+        }
+
+        await _subscriptionService.UpdateSubscriptionStatusAsync(subscription.Id, SubscriptionStatus.Canceled);
 
         _logger.LogInformation("Subscription {SubscriptionId} deleted", subscription.Id);
     }
 
     private async Task HandlePaymentFailedAsync(Event stripeEvent)
     {
-        var invoice = stripeEvent.Data.Object as Invoice;
-        if (invoice == null) return;
+        var invoice = stripeEvent.Data.Object as Invoice
+            ?? throw new InvalidOperationException(
+                $"Event {stripeEvent.Id} (invoice.payment_failed) has no invoice object");
 
-        // Handle v49 compatibility - get subscription ID from RawJObject if direct property not available
-        string? subscriptionId = null;
-
-        try
+        var subscriptionId = GetSubscriptionIdFromInvoice(invoice);
+        if (string.IsNullOrEmpty(subscriptionId))
         {
-            // Try to get subscription ID from RawJObject (always available in webhook events)
-            var subscriptionValue = invoice.RawJObject?["subscription"];
-            if (subscriptionValue != null)
-            {
-                subscriptionId = subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
-                    ? subscriptionValue.ToString()
-                    : subscriptionValue["id"]?.ToString();
-            }
-
-            if (!string.IsNullOrEmpty(subscriptionId))
-            {
-                _logger.LogInformation("Retrieved subscription ID {SubscriptionId} from invoice {InvoiceId} webhook",
-                    subscriptionId, invoice.Id);
-            }
-            else
-            {
-                _logger.LogWarning("No subscription reference found in invoice {InvoiceId} webhook payload", invoice.Id);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error accessing subscription information from invoice {InvoiceId} webhook", invoice.Id);
-        }
-
-        if (!string.IsNullOrEmpty(subscriptionId))
-        {
-            try
-            {
-                await _subscriptionService.UpdateSubscriptionStatusAsync(subscriptionId, "past_due");
-                _logger.LogWarning("Payment failed for subscription {SubscriptionId} from invoice {InvoiceId}",
-                    subscriptionId, invoice.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to update subscription {SubscriptionId} status after payment failure for invoice {InvoiceId}",
-                    subscriptionId, invoice.Id);
-                throw;
-            }
-        }
-        else
-        {
-            _logger.LogWarning("Could not determine subscription ID for failed payment on invoice {InvoiceId}", invoice.Id);
-        }
-    }
-
-    private async Task HandleSubscriptionCreatedAsync(Event stripeEvent)
-    {
-        var subscription = stripeEvent.Data.Object as Stripe.Subscription;
-        if (subscription == null)
-        {
-            _logger.LogWarning("Subscription created event received but subscription object is null");
+            _logger.LogInformation("Payment failed for invoice {InvoiceId} (not subscription-related)", invoice.Id);
             return;
         }
 
-        try
-        {
-            _logger.LogInformation("Processing subscription creation for {SubscriptionId}", subscription.Id);
+        _logger.LogWarning("Payment failed for subscription {SubscriptionId} from invoice {InvoiceId}",
+            subscriptionId, invoice.Id);
 
-            // Get the price ID from the subscription items
-            if (subscription.Items?.Data?.Any() != true)
-            {
-                _logger.LogWarning("Subscription {SubscriptionId} has no items", subscription.Id);
-                return;
-            }
-
-            var priceId = subscription.Items.Data.First().Price.Id;
-            _logger.LogInformation("Found price ID {PriceId} for subscription {SubscriptionId}", priceId, subscription.Id);
-
-            // Find the local plan by Stripe price ID
-            var plan = await _subscriptionService.GetPlanByStripePriceIdAsync(priceId);
-            if (plan == null)
-            {
-                _logger.LogError("No local plan found for Stripe price ID {PriceId}", priceId);
-                return;
-            }
-
-            // Get user ID from subscription metadata
-            int? userId = null;
-            
-            try
-            {
-                // Try to get user ID from subscription metadata first
-                if (subscription.Metadata?.TryGetValue("userId", out var userIdStr) == true && 
-                    int.TryParse(userIdStr, out var parsedUserId))
-                {
-                    userId = parsedUserId;
-                    _logger.LogInformation("Found user ID {UserId} in subscription metadata for subscription {SubscriptionId}", 
-                        userId, subscription.Id);
-                }
-                else
-                {
-                    // Fallback: try customer metadata (for existing subscriptions)
-                    var customer = await _customerService.GetAsync(subscription.CustomerId);
-                    
-                    if (customer?.Metadata?.TryGetValue("userId", out userIdStr) == true && 
-                        int.TryParse(userIdStr, out parsedUserId))
-                    {
-                        userId = parsedUserId;
-                        _logger.LogInformation("Found user ID {UserId} in customer metadata for subscription {SubscriptionId}", 
-                            userId, subscription.Id);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to retrieve user ID for subscription {SubscriptionId}", subscription.Id);
-            }
-
-            if (!userId.HasValue)
-            {
-                _logger.LogError("Could not determine user ID for subscription {SubscriptionId}", subscription.Id);
-                return;
-            }
-
-            // Use transaction only for the database write operation to ensure atomicity
-            using var transaction = await _dbContext.Database.BeginTransactionAsync();
-            
-            try
-            {
-                // Create the subscription record within the transaction
-                await _subscriptionService.CreateSubscriptionAsync(
-                    userId.Value, 
-                    plan.Id, 
-                    subscription.Id, 
-                    subscription.CustomerId);
-
-                // Commit the transaction if subscription creation succeeded
-                await transaction.CommitAsync();
-                
-                _logger.LogInformation("Successfully created subscription record for user {UserId}, subscription {SubscriptionId}", 
-                    userId, subscription.Id);
-            }
-            catch (Exception dbEx)
-            {
-                // Rollback the transaction on database operation failure
-                await transaction.RollbackAsync();
-                _logger.LogError(dbEx, "Failed to create subscription record for user {UserId}, subscription {SubscriptionId}. Transaction rolled back.", 
-                    userId, subscription.Id);
-                throw;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing subscription created event for subscription {SubscriptionId}", subscription.Id);
-            throw;
-        }
+        await SyncSubscriptionFromStripeAsync(subscriptionId);
     }
 
     private async Task HandlePaymentSucceededAsync(Event stripeEvent)
     {
-        var invoice = stripeEvent.Data.Object as Invoice;
-        if (invoice == null)
+        var invoice = stripeEvent.Data.Object as Invoice
+            ?? throw new InvalidOperationException(
+                $"Event {stripeEvent.Id} (invoice.payment_succeeded) has no invoice object");
+
+        var subscriptionId = GetSubscriptionIdFromInvoice(invoice);
+        if (string.IsNullOrEmpty(subscriptionId))
         {
-            _logger.LogWarning("Payment succeeded event received but invoice object is null");
+            _logger.LogInformation("Payment succeeded for invoice {InvoiceId} (not subscription-related)", invoice.Id);
             return;
         }
 
+        _logger.LogInformation("Payment succeeded for subscription {SubscriptionId}, invoice {InvoiceId}",
+            subscriptionId, invoice.Id);
+
+        await SyncSubscriptionFromStripeAsync(subscriptionId);
+    }
+
+    // Events are treated as pointers, never as state: always fetch the subscription's
+    // CURRENT state from Stripe and upsert that. Applying an event's embedded snapshot (or
+    // deriving a status from the event type, e.g. payment_succeeded => active) breaks on
+    // delayed redeliveries: Stripe can redeliver an old event for up to 3 days, and a stale
+    // "active" then would resurrect a subscription that was since canceled. Canceled
+    // subscriptions stay retrievable via GetAsync, so the fetch works for every lifecycle
+    // stage this processor handles.
+    private async Task SyncSubscriptionFromStripeAsync(string subscriptionId)
+    {
+        var stripeSubscription = await _stripeSubscriptionService.GetAsync(subscriptionId);
+        await _subscriptionService.SyncFromStripeAsync(
+            stripeSubscription,
+            () => ResolveUserIdFromCustomerAsync(stripeSubscription.CustomerId, subscriptionId));
+    }
+
+    // Fallback userId resolution for subscriptions without userId metadata (e.g. created
+    // outside the app's checkout flow): look at the Stripe customer's metadata.
+    private async Task<int?> ResolveUserIdFromCustomerAsync(string customerId, string subscriptionId)
+    {
         try
         {
-            // Get subscription ID from invoice
-            string? subscriptionId = null;
-
-            try
+            var customer = await _customerService.GetAsync(customerId);
+            if (customer?.Metadata?.TryGetValue("userId", out var userIdStr) == true
+                && int.TryParse(userIdStr, out var userId))
             {
-                var subscriptionValue = invoice.RawJObject?["subscription"];
-                if (subscriptionValue != null)
-                {
-                    subscriptionId = subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
-                        ? subscriptionValue.ToString()
-                        : subscriptionValue["id"]?.ToString();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to extract subscription ID from invoice {InvoiceId}", invoice.Id);
-            }
-
-            if (!string.IsNullOrEmpty(subscriptionId))
-            {
-                _logger.LogInformation("Payment succeeded for subscription {SubscriptionId}, invoice {InvoiceId}",
-                    subscriptionId, invoice.Id);
-
-                var existing = await _dbContext.UserSubscriptions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(us => us.StripeSubscriptionId == subscriptionId);
-                var previousStatus = existing?.Status;
-                var userId = existing?.UserId;
-
-                // Update subscription status to active (in case it was incomplete or past_due)
-                await _subscriptionService.UpdateSubscriptionStatusAsync(subscriptionId, SubscriptionStatus.Active);
-
-                if (userId.HasValue && IsInactiveStatus(previousStatus))
-                {
-                    await _subscriptionService.ReactivateSyncConfigsAsync(userId.Value);
-                }
-            }
-            else
-            {
-                _logger.LogInformation("Payment succeeded for invoice {InvoiceId} (not subscription-related)", invoice.Id);
+                _logger.LogInformation(
+                    "Found user ID {UserId} in customer metadata for subscription {SubscriptionId}",
+                    userId, subscriptionId);
+                return userId;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing payment succeeded event for invoice {InvoiceId}", invoice.Id);
-            throw;
+            _logger.LogWarning(ex, "Failed to look up customer {CustomerId} for subscription {SubscriptionId}",
+                customerId, subscriptionId);
         }
 
-        await Task.CompletedTask;
+        return null;
     }
 
-    private static bool IsInactiveStatus(string? status)
+    private string? GetSubscriptionIdFromInvoice(Invoice invoice)
     {
-        return status == SubscriptionStatus.PastDue
-            || status == SubscriptionStatus.Canceled
-            || status == SubscriptionStatus.Incomplete;
+        // v49 compatibility: the subscription reference is only reliably present in the raw
+        // webhook JSON, either as a string id or an expanded object.
+        // A missing key and an explicit JSON null both mean "not subscription-related".
+        var subscriptionValue = invoice.RawJObject?["subscription"];
+        if (subscriptionValue == null || subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.Null)
+        {
+            return null;
+        }
+
+        return subscriptionValue.Type == Newtonsoft.Json.Linq.JTokenType.String
+            ? subscriptionValue.ToString()
+            : subscriptionValue["id"]?.ToString();
     }
 }

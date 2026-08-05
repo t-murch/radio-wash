@@ -12,18 +12,19 @@ namespace RadioWash.Api.Tests.Unit.Services;
 
 public class DatabaseIdempotencyServiceTests : IDisposable
 {
+    private readonly DbContextOptions<RadioWashDbContext> _dbOptions;
     private readonly RadioWashDbContext _dbContext;
     private readonly Mock<ILogger<DatabaseIdempotencyService>> _mockLogger;
     private readonly DatabaseIdempotencyService _idempotencyService;
 
     public DatabaseIdempotencyServiceTests()
     {
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
+        _dbOptions = new DbContextOptionsBuilder<RadioWashDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
-        _dbContext = new RadioWashDbContext(options);
+        _dbContext = new RadioWashDbContext(_dbOptions);
         _dbContext.Database.EnsureCreated();
 
         _mockLogger = new Mock<ILogger<DatabaseIdempotencyService>>();
@@ -31,7 +32,7 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TryProcessEventAsync_WithNewEvent_ShouldReturnTrueAndCreateRecord()
+    public async Task TryProcessEventAsync_WithNewEvent_ShouldClaimWithProcessingStatus()
     {
         // Arrange
         var eventId = "evt_new_event";
@@ -47,25 +48,124 @@ public class DatabaseIdempotencyServiceTests : IDisposable
             .FirstOrDefaultAsync(e => e.EventId == eventId);
         Assert.NotNull(processedEvent);
         Assert.Equal(eventType, processedEvent.EventType);
-        Assert.False(processedEvent.IsSuccessful);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(1, processedEvent.AttemptCount);
+        Assert.NotNull(processedEvent.LastAttemptAt);
         Assert.Null(processedEvent.ErrorMessage);
     }
 
     [Fact]
-    public async Task TryProcessEventAsync_WithExistingEvent_ShouldReturnFalse()
+    public async Task TryProcessEventAsync_WithRecentProcessingClaim_ShouldReturnFalse()
     {
-        // Arrange
+        // Arrange - first call leaves a fresh Processing claim
         var eventId = "evt_existing_event";
         var eventType = "customer.subscription.updated";
 
-        // First call should create the record
         await _idempotencyService.TryProcessEventAsync(eventId, eventType);
 
-        // Act - Second call with same event ID
+        // Act - second call while the claim is live
         var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
 
         // Assert
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithSucceededEvent_ShouldReturnFalse()
+    {
+        // Arrange
+        var eventId = "evt_succeeded";
+        var eventType = "customer.subscription.updated";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventSuccessfulAsync(eventId);
+
+        // Act
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert - Succeeded is terminal
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithFailedEvent_ShouldReClaim()
+    {
+        // Arrange - a failed attempt releases the claim
+        var eventId = "evt_failed_reclaim";
+        var eventType = "customer.subscription.updated";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventFailedAsync(eventId, "transient error");
+
+        // Act - a redelivery/retry can claim the event again
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert
+        Assert.True(result);
+
+        var processedEvent = await _dbContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(2, processedEvent.AttemptCount);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithFreshProcessingRow_ShouldReturnFalse()
+    {
+        // Arrange - a Processing row with a recent LastAttemptAt is owned by a live handler
+        var eventId = "evt_fresh_processing";
+        var eventType = "customer.subscription.updated";
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = eventType,
+            ProcessedAt = DateTime.UtcNow.AddMinutes(-5),
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = DateTime.UtcNow.AddMinutes(-5),
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Act
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_WithStaleProcessingRow_ShouldTakeOverClaim()
+    {
+        // Arrange - a Processing claim older than 15 minutes is treated as abandoned
+        var eventId = "evt_stale_processing";
+        var eventType = "customer.subscription.updated";
+        var staleTimestamp = DateTime.UtcNow.AddMinutes(-20);
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = eventType,
+            ProcessedAt = staleTimestamp,
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = staleTimestamp,
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Act
+        var result = await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Assert - stale claim taken over
+        Assert.True(result);
+
+        var processedEvent = await _dbContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(2, processedEvent.AttemptCount);
+        Assert.True(processedEvent.LastAttemptAt > staleTimestamp);
     }
 
     [Fact]
@@ -93,7 +193,129 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task MarkEventSuccessfulAsync_WithExistingEvent_ShouldUpdateSuccessFlag()
+    public async Task TryProcessEventAsync_ConcurrentTakeoverOfFailedRow_ShouldOnlyAllowOneToWin()
+    {
+        // Arrange - a Failed row visible to two independent service instances, each with its
+        // own DbContext (simulating two app instances). Status is a concurrency token, so at
+        // most one compare-and-swap to Processing can commit.
+        var eventId = "evt_takeover_race";
+        var eventType = "customer.subscription.updated";
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = eventType,
+            ProcessedAt = DateTime.UtcNow.AddMinutes(-2),
+            Status = WebhookEventStatus.Failed,
+            LastAttemptAt = DateTime.UtcNow.AddMinutes(-2),
+            AttemptCount = 1,
+            ErrorMessage = "previous failure"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        using var context1 = new RadioWashDbContext(_dbOptions);
+        using var context2 = new RadioWashDbContext(_dbOptions);
+        using var service1 = new DatabaseIdempotencyService(context1, _mockLogger.Object);
+        using var service2 = new DatabaseIdempotencyService(context2, _mockLogger.Object);
+
+        // Act - both instances race to re-claim the failed event
+        var results = await Task.WhenAll(
+            service1.TryProcessEventAsync(eventId, eventType),
+            service2.TryProcessEventAsync(eventId, eventType));
+
+        // Assert - exactly one wins; the loser either hit the concurrency token conflict or
+        // observed the winner's fresh Processing claim.
+        Assert.Equal(1, results.Count(r => r));
+
+        using var verifyContext = new RadioWashDbContext(_dbOptions);
+        var processedEvent = await verifyContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(2, processedEvent.AttemptCount);
+    }
+
+    [Fact]
+    public async Task TryProcessEventAsync_StaleProcessingRow_TakeoverIsExclusive()
+    {
+        // Arrange - a stale Processing claim (owner crashed 20 minutes ago).
+        var eventId = "evt_stale_race";
+        var eventType = "customer.subscription.updated";
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = eventType,
+            ProcessedAt = DateTime.UtcNow.AddMinutes(-20),
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = DateTime.UtcNow.AddMinutes(-20),
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        using var context1 = new RadioWashDbContext(_dbOptions);
+        using var context2 = new RadioWashDbContext(_dbOptions);
+        using var service1 = new DatabaseIdempotencyService(context1, _mockLogger.Object);
+        using var service2 = new DatabaseIdempotencyService(context2, _mockLogger.Object);
+
+        // Act - both instances race to take over the stale claim
+        var results = await Task.WhenAll(
+            service1.TryProcessEventAsync(eventId, eventType),
+            service2.TryProcessEventAsync(eventId, eventType));
+
+        // Assert - exactly one wins
+        Assert.Equal(1, results.Count(r => r));
+
+        using var verifyContext = new RadioWashDbContext(_dbOptions);
+        var processedEvent = await verifyContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Processing, processedEvent.Status);
+        Assert.Equal(2, processedEvent.AttemptCount);
+    }
+
+    [Fact]
+    public async Task StaleProcessingTakeover_CompareAndSwap_LoserGetsConcurrencyException()
+    {
+        // Arrange - pins the DB-level CAS itself, bypassing the in-process semaphore that
+        // serializes the service-level race. A stale takeover writes Processing -> Processing,
+        // so with Status as the only concurrency token BOTH writers would commit; the
+        // LastAttemptAt token (changed on every claim) is what makes this a real CAS.
+        var eventId = "evt_cas_race";
+        var staleTime = DateTime.UtcNow.AddMinutes(-20);
+
+        _dbContext.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+        {
+            EventId = eventId,
+            EventType = "customer.subscription.updated",
+            ProcessedAt = staleTime,
+            Status = WebhookEventStatus.Processing,
+            LastAttemptAt = staleTime,
+            AttemptCount = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        using var context1 = new RadioWashDbContext(_dbOptions);
+        using var context2 = new RadioWashDbContext(_dbOptions);
+        var row1 = await context1.ProcessedWebhookEvents.FirstAsync(e => e.EventId == eventId);
+        var row2 = await context2.ProcessedWebhookEvents.FirstAsync(e => e.EventId == eventId);
+
+        // Act - both contexts observed the same stale claim and try to take it over
+        row1.Status = WebhookEventStatus.Processing;
+        row1.LastAttemptAt = DateTime.UtcNow;
+        row1.AttemptCount++;
+        await context1.SaveChangesAsync();
+
+        row2.Status = WebhookEventStatus.Processing;
+        row2.LastAttemptAt = DateTime.UtcNow;
+        row2.AttemptCount++;
+
+        // Assert - the second writer's original values no longer match the row
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => context2.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task MarkEventSuccessfulAsync_WithExistingEvent_ShouldSetSucceededStatus()
     {
         // Arrange
         var eventId = "evt_mark_success";
@@ -108,12 +330,34 @@ public class DatabaseIdempotencyServiceTests : IDisposable
         var processedEvent = await _dbContext.ProcessedWebhookEvents
             .FirstOrDefaultAsync(e => e.EventId == eventId);
         Assert.NotNull(processedEvent);
-        Assert.True(processedEvent.IsSuccessful);
+        Assert.Equal(WebhookEventStatus.Succeeded, processedEvent.Status);
         Assert.Null(processedEvent.ErrorMessage);
     }
 
     [Fact]
-    public async Task MarkEventFailedAsync_WithExistingEvent_ShouldUpdateFailureFlagAndMessage()
+    public async Task MarkEventSuccessfulAsync_AfterPriorFailure_ShouldClearErrorMessage()
+    {
+        // Arrange - fail once, re-claim, then succeed
+        var eventId = "evt_success_after_failure";
+        var eventType = "customer.subscription.updated";
+
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+        await _idempotencyService.MarkEventFailedAsync(eventId, "first attempt failed");
+        await _idempotencyService.TryProcessEventAsync(eventId, eventType);
+
+        // Act
+        await _idempotencyService.MarkEventSuccessfulAsync(eventId);
+
+        // Assert
+        var processedEvent = await _dbContext.ProcessedWebhookEvents
+            .FirstOrDefaultAsync(e => e.EventId == eventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(WebhookEventStatus.Succeeded, processedEvent.Status);
+        Assert.Null(processedEvent.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task MarkEventFailedAsync_WithExistingEvent_ShouldSetFailedStatusAndMessage()
     {
         // Arrange
         var eventId = "evt_mark_failed";
@@ -122,6 +366,9 @@ public class DatabaseIdempotencyServiceTests : IDisposable
 
         await _idempotencyService.TryProcessEventAsync(eventId, eventType);
 
+        var claimedAt = (await _dbContext.ProcessedWebhookEvents
+            .FirstAsync(e => e.EventId == eventId)).LastAttemptAt;
+
         // Act
         await _idempotencyService.MarkEventFailedAsync(eventId, errorMessage);
 
@@ -129,8 +376,10 @@ public class DatabaseIdempotencyServiceTests : IDisposable
         var processedEvent = await _dbContext.ProcessedWebhookEvents
             .FirstOrDefaultAsync(e => e.EventId == eventId);
         Assert.NotNull(processedEvent);
-        Assert.False(processedEvent.IsSuccessful);
+        Assert.Equal(WebhookEventStatus.Failed, processedEvent.Status);
         Assert.Equal(errorMessage, processedEvent.ErrorMessage);
+        Assert.NotNull(processedEvent.LastAttemptAt);
+        Assert.True(processedEvent.LastAttemptAt >= claimedAt);
     }
 
     [Fact]
@@ -177,19 +426,21 @@ public class DatabaseIdempotencyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TryProcessEventAsync_WithPreExistingDatabaseRecord_ShouldReturnFalse()
+    public async Task TryProcessEventAsync_WithPreExistingSucceededRecord_ShouldReturnFalse()
     {
         // Arrange
         var eventId = "evt_pre_existing";
         var eventType = "customer.subscription.updated";
 
-        // Manually insert a record to simulate pre-existing event
+        // Manually insert a record to simulate a previously completed event
         var existingEvent = new ProcessedWebhookEvent
         {
             EventId = eventId,
             EventType = eventType,
             ProcessedAt = DateTime.UtcNow.AddMinutes(-5),
-            IsSuccessful = true
+            Status = WebhookEventStatus.Succeeded,
+            LastAttemptAt = DateTime.UtcNow.AddMinutes(-5),
+            AttemptCount = 1
         };
         _dbContext.ProcessedWebhookEvents.Add(existingEvent);
         await _dbContext.SaveChangesAsync();

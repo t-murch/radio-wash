@@ -115,6 +115,7 @@ builder.Services.AddScoped<IStripeHealthCheckService, StripeHealthCheckService>(
 
 // Stripe services
 builder.Services.AddScoped<Stripe.CustomerService>();
+builder.Services.AddScoped<Stripe.SubscriptionService>();
 
 // Idempotency service for webhook race condition prevention
 builder.Services.AddScoped<IIdempotencyService, DatabaseIdempotencyService>();

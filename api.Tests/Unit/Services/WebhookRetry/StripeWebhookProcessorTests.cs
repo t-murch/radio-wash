@@ -1,131 +1,181 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
+using RadioWash.Api.Tests.Unit.Services;
 using Stripe;
 
 namespace RadioWash.Api.Tests.Unit.Services.WebhookRetry;
 
-public class StripeWebhookProcessorTests : IDisposable
+public class StripeWebhookProcessorTests
 {
     private readonly Mock<IConfiguration> _mockConfiguration;
     private readonly Mock<ISubscriptionService> _mockSubscriptionService;
-    private readonly Mock<IEventUtility> _mockEventUtility;
     private readonly Mock<CustomerService> _mockCustomerService;
+    private readonly Mock<Stripe.SubscriptionService> _mockStripeSubscriptionService;
     private readonly Mock<ILogger<StripeWebhookProcessor>> _mockLogger;
-    private readonly RadioWashDbContext _dbContext;
-    private readonly StripeWebhookProcessor _stripeWebhookProcessor;
+    private readonly StripeWebhookProcessor _processor;
 
     public StripeWebhookProcessorTests()
     {
         _mockConfiguration = new Mock<IConfiguration>();
         _mockSubscriptionService = new Mock<ISubscriptionService>();
-        _mockEventUtility = new Mock<IEventUtility>();
         _mockCustomerService = new Mock<CustomerService>();
+        _mockStripeSubscriptionService = new Mock<Stripe.SubscriptionService>();
         _mockLogger = new Mock<ILogger<StripeWebhookProcessor>>();
 
-        // Setup in-memory database
-        var options = new DbContextOptionsBuilder<RadioWashDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        _dbContext = new RadioWashDbContext(options);
-        _dbContext.Database.EnsureCreated();
-
-        // Setup configuration
         _mockConfiguration.Setup(x => x["Stripe:SecretKey"]).Returns("sk_test_123");
-        _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns("whsec_123");
 
-        _stripeWebhookProcessor = new StripeWebhookProcessor(
+        _processor = new StripeWebhookProcessor(
             _mockConfiguration.Object,
             _mockSubscriptionService.Object,
-            _mockEventUtility.Object,
-            _dbContext,
             _mockCustomerService.Object,
+            _mockStripeSubscriptionService.Object,
             _mockLogger.Object);
     }
 
-    #region Configuration Tests
+    /// <summary>
+    /// Deserializes a payload the way the retry pipeline does: no signature involved.
+    /// </summary>
+    private static Event ParseEvent(string payloadJson) =>
+        EventUtility.ParseEvent(payloadJson, throwOnApiVersionMismatch: false);
+
+    #region Subscription Created / Updated Tests
+
+    [Theory]
+    [InlineData("created")]
+    [InlineData("updated")]
+    public async Task ProcessEventAsync_WithSubscriptionChangedEvent_ShouldSyncCurrentStateFromStripe(string change)
+    {
+        // Arrange - the event's embedded subscription is only a pointer; the state written
+        // must come from a fresh Stripe fetch, same as the invoice handlers.
+        var subscriptionId = "sub_123";
+        var payload = change == "created"
+            ? StripeWebhookPayloadBuilder.CreateSubscriptionCreatedWebhook(subscriptionId, "cus_123", "price_123", 17)
+            : StripeWebhookPayloadBuilder.CreateSubscriptionUpdatedWebhook(subscriptionId, "active");
+        var stripeEvent = ParseEvent(payload);
+        var currentStripeState = new Stripe.Subscription { Id = subscriptionId, CustomerId = "cus_123", Status = "active" };
+
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentStripeState);
+        _mockSubscriptionService
+            .Setup(x => x.SyncFromStripeAsync(currentStripeState, It.IsAny<Func<Task<int?>>?>()))
+            .ReturnsAsync(CreateUserSubscription());
+
+        // Act
+        await _processor.ProcessEventAsync(stripeEvent);
+
+        // Assert - synced from the fetched state, not the event snapshot
+        _mockStripeSubscriptionService.Verify(x => x.GetAsync(subscriptionId,
+            It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockSubscriptionService.Verify(x => x.SyncFromStripeAsync(
+            currentStripeState, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+    }
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithMissingWebhookSecret_ShouldThrowInvalidOperationException()
+    public async Task ProcessEventAsync_WithStaleActiveSnapshot_ShouldNotResurrectCanceledSubscription()
+    {
+        // Arrange - Stripe can redeliver a failed `updated` event for up to 3 days. Its
+        // embedded snapshot says "active", but the subscription has since been canceled;
+        // applying the snapshot would re-entitle a canceled user for free. The current
+        // (canceled) Stripe state must be what gets synced.
+        var subscriptionId = "sub_since_canceled";
+        var payload = StripeWebhookPayloadBuilder.CreateSubscriptionUpdatedWebhook(subscriptionId, "active");
+        var stripeEvent = ParseEvent(payload);
+        var currentStripeState = new Stripe.Subscription { Id = subscriptionId, Status = "canceled" };
+
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentStripeState);
+        _mockSubscriptionService
+            .Setup(x => x.SyncFromStripeAsync(currentStripeState, It.IsAny<Func<Task<int?>>?>()))
+            .ReturnsAsync(CreateUserSubscription());
+
+        // Act
+        await _processor.ProcessEventAsync(stripeEvent);
+
+        // Assert - only the fetched canceled state is synced; the stale active snapshot never is
+        _mockSubscriptionService.Verify(x => x.SyncFromStripeAsync(
+            It.Is<Stripe.Subscription>(s => s.Status == "canceled"), It.IsAny<Func<Task<int?>>?>()), Times.Once);
+        _mockSubscriptionService.Verify(x => x.SyncFromStripeAsync(
+            It.Is<Stripe.Subscription>(s => s.Status == "active"), It.IsAny<Func<Task<int?>>?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_WithSubscriptionUpdatedAndNullDataObject_ShouldThrowInvalidOperationException()
     {
         // Arrange
-        _mockConfiguration.Setup(x => x["Stripe:WebhookSecret"]).Returns((string?)null);
-        
-        var processor = new StripeWebhookProcessor(
-            _mockConfiguration.Object,
-            _mockSubscriptionService.Object,
-            _mockEventUtility.Object,
-            _dbContext,
-            _mockCustomerService.Object,
-            _mockLogger.Object);
+        var stripeEvent = new Event
+        {
+            Id = "evt_null_object",
+            Type = "customer.subscription.updated",
+            Data = new EventData { Object = null! }
+        };
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => processor.ProcessWebhookAsync("payload", "signature"));
-    }
-
-    #endregion
-
-    #region Subscription Updated Tests
-
-    [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionUpdated_ShouldUpdateSubscriptionWithDates()
-    {
-        // Arrange
-        var subscriptionId = "sub_123";
-        var eventId = "evt_test_123";
-        var periodStart = DateTime.UtcNow.AddDays(-30);
-        var periodEnd = DateTime.UtcNow.AddDays(30);
-
-        var subscription = CreateMockSubscription(subscriptionId, "active", periodStart, periodEnd);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
-            .ReturnsAsync(CreateMockUserSubscription());
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionDatesAsync(subscriptionId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(CreateMockUserSubscription());
-
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
-
-        // Assert
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionDatesAsync(
-            subscriptionId,
-            It.Is<DateTime>(d => Math.Abs((d - periodStart).TotalSeconds) < 1),
-            It.Is<DateTime>(d => Math.Abs((d - periodEnd).TotalSeconds) < 1)), Times.Once);
+            () => _processor.ProcessEventAsync(stripeEvent));
     }
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionUpdatedNoItems_ShouldOnlyUpdateStatus()
+    public async Task ProcessEventAsync_WithSubscriptionCreated_FallbackShouldResolveUserIdFromCustomerMetadata()
     {
         // Arrange
         var subscriptionId = "sub_123";
-        var eventId = "evt_test_no_items";
+        var customerId = "cus_123";
+        var userId = 17;
+        var payload = StripeWebhookPayloadBuilder.CreateSubscriptionCreatedWebhook(subscriptionId, customerId, "price_123", userId);
+        var stripeEvent = ParseEvent(payload);
 
-        var subscription = new Stripe.Subscription { Id = subscriptionId, Status = "active", Items = null };
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.updated", subscription);
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Stripe.Subscription { Id = subscriptionId, CustomerId = customerId, Status = "active" });
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
-            .ReturnsAsync(CreateMockUserSubscription());
+        Func<Task<int?>>? capturedFallback = null;
+        _mockSubscriptionService
+            .Setup(x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()))
+            .Callback<Stripe.Subscription, Func<Task<int?>>?>((_, fallback) => capturedFallback = fallback)
+            .ReturnsAsync(CreateUserSubscription());
+
+        _mockCustomerService
+            .Setup(x => x.GetAsync(customerId, It.IsAny<CustomerGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Customer
+            {
+                Id = customerId,
+                Metadata = new Dictionary<string, string> { { "userId", userId.ToString() } }
+            });
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _processor.ProcessEventAsync(stripeEvent);
+        var resolvedUserId = await capturedFallback!.Invoke();
 
         // Assert
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionDatesAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()), Times.Never);
+        Assert.Equal(userId, resolvedUserId);
+        _mockCustomerService.Verify(x => x.GetAsync(customerId,
+            It.IsAny<CustomerGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessEventAsync_WhenSyncFromStripeThrows_ShouldPropagate()
+    {
+        // Arrange
+        var payload = StripeWebhookPayloadBuilder.CreateSubscriptionUpdatedWebhook("sub_123", "active");
+        var stripeEvent = ParseEvent(payload);
+
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync("sub_123", It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Stripe.Subscription { Id = "sub_123", Status = "active" });
+        _mockSubscriptionService
+            .Setup(x => x.SyncFromStripeAsync(It.IsAny<Stripe.Subscription>(), It.IsAny<Func<Task<int?>>?>()))
+            .ThrowsAsync(new InvalidOperationException("sync failed"));
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _processor.ProcessEventAsync(stripeEvent));
+        Assert.Equal("sync failed", ex.Message);
     }
 
     #endregion
@@ -133,69 +183,38 @@ public class StripeWebhookProcessorTests : IDisposable
     #region Subscription Deleted Tests
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionDeleted_ShouldCancelSubscription()
+    public async Task ProcessEventAsync_WithSubscriptionDeletedAndLocalRecord_ShouldCancelSubscription()
     {
         // Arrange
         var subscriptionId = "sub_123";
-        var eventId = "evt_test_deleted";
+        var payload = StripeWebhookPayloadBuilder.CreateSubscriptionDeletedWebhook(subscriptionId);
+        var stripeEvent = ParseEvent(payload);
 
-        var subscription = new Stripe.Subscription { Id = subscriptionId };
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.deleted", subscription);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
+        _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync(subscriptionId))
+            .ReturnsAsync(CreateUserSubscription());
         _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "canceled"))
-            .ReturnsAsync(CreateMockUserSubscription());
+            .ReturnsAsync(CreateUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "canceled"), Times.Once);
     }
 
-    #endregion
-
-    #region Payment Failed Tests
-
     [Fact]
-    public async Task ProcessWebhookAsync_WithPaymentFailed_ShouldUpdateSubscriptionToPastDue()
+    public async Task ProcessEventAsync_WithSubscriptionDeletedAndNoLocalRecord_ShouldNotUpdateStatus()
     {
         // Arrange
-        var subscriptionId = "sub_123";
-        var invoiceId = "in_123";
-        var eventId = "evt_test_payment_failed";
+        var subscriptionId = "sub_missing";
+        var payload = StripeWebhookPayloadBuilder.CreateSubscriptionDeletedWebhook(subscriptionId);
+        var stripeEvent = ParseEvent(payload);
 
-        var invoice = CreateMockInvoice(invoiceId, subscriptionId);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
+        _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync(subscriptionId))
+            .ReturnsAsync((UserSubscription?)null);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "past_due"))
-            .ReturnsAsync(CreateMockUserSubscription());
-
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
-
-        // Assert
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "past_due"), Times.Once);
-    }
-
-    [Fact]
-    public async Task ProcessWebhookAsync_WithPaymentFailedNoSubscription_ShouldNotUpdateStatus()
-    {
-        // Arrange
-        var invoiceId = "in_123";
-        var eventId = "evt_test_payment_failed_no_sub";
-
-        var invoice = CreateMockInvoice(invoiceId, null);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_failed", invoice);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        // Act (no throw expected)
+        await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
         _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
@@ -203,89 +222,100 @@ public class StripeWebhookProcessorTests : IDisposable
 
     #endregion
 
-    #region Payment Succeeded Tests
+    #region Invoice Payment Tests
 
-    [Fact]
-    public async Task ProcessWebhookAsync_WithPaymentSucceeded_ShouldUpdateSubscriptionToActive()
+    [Theory]
+    [InlineData("invoice.payment_failed")]
+    [InlineData("invoice.payment_succeeded")]
+    public async Task ProcessEventAsync_WithInvoiceEvent_ShouldSyncCurrentStateFromStripe(string eventType)
     {
-        // Arrange
+        // Arrange - invoice events only carry a subscription pointer; the processor must
+        // fetch the subscription's CURRENT state from Stripe rather than deriving a status
+        // from the event type (a delayed redelivery of payment_succeeded must not resurrect
+        // a since-canceled subscription).
         var subscriptionId = "sub_123";
-        var invoiceId = "in_123";
-        var eventId = "evt_test_payment_succeeded";
+        var payload = eventType == "invoice.payment_failed"
+            ? StripeWebhookPayloadBuilder.CreateInvoicePaymentFailedWebhook("in_123", subscriptionId)
+            : StripeWebhookPayloadBuilder.CreateInvoicePaymentSucceededWebhook("in_123", subscriptionId);
+        var stripeEvent = ParseEvent(payload);
+        var currentStripeState = new Stripe.Subscription { Id = subscriptionId, Status = "past_due" };
 
-        var invoice = CreateMockInvoice(invoiceId, subscriptionId);
-        var mockEvent = CreateMockEvent(eventId, "invoice.payment_succeeded", invoice);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"))
-            .ReturnsAsync(CreateMockUserSubscription());
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentStripeState);
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
-        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(subscriptionId, "active"), Times.Once);
+        _mockSubscriptionService.Verify(
+            x => x.SyncFromStripeAsync(currentStripeState, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+        _mockSubscriptionService.Verify(
+            x => x.UpdateSubscriptionStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
-    #endregion
-
-    #region Subscription Created Tests
-
-    [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionCreated_ShouldCreateSubscription()
+    [Theory]
+    [InlineData("invoice.payment_failed")]
+    [InlineData("invoice.payment_succeeded")]
+    public async Task ProcessEventAsync_WithInvoiceEventAndNoSubscriptionReference_ShouldNotTouchSubscriptions(string eventType)
     {
-        // Arrange
-        var subscriptionId = "sub_123";
-        var customerId = "cus_123";
-        var priceId = "price_123";
-        var userId = 17;
-        var planId = 1;
-        var eventId = "evt_test_subscription_created";
+        // Arrange - Invoice with no subscription key at all (not subscription-related).
+        var payload = CreateInvoiceWebhookWithoutSubscriptionKey("in_123", eventType);
+        var stripeEvent = ParseEvent(payload);
 
-        var subscription = CreateMockSubscriptionCreated(subscriptionId, customerId, priceId, userId);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
-        var mockPlan = CreateMockSubscriptionPlan(planId, priceId);
-
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
-            .ReturnsAsync(mockPlan);
-        _mockSubscriptionService.Setup(x => x.CreateSubscriptionAsync(userId, planId, subscriptionId, customerId))
-            .ReturnsAsync(CreateMockUserSubscription());
-
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        // Act (no throw expected)
+        await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
-        _mockSubscriptionService.Verify(x => x.GetPlanByStripePriceIdAsync(priceId), Times.Once);
-        _mockSubscriptionService.Verify(x => x.CreateSubscriptionAsync(userId, planId, subscriptionId, customerId), Times.Once);
+        _mockSubscriptionService.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("invoice.payment_failed")]
+    [InlineData("invoice.payment_succeeded")]
+    public async Task ProcessEventAsync_WithInvoiceEventAndExplicitNullSubscription_ShouldNotTouchSubscriptions(string eventType)
+    {
+        // Arrange - real non-subscription invoices carry an explicit "subscription": null,
+        // which must be treated the same as a missing key.
+        var payload = eventType == "invoice.payment_failed"
+            ? StripeWebhookPayloadBuilder.CreateInvoicePaymentFailedWebhook("in_123", null)
+            : StripeWebhookPayloadBuilder.CreateInvoicePaymentSucceededWebhook("in_123", null);
+        var stripeEvent = ParseEvent(payload);
+
+        // Act (no throw expected)
+        await _processor.ProcessEventAsync(stripeEvent);
+
+        // Assert
+        _mockSubscriptionService.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithSubscriptionCreatedNoPlan_ShouldNotCreateSubscription()
+    public async Task ProcessEventAsync_WithInvoiceEventAndNoLocalRecord_ShouldFetchFromStripeAndSync()
     {
         // Arrange
-        var subscriptionId = "sub_123";
-        var customerId = "cus_123";
-        var priceId = "price_unknown";
-        var userId = 17;
-        var eventId = "evt_test_subscription_created_no_plan";
+        var subscriptionId = "sub_not_local";
+        var payload = StripeWebhookPayloadBuilder.CreateInvoicePaymentSucceededWebhook("in_123", subscriptionId);
+        var stripeEvent = ParseEvent(payload);
 
-        var subscription = CreateMockSubscriptionCreated(subscriptionId, customerId, priceId, userId);
-        var mockEvent = CreateMockEvent(eventId, "customer.subscription.created", subscription);
+        var fetchedSubscription = new Stripe.Subscription { Id = subscriptionId, CustomerId = "cus_123" };
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-        _mockSubscriptionService.Setup(x => x.GetPlanByStripePriceIdAsync(priceId))
-            .ReturnsAsync((SubscriptionPlan?)null);
+        _mockSubscriptionService.Setup(x => x.GetByStripeSubscriptionIdAsync(subscriptionId))
+            .ReturnsAsync((UserSubscription?)null);
+        _mockStripeSubscriptionService
+            .Setup(x => x.GetAsync(subscriptionId, It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fetchedSubscription);
+        _mockSubscriptionService
+            .Setup(x => x.SyncFromStripeAsync(fetchedSubscription, It.IsAny<Func<Task<int?>>?>()))
+            .ReturnsAsync(CreateUserSubscription());
 
         // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
+        await _processor.ProcessEventAsync(stripeEvent);
 
         // Assert
-        _mockSubscriptionService.Verify(x => x.GetPlanByStripePriceIdAsync(priceId), Times.Once);
-        _mockSubscriptionService.Verify(x => x.CreateSubscriptionAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _mockStripeSubscriptionService.Verify(x => x.GetAsync(subscriptionId,
+            It.IsAny<SubscriptionGetOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockSubscriptionService.Verify(x => x.SyncFromStripeAsync(fetchedSubscription, It.IsAny<Func<Task<int?>>?>()), Times.Once);
+        _mockSubscriptionService.Verify(x => x.UpdateSubscriptionStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     #endregion
@@ -293,28 +323,17 @@ public class StripeWebhookProcessorTests : IDisposable
     #region Checkout Session Completed Tests
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithCheckoutCompleted_ShouldProcessSuccessfully()
+    public async Task ProcessEventAsync_WithCheckoutCompleted_ShouldNotCallSubscriptionService()
     {
         // Arrange
-        var sessionId = "cs_123";
-        var userId = 1;
-        var eventId = "evt_test_checkout_completed";
+        var payload = StripeWebhookPayloadBuilder.CreateCheckoutSessionCompletedWebhook("cs_123", 1);
+        var stripeEvent = ParseEvent(payload);
 
-        var session = new Stripe.Checkout.Session
-        {
-            Id = sessionId,
-            Metadata = new Dictionary<string, string> { { "userId", userId.ToString() } }
-        };
-        var mockEvent = CreateMockEvent(eventId, "checkout.session.completed", session);
+        // Act (no throw expected)
+        await _processor.ProcessEventAsync(stripeEvent);
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
-
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
-
-        // Assert - Should complete without error
-        Assert.True(true); // Placeholder assertion - main test is that no exception is thrown
+        // Assert
+        _mockSubscriptionService.VerifyNoOtherCalls();
     }
 
     #endregion
@@ -322,100 +341,58 @@ public class StripeWebhookProcessorTests : IDisposable
     #region Unhandled Event Tests
 
     [Fact]
-    public async Task ProcessWebhookAsync_WithUnhandledEventType_ShouldProcessWithoutError()
+    public async Task ProcessEventAsync_WithUnhandledEventType_ShouldNotThrow()
     {
         // Arrange
-        var eventId = "evt_test_unhandled";
-        var mockEvent = new Event { Id = eventId, Type = "customer.created" };
+        var stripeEvent = new Event { Id = "evt_unhandled", Type = "customer.created" };
 
-        _mockEventUtility.Setup(x => x.ConstructEvent("payload", "signature", "whsec_123"))
-            .Returns(mockEvent);
+        // Act (no throw expected)
+        await _processor.ProcessEventAsync(stripeEvent);
 
-        // Act
-        await _stripeWebhookProcessor.ProcessWebhookAsync("payload", "signature");
-
-        // Assert - Should complete without error
-        Assert.True(true); // Placeholder assertion - main test is that no exception is thrown
+        // Assert
+        _mockSubscriptionService.VerifyNoOtherCalls();
     }
 
     #endregion
 
     #region Helper Methods
 
-    private static Event CreateMockEvent(string eventId, string eventType, object dataObject)
+    /// <summary>
+    /// Builds an invoice event payload whose invoice object omits the "subscription" key
+    /// entirely. StripeWebhookPayloadBuilder's overloads always serialize the key (as JSON
+    /// null when no id is given), and GetSubscriptionIdFromInvoice throws on an explicit
+    /// null token — a known implementation gap.
+    /// </summary>
+    private static string CreateInvoiceWebhookWithoutSubscriptionKey(string invoiceId, string eventType)
     {
-        return new Event
+        var payload = new
         {
-            Id = eventId,
-            Type = eventType,
-            Data = new Stripe.EventData { Object = dataObject as Stripe.IHasObject }
-        };
-    }
-
-    private static Stripe.Subscription CreateMockSubscription(string subscriptionId, string status, DateTime? periodStart = null, DateTime? periodEnd = null)
-    {
-        var subscription = new Stripe.Subscription { Id = subscriptionId, Status = status };
-
-        if (periodStart.HasValue && periodEnd.HasValue)
-        {
-            var subscriptionItem = new SubscriptionItem
+            id = "evt_123",
+            @object = "event",
+            api_version = "2020-08-27",
+            created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            data = new
             {
-                CurrentPeriodStart = periodStart.Value,
-                CurrentPeriodEnd = periodEnd.Value
-            };
-
-            subscription.Items = new StripeList<SubscriptionItem>
+                @object = new
+                {
+                    id = invoiceId,
+                    @object = "invoice"
+                }
+            },
+            livemode = false,
+            pending_webhooks = 1,
+            request = new
             {
-                Data = new List<SubscriptionItem> { subscriptionItem }
-            };
-        }
-
-        return subscription;
-    }
-
-    private static Invoice CreateMockInvoice(string invoiceId, string? subscriptionId)
-    {
-        var invoice = new Invoice { Id = invoiceId };
-
-        if (!string.IsNullOrEmpty(subscriptionId))
-        {
-            var rawJObject = new Newtonsoft.Json.Linq.JObject
-            {
-                ["subscription"] = subscriptionId
-            };
-
-            var rawJObjectProperty = typeof(StripeEntity).GetProperty("RawJObject",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            rawJObjectProperty?.SetValue(invoice, rawJObject);
-        }
-
-        return invoice;
-    }
-
-    private static Stripe.Subscription CreateMockSubscriptionCreated(string subscriptionId, string customerId, string priceId, int userId)
-    {
-        var subscription = new Stripe.Subscription
-        {
-            Id = subscriptionId,
-            CustomerId = customerId,
-            Status = "active",
-            Metadata = new Dictionary<string, string> { { "userId", userId.ToString() } }
+                id = "req_123",
+                idempotency_key = (string?)null
+            },
+            type = eventType
         };
 
-        var subscriptionItem = new SubscriptionItem
-        {
-            Price = new Price { Id = priceId }
-        };
-
-        subscription.Items = new StripeList<SubscriptionItem>
-        {
-            Data = new List<SubscriptionItem> { subscriptionItem }
-        };
-
-        return subscription;
+        return System.Text.Json.JsonSerializer.Serialize(payload);
     }
 
-    private static UserSubscription CreateMockUserSubscription()
+    private static UserSubscription CreateUserSubscription()
     {
         return new UserSubscription
         {
@@ -430,25 +407,5 @@ public class StripeWebhookProcessorTests : IDisposable
         };
     }
 
-    private static SubscriptionPlan CreateMockSubscriptionPlan(int planId, string stripePriceId)
-    {
-        return new SubscriptionPlan
-        {
-            Id = planId,
-            Name = "Test Plan",
-            PriceInCents = 500,
-            BillingPeriod = "monthly",
-            StripePriceId = stripePriceId,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-    }
-
     #endregion
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-    }
 }

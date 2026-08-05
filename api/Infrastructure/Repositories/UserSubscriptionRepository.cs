@@ -55,7 +55,7 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   {
     return await _dbContext.UserSubscriptions
         .AsNoTracking()
-        .Where(us => us.Status == SubscriptionStatus.Active)
+        .Where(us => us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.Trialing)
         .ToListAsync();
   }
 
@@ -64,7 +64,7 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
     return await _dbContext.UserSubscriptions
         .Include(us => us.User)
         .Include(us => us.Plan)
-        .Where(us => us.Status == SubscriptionStatus.Active)
+        .Where(us => us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.Trialing)
         .ToListAsync();
   }
 
@@ -95,8 +95,10 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
   // skipped because they represent an incomplete state Stripe hasn't finalized.
   public async Task<IEnumerable<UserSubscription>> GetExpiredActiveSubscriptionsAsync(DateTime cutoff)
   {
+    // Trialing counts as entitled, so a stale trial whose renewal webhooks were lost must
+    // expire here just like a stale active subscription.
     return await _dbContext.UserSubscriptions
-        .Where(us => us.Status == SubscriptionStatus.Active &&
+        .Where(us => (us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.Trialing) &&
                     us.CurrentPeriodEnd.HasValue &&
                     us.CurrentPeriodEnd.Value < cutoff)
         .ToListAsync();
@@ -109,6 +111,21 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
     return subscription;
   }
 
+  public async Task<UserSubscription?> TryCreateAsync(UserSubscription subscription)
+  {
+    _dbContext.UserSubscriptions.Add(subscription);
+    try
+    {
+      await _dbContext.SaveChangesAsync();
+      return subscription;
+    }
+    catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
+    {
+      _dbContext.Entry(subscription).State = EntityState.Detached;
+      return null;
+    }
+  }
+
   public async Task<UserSubscription> UpdateAsync(UserSubscription subscription)
   {
     subscription.UpdatedAt = DateTime.UtcNow;
@@ -119,9 +136,10 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
 
   public async Task<bool> HasActiveSubscriptionAsync(int userId)
   {
+    // Trialing subscriptions are entitled to paid features, same as active ones.
     return await _dbContext.UserSubscriptions
         .AnyAsync(us => us.UserId == userId &&
-                       us.Status == SubscriptionStatus.Active &&
+                       (us.Status == SubscriptionStatus.Active || us.Status == SubscriptionStatus.Trialing) &&
                        (us.CurrentPeriodEnd == null || us.CurrentPeriodEnd > DateTime.UtcNow));
   }
 
