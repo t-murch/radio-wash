@@ -107,13 +107,26 @@ public class StripeReconciliationService : IStripeReconciliationService
     }
   }
 
-  // Pass 2: every active subscription on Stripe must have a local row. This is the recovery
-  // path for "user charged, all webhooks lost". (Stripe's list filter is a single status;
-  // active covers the paid case that matters — trialing rows are created by pass 1 or the
-  // next webhook.)
+  // Pass 2: every entitled subscription on Stripe must have a matching local row. This is
+  // the recovery path for "user charged, all webhooks lost". Stripe's list filter takes a
+  // single status, so each entitled status gets its own listing pass — the set here must
+  // stay in lockstep with SubscriptionStatusMapper.IsEntitled, or subscriptions in the
+  // missing status become invisible to the sweep (unhealable wrongful cancellations,
+  // uncreatable missing rows).
+  private static readonly string[] EntitledStripeStatuses = { "active", "trialing" };
+
   private async Task ReconcileMissingLocalRowsAsync(StripeReconciliationResult result, CancellationToken cancellationToken)
   {
-    var options = new SubscriptionListOptions { Status = "active", Limit = 100 };
+    foreach (var entitledStatus in EntitledStripeStatuses)
+    {
+      await ReconcileMissingLocalRowsForStatusAsync(entitledStatus, result, cancellationToken);
+    }
+  }
+
+  private async Task ReconcileMissingLocalRowsForStatusAsync(
+      string stripeStatus, StripeReconciliationResult result, CancellationToken cancellationToken)
+  {
+    var options = new SubscriptionListOptions { Status = stripeStatus, Limit = 100 };
 
     await foreach (var stripeSubscription in _stripeSubscriptionService
       .ListAutoPagingAsync(options, cancellationToken: cancellationToken))
@@ -129,8 +142,8 @@ public class StripeReconciliationService : IStripeReconciliationService
           if (!SubscriptionStatusMapper.IsEntitled(local.Status))
           {
             _logger.LogWarning(
-              "Stripe subscription {StripeSubscriptionId} is active but local status is {LocalStatus}; healing from Stripe state",
-              stripeSubscription.Id, local.Status);
+              "Stripe subscription {StripeSubscriptionId} is {StripeStatus} but local status is {LocalStatus}; healing from Stripe state",
+              stripeSubscription.Id, stripeStatus, local.Status);
 
             await _subscriptionService.SyncFromStripeAsync(
               stripeSubscription,
@@ -142,8 +155,8 @@ public class StripeReconciliationService : IStripeReconciliationService
         }
 
         _logger.LogWarning(
-          "Stripe subscription {StripeSubscriptionId} is active but has no local record; creating from Stripe state",
-          stripeSubscription.Id);
+          "Stripe subscription {StripeSubscriptionId} is {StripeStatus} but has no local record; creating from Stripe state",
+          stripeSubscription.Id, stripeStatus);
 
         await _subscriptionService.SyncFromStripeAsync(
           stripeSubscription,
