@@ -16,6 +16,11 @@ export const useSubscriptionStatus = () => {
   return useQuery<SubscriptionStatus>({
     queryKey: ['subscription-status'],
     queryFn: getSubscriptionStatus,
+    // Subscription state changes outside the app (Stripe billing portal,
+    // webhooks), so a 5-minute-stale cache can show outdated banners.
+    // Always refetch when a consumer mounts or the window regains focus.
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };
 
@@ -40,10 +45,16 @@ export const useEnableSyncForJob = () => {
 };
 
 export const useSubscribeToSync = () => {
-  const queryClient = useQueryClient();
-  
   return useMutation<{ checkoutUrl: string }, Error>({
-    mutationFn: subscribeToSync,
+    mutationFn: async () => {
+      const data = await subscribeToSync();
+      if (!data?.checkoutUrl) {
+        throw new Error('Checkout could not be started. Please try again.');
+      }
+      return { checkoutUrl: data.checkoutUrl };
+    },
+    // Never retry: each attempt creates a new Stripe checkout session.
+    retry: false,
     onSuccess: (data) => {
       // Redirect to Stripe checkout
       window.location.href = data.checkoutUrl;

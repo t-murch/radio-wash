@@ -6,7 +6,12 @@ import {
   useSubscriptionStatus,
   useSubscribeToSync,
 } from '@/hooks/useSubscriptionSync';
-import { cancelSubscription, type User } from '../services/api';
+import {
+  ApiError,
+  cancelSubscription,
+  createPortalSession,
+  type User,
+} from '../services/api';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -23,16 +28,39 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   const { data: subscriptionStatus, isLoading } = useSubscriptionStatus();
   const subscribeToSyncMutation = useSubscribeToSync();
 
-  const cancelSubscriptionMutation = useMutation<{ success: boolean }, Error>({
+  const cancelSubscriptionMutation = useMutation<
+    { message: string; activeUntil?: string; cancelAtPeriodEnd?: boolean },
+    Error
+  >({
     mutationFn: cancelSubscription,
-    onSuccess: () => {
-      toast.success('Subscription cancelled successfully');
+    onSuccess: (data) => {
+      // Cancellation happens at period end — access continues until then.
+      toast.success(
+        data.activeUntil
+          ? `Subscription will cancel on ${formatDateTime(data.activeUntil)}`
+          : 'Subscription will cancel at the end of the billing period'
+      );
       queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
-      queryClient.invalidateQueries({ queryKey: ['sync-configs'] });
     },
     onError: (error) => {
       toast.error('Failed to cancel subscription');
       console.error('Cancel subscription error:', error);
+    },
+  });
+
+  const portalMutation = useMutation<{ portalUrl?: string }, Error>({
+    mutationFn: createPortalSession,
+    retry: false,
+    onSuccess: (data) => {
+      if (data?.portalUrl) {
+        window.location.href = data.portalUrl;
+      } else {
+        toast.error('Could not open the billing portal. Please try again.');
+      }
+    },
+    onError: (error) => {
+      toast.error('Could not open the billing portal. Please try again.');
+      console.error('Portal session error:', error);
     },
   });
 
@@ -41,10 +69,21 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
       await subscribeToSyncMutation.mutateAsync();
       // Note: The mutation will redirect to Stripe checkout on success
     } catch (error) {
-      if (error instanceof Error && error.message.includes('404')) {
-        toast.error(
-          'Subscription service not yet configured. Please contact support.'
-        );
+      if (error instanceof ApiError) {
+        if (error.status === 409) {
+          toast.error('You already have an active subscription');
+          queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
+        } else if (error.status === 503) {
+          toast.error(
+            'Subscriptions are temporarily unavailable — please try again later'
+          );
+        } else if (error.status === 429) {
+          // The rate limiter responds without a Problem Details body, so the
+          // generic detail fallback would show a raw message here.
+          toast.error('Too many attempts — please wait a minute and try again');
+        } else {
+          toast.error(error.detail ?? 'Subscription failed. Please try again.');
+        }
       } else {
         toast.error('Subscription failed. Please try again.');
       }
@@ -53,11 +92,12 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   };
 
   const handleCancelSubscription = async () => {
-    if (
-      confirm(
-        'Are you sure you want to cancel your subscription? This will disable all active sync configurations.'
-      )
-    ) {
+    const accessUntil = subscriptionStatus?.currentPeriodEnd
+      ? ` You'll keep access until ${formatDateTime(
+          subscriptionStatus.currentPeriodEnd
+        )}.`
+      : '';
+    if (confirm(`Cancel your subscription?${accessUntil}`)) {
       await cancelSubscriptionMutation.mutateAsync();
     }
   };
@@ -106,26 +146,42 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 </h2>
               </div>
 
+              {subscriptionStatus.cancelAtPeriodEnd && (
+                <div className="bg-warning-muted text-warning rounded-lg p-4 text-sm font-medium">
+                  Cancellation scheduled
+                  {subscriptionStatus.currentPeriodEnd &&
+                    ` — active until ${formatDateTime(
+                      subscriptionStatus.currentPeriodEnd
+                    )}`}
+                </div>
+              )}
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <h3 className="font-medium text-foreground">Plan Details</h3>
                   <div className="text-sm space-y-1">
-                    <div>
-                      <span className="text-muted-foreground">Plan:</span>
-                      <span className="ml-2 font-medium">
-                        {subscriptionStatus.planName || 'Sync Plan'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Status:</span>
-                      <span className="ml-2 font-medium text-success">
-                        {subscriptionStatus.status || 'Active'}
-                      </span>
-                    </div>
+                    {subscriptionStatus.planName && (
+                      <div>
+                        <span className="text-muted-foreground">Plan:</span>
+                        <span className="ml-2 font-medium">
+                          {subscriptionStatus.planName}
+                        </span>
+                      </div>
+                    )}
+                    {subscriptionStatus.status && (
+                      <div>
+                        <span className="text-muted-foreground">Status:</span>
+                        <span className="ml-2 font-medium text-success">
+                          {subscriptionStatus.status}
+                        </span>
+                      </div>
+                    )}
                     {subscriptionStatus.currentPeriodEnd && (
                       <div>
                         <span className="text-muted-foreground">
-                          Next billing:
+                          {subscriptionStatus.cancelAtPeriodEnd
+                            ? 'Access until:'
+                            : 'Next billing:'}
                         </span>
                         <span className="ml-2 font-medium">
                           {formatDateTime(subscriptionStatus.currentPeriodEnd)}
@@ -160,15 +216,31 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                   Back to Dashboard
                 </Button>
                 <Button
-                  variant="destructive"
-                  onClick={handleCancelSubscription}
-                  disabled={cancelSubscriptionMutation.isPending}
+                  variant="secondary"
+                  onClick={() => portalMutation.mutate()}
+                  disabled={portalMutation.isPending}
                 >
-                  {cancelSubscriptionMutation.isPending
-                    ? 'Cancelling...'
-                    : 'Cancel Subscription'}
+                  {portalMutation.isPending ? 'Opening...' : 'Manage billing'}
                 </Button>
+                {!subscriptionStatus.cancelAtPeriodEnd && (
+                  <Button
+                    variant="destructive"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelSubscriptionMutation.isPending}
+                  >
+                    {cancelSubscriptionMutation.isPending
+                      ? 'Cancelling...'
+                      : 'Cancel Subscription'}
+                  </Button>
+                )}
               </div>
+
+              {subscriptionStatus.cancelAtPeriodEnd && (
+                <p className="text-sm text-muted-foreground">
+                  Changed your mind? You can resume billing from the billing
+                  portal via &quot;Manage billing&quot;.
+                </p>
+              )}
             </div>
           ) : (
             <div className="text-center space-y-8">

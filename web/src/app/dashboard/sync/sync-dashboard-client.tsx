@@ -9,13 +9,14 @@ import {
   useSyncConfigs, 
   useSubscribeToSync 
 } from '@/hooks/useSubscriptionSync';
-import { 
-  triggerManualSync, 
-  disableSync, 
+import {
+  ApiError,
+  triggerManualSync,
+  disableSync,
   updateSyncFrequency,
   type User,
   type PlaylistSyncConfig,
-  type SyncResult 
+  type SyncResult
 } from '../../services/api';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -151,7 +152,17 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
       setProcessingConfigId(null);
     },
     onError: (error) => {
-      toast.error('Manual sync failed. Please try again.');
+      // 403 = plan limit reached, 400 = subscription required — both carry a
+      // human-readable detail from the API.
+      if (
+        error instanceof ApiError &&
+        (error.status === 403 || error.status === 400) &&
+        error.detail
+      ) {
+        toast.error(error.detail);
+      } else {
+        toast.error('Manual sync failed. Please try again.');
+      }
       console.error('Manual sync error:', error);
       setProcessingConfigId(null);
     },
@@ -244,7 +255,7 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
               No Sync Configurations
             </h2>
             <p className="text-muted-foreground mb-4">
-              You haven't enabled sync for any playlists yet. Complete a playlist cleaning job 
+              You haven&apos;t enabled sync for any playlists yet. Complete a playlist cleaning job 
               and enable sync from the job details page.
             </p>
             <Button
