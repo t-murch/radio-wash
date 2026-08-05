@@ -405,6 +405,26 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
+    // checkout/complete is a read-and-sync (no Stripe object creation), and the success
+    // page deliberately retries it while Stripe is having a transient outage — up to every
+    // other 2s poll tick. The 5/min "checkout" bucket would 429 that retry loop within
+    // ~20 seconds and defeat the 500-means-retry design, so it gets its own looser bucket.
+    options.AddPolicy("checkout-complete", httpContext =>
+    {
+        var userId = httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? httpContext.User?.FindFirst("sub")?.Value;
+        var partitionKey = string.IsNullOrEmpty(userId) ? "__anonymous__" : userId;
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            });
+    });
+
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;

@@ -421,19 +421,20 @@ public class SubscriptionServiceTests
   }
 
   [Fact]
-  public async Task MarkCancellationRequestedAsync_WithValidUser_SetsOnlyCancelAtPeriodEnd()
+  public async Task MarkCancellationRequestedAsync_WithValidSubscription_SetsOnlyCancelAtPeriodEnd()
   {
     // Arrange
-    var userId = 1;
-    var subscription = CreateUserSubscription(userId);
+    var stripeSubscriptionId = "sub_cancel_me";
+    var subscription = CreateUserSubscription(1);
+    subscription.StripeSubscriptionId = stripeSubscriptionId;
 
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
         .ReturnsAsync(subscription);
     _mockUnitOfWork.Setup(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()))
         .ReturnsAsync((UserSubscription s) => s);
 
     // Act
-    var result = await _subscriptionService.MarkCancellationRequestedAsync(userId);
+    var result = await _subscriptionService.MarkCancellationRequestedAsync(stripeSubscriptionId);
 
     // Assert - the user paid for the rest of the period: status stays active, CanceledAt
     // stays null, and sync configs keep running. customer.subscription.deleted deactivates.
@@ -452,15 +453,15 @@ public class SubscriptionServiceTests
   public async Task MarkCancellationRequestedAsync_WithNoSubscription_Throws()
   {
     // Arrange
-    var userId = 404;
-    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByUserIdAsync(userId))
+    var stripeSubscriptionId = "sub_unknown";
+    _mockUnitOfWork.Setup(x => x.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId))
         .ReturnsAsync((UserSubscription?)null);
 
     // Act & Assert
     var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-        () => _subscriptionService.MarkCancellationRequestedAsync(userId));
+        () => _subscriptionService.MarkCancellationRequestedAsync(stripeSubscriptionId));
 
-    Assert.Contains($"No subscription found for user {userId}", exception.Message);
+    Assert.Contains($"No subscription found with Stripe id {stripeSubscriptionId}", exception.Message);
     _mockUnitOfWork.Verify(x => x.UserSubscriptions.UpdateAsync(It.IsAny<UserSubscription>()), Times.Never);
   }
 
