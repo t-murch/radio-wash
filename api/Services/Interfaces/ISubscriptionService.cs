@@ -7,6 +7,8 @@ public interface ISubscriptionService
   Task<UserSubscription?> GetActiveSubscriptionAsync(int userId);
   Task<bool> HasActiveSubscriptionAsync(int userId);
   Task<UserSubscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId);
+  // Non-terminal subscriptions with a Stripe id, for the reconciliation sweep.
+  Task<IEnumerable<UserSubscription>> GetReconcilableSubscriptionsAsync();
   Task<UserSubscription> CreateSubscriptionAsync(int userId, int planId, string stripeSubscriptionId, string stripeCustomerId);
   Task<UserSubscription> UpdateSubscriptionStatusAsync(string stripeSubscriptionId, string status);
   // Creates or updates the local subscription row from Stripe's current view of the

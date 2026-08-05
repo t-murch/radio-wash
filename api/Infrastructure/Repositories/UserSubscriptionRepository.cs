@@ -104,6 +104,14 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
         .ToListAsync();
   }
 
+  public async Task<IEnumerable<UserSubscription>> GetReconcilableSubscriptionsAsync()
+  {
+    return await _dbContext.UserSubscriptions
+        .Where(us => us.StripeSubscriptionId != null &&
+                    us.Status != SubscriptionStatus.Canceled)
+        .ToListAsync();
+  }
+
   public async Task<UserSubscription> CreateAsync(UserSubscription subscription)
   {
     _dbContext.UserSubscriptions.Add(subscription);

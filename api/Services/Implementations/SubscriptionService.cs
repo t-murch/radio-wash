@@ -37,6 +37,11 @@ public class SubscriptionService : ISubscriptionService
     return await _unitOfWork.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId);
   }
 
+  public async Task<IEnumerable<UserSubscription>> GetReconcilableSubscriptionsAsync()
+  {
+    return await _unitOfWork.UserSubscriptions.GetReconcilableSubscriptionsAsync();
+  }
+
   public async Task<UserSubscription> SyncFromStripeAsync(
       Stripe.Subscription stripeSubscription,
       Func<Task<int?>>? resolveUserIdFallback = null)
