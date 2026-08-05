@@ -20,13 +20,24 @@ public class UserSubscriptionDto
   public DateTime? CurrentPeriodStart { get; set; }
   public DateTime? CurrentPeriodEnd { get; set; }
   public DateTime? CanceledAt { get; set; }
+  public bool CancelAtPeriodEnd { get; set; }
   public SubscriptionPlanDto Plan { get; set; } = null!;
   public DateTime CreatedAt { get; set; }
 }
 
 public class CreateCheckoutDto
 {
-  public string PlanPriceId { get; set; } = null!;
+  // Local plan id; null selects the single active plan. The Stripe price is always
+  // resolved server-side — client-supplied price ids are never sent to Stripe.
+  public int? PlanId { get; set; }
+  // Client-generated GUID per checkout click; feeds Stripe's idempotency key so a retried
+  // request can't create duplicate checkout sessions.
+  public string? ClientRequestId { get; set; }
+}
+
+public class CompleteCheckoutDto
+{
+  public string SessionId { get; set; } = null!;
 }
 
 public class PlaylistSyncConfigDto

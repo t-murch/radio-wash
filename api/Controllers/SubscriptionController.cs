@@ -16,16 +16,19 @@ public class SubscriptionController : AuthenticatedControllerBase
 {
   private readonly ISubscriptionService _subscriptionService;
   private readonly IPaymentService _paymentService;
+  private readonly IConfiguration _configuration;
   private readonly ILogger<SubscriptionController> _logger;
 
   public SubscriptionController(
       RadioWashDbContext dbContext,
       ISubscriptionService subscriptionService,
       IPaymentService paymentService,
+      IConfiguration configuration,
       ILogger<SubscriptionController> logger) : base(dbContext, logger)
   {
     _subscriptionService = subscriptionService;
     _paymentService = paymentService;
+    _configuration = configuration;
     _logger = logger;
   }
 
@@ -68,6 +71,7 @@ public class SubscriptionController : AuthenticatedControllerBase
       CurrentPeriodStart = subscription.CurrentPeriodStart,
       CurrentPeriodEnd = subscription.CurrentPeriodEnd,
       CanceledAt = subscription.CanceledAt,
+      CancelAtPeriodEnd = subscription.CancelAtPeriodEnd,
       Plan = new SubscriptionPlanDto
       {
         Id = subscription.Plan.Id,
@@ -92,16 +96,131 @@ public class SubscriptionController : AuthenticatedControllerBase
   {
     var userId = GetCurrentUserId();
 
+    // Kill switch: lets checkout be disabled via an app-settings change without a deploy.
+    if (!_configuration.GetValue("Features:CheckoutEnabled", true))
+    {
+      return Problem(
+        title: "Checkout disabled",
+        detail: "Subscriptions are temporarily unavailable. Please try again later.",
+        statusCode: StatusCodes.Status503ServiceUnavailable,
+        type: "https://radiowash.app/problems/checkout-disabled");
+    }
+
+    if (await _subscriptionService.HasActiveSubscriptionAsync(userId))
+    {
+      return Problem(
+        title: "Already subscribed",
+        detail: "You already have an active subscription.",
+        statusCode: StatusCodes.Status409Conflict,
+        type: "https://radiowash.app/problems/already-subscribed");
+    }
+
+    // ClientRequestId feeds Stripe's idempotency key (capped at 255 chars), so arbitrary
+    // client strings must not pass through — the frontend always sends crypto.randomUUID().
+    if (dto.ClientRequestId != null && !Guid.TryParse(dto.ClientRequestId, out _))
+    {
+      return Problem(
+        title: "Invalid request id",
+        detail: "clientRequestId must be a UUID.",
+        statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    // The Stripe price is resolved server-side from the local plan — client-supplied price
+    // ids are never forwarded to Stripe.
+    var plan = dto.PlanId.HasValue
+      ? await _subscriptionService.GetPlanByIdAsync(dto.PlanId.Value)
+      : (await _subscriptionService.GetAvailablePlansAsync()).FirstOrDefault();
+
+    if (plan is not { IsActive: true } || string.IsNullOrEmpty(plan.StripePriceId))
+    {
+      return Problem(
+        title: "Plan unavailable",
+        detail: "The requested subscription plan is not available.",
+        statusCode: StatusCodes.Status400BadRequest,
+        type: "https://radiowash.app/problems/plan-unavailable");
+    }
+
     try
     {
-      var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, dto.PlanPriceId);
+      var checkoutUrl = await _paymentService.CreateCheckoutSessionAsync(userId, plan.StripePriceId, dto.ClientRequestId);
       return Ok(new { checkoutUrl });
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to create checkout session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create checkout session" });
+      return Problem(
+        title: "Checkout failed",
+        detail: "Could not start checkout. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
     }
+  }
+
+  // Called by the success page with the session_id Stripe appended to the redirect. Pulls
+  // the session (and subscription) from Stripe and syncs it locally, so activation doesn't
+  // depend on the webhook having already arrived. Idempotent.
+  [HttpPost("checkout/complete")]
+  [EnableRateLimiting("checkout-complete")]
+  public async Task<ActionResult> CompleteCheckout([FromBody] CompleteCheckoutDto dto)
+  {
+    var userId = GetCurrentUserId();
+
+    if (string.IsNullOrEmpty(dto.SessionId))
+    {
+      return Problem(
+        title: "Missing session id",
+        detail: "A checkout session id is required.",
+        statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    Stripe.Checkout.Session session;
+    try
+    {
+      session = await _paymentService.GetCheckoutSessionAsync(dto.SessionId);
+    }
+    catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing"
+        || ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+      _logger.LogWarning(ex, "Checkout session {SessionId} could not be retrieved for user {UserId}", dto.SessionId, userId);
+      return Problem(
+        title: "Unknown checkout session",
+        detail: "The checkout session could not be found.",
+        statusCode: StatusCodes.Status404NotFound);
+    }
+    catch (Stripe.StripeException ex)
+    {
+      // Transient Stripe failure (5xx, rate limit, connection): the user just PAID — a
+      // "not found" here would be both wrong and alarming. 500 lets the success page fall
+      // back to polling and retry.
+      _logger.LogError(ex, "Failed to retrieve checkout session {SessionId} for user {UserId}", dto.SessionId, userId);
+      return Problem(
+        title: "Checkout verification failed",
+        detail: "Could not verify the checkout session. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    if (session.Metadata == null
+        || !session.Metadata.TryGetValue("userId", out var sessionUserId)
+        || sessionUserId != userId.ToString())
+    {
+      _logger.LogWarning("User {UserId} attempted to complete checkout session {SessionId} belonging to someone else",
+        userId, dto.SessionId);
+      return Problem(
+        title: "Forbidden",
+        detail: "This checkout session does not belong to the current user.",
+        statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (session.Subscription != null)
+    {
+      await _subscriptionService.SyncFromStripeAsync(session.Subscription);
+    }
+    else
+    {
+      _logger.LogInformation("Checkout session {SessionId} has no subscription yet (payment may still be processing)",
+        dto.SessionId);
+    }
+
+    return Ok(await BuildStatusPayloadAsync(userId));
   }
 
   [HttpPost("portal")]
@@ -113,7 +232,10 @@ public class SubscriptionController : AuthenticatedControllerBase
 
     if (subscription?.StripeCustomerId == null)
     {
-      return BadRequest(new { error = "No active subscription found" });
+      return Problem(
+        title: "No subscription",
+        detail: "There is no subscription to manage billing for.",
+        statusCode: StatusCodes.Status404NotFound);
     }
 
     try
@@ -123,25 +245,67 @@ public class SubscriptionController : AuthenticatedControllerBase
     }
     catch (Exception ex)
     {
+      // Server-side failure (Stripe outage, unconfigured Dashboard portal) — not a client
+      // error, and the 500 is what monitoring alerts on.
       _logger.LogError(ex, "Failed to create portal session for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to create portal session" });
+      return Problem(
+        title: "Billing portal unavailable",
+        detail: "Could not open the billing portal. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
     }
   }
 
   [HttpPost("cancel")]
+  [EnableRateLimiting("checkout")]
   public async Task<ActionResult> CancelSubscription()
   {
     var userId = GetCurrentUserId();
 
+    var subscription = await _subscriptionService.GetActiveSubscriptionAsync(userId);
+    if (subscription == null
+        || !Models.Domain.SubscriptionStatusMapper.IsEntitled(subscription.Status)
+        || string.IsNullOrEmpty(subscription.StripeSubscriptionId))
+    {
+      return Problem(
+        title: "No active subscription",
+        detail: "There is no active subscription to cancel.",
+        statusCode: StatusCodes.Status404NotFound);
+    }
+
+    if (subscription.CancelAtPeriodEnd)
+    {
+      // Already scheduled — idempotent success.
+      return Ok(new
+      {
+        message = "Subscription is already scheduled to cancel at the end of the billing period",
+        activeUntil = subscription.CurrentPeriodEnd,
+        cancelAtPeriodEnd = true
+      });
+    }
+
     try
     {
-      await _subscriptionService.CancelSubscriptionAsync(userId);
-      return Ok(new { message = "Subscription canceled successfully" });
+      // Stripe first: if this fails the user stays subscribed on both sides. The local
+      // flag follows only after Stripe accepted the cancellation, and is keyed on the same
+      // Stripe subscription the cancel targeted — not re-resolved per user, which could
+      // pick a different row in the (alerted) duplicate-subscription state.
+      await _paymentService.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId);
+      await _subscriptionService.MarkCancellationRequestedAsync(subscription.StripeSubscriptionId);
+
+      return Ok(new
+      {
+        message = "Subscription will cancel at the end of the current billing period",
+        activeUntil = subscription.CurrentPeriodEnd,
+        cancelAtPeriodEnd = true
+      });
     }
     catch (Exception ex)
     {
       _logger.LogError(ex, "Failed to cancel subscription for user {UserId}", userId);
-      return BadRequest(new { error = "Failed to cancel subscription" });
+      return Problem(
+        title: "Cancellation failed",
+        detail: "Could not cancel the subscription. Please try again.",
+        statusCode: StatusCodes.Status500InternalServerError);
     }
   }
 
@@ -182,9 +346,23 @@ public class SubscriptionController : AuthenticatedControllerBase
   public async Task<ActionResult> GetSubscriptionStatus()
   {
     var userId = GetCurrentUserId();
-    var hasActiveSubscription = await _subscriptionService.HasActiveSubscriptionAsync(userId);
+    return Ok(await BuildStatusPayloadAsync(userId));
+  }
 
-    return Ok(new { hasActiveSubscription });
+  private async Task<object> BuildStatusPayloadAsync(int userId)
+  {
+    var hasActiveSubscription = await _subscriptionService.HasActiveSubscriptionAsync(userId);
+    var subscription = await _subscriptionService.GetActiveSubscriptionAsync(userId);
+
+    return new
+    {
+      hasActiveSubscription,
+      subscriptionId = subscription?.Id,
+      planName = subscription?.Plan?.Name,
+      status = subscription?.Status,
+      currentPeriodEnd = subscription?.CurrentPeriodEnd,
+      cancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false
+    };
   }
 
   private static List<string> ParseFeatures(string featuresJson)

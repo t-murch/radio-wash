@@ -19,7 +19,11 @@ public interface ISubscriptionService
   // (e.g. a Stripe API lookup of the customer's metadata).
   Task<UserSubscription> SyncFromStripeAsync(Stripe.Subscription stripeSubscription, Func<Task<int?>>? resolveUserIdFallback = null);
   Task<UserSubscription> UpdateSubscriptionDatesAsync(string stripeSubscriptionId, DateTime currentPeriodStart, DateTime currentPeriodEnd);
-  Task<UserSubscription> CancelSubscriptionAsync(int userId);
+  // Marks the local subscription cancel-at-period-end after the Stripe-side cancellation
+  // succeeded — keyed on the same Stripe subscription id the cancel targeted. Does NOT
+  // change status or disable sync configs — access continues until the
+  // customer.subscription.deleted webhook arrives at period end.
+  Task<UserSubscription> MarkCancellationRequestedAsync(string stripeSubscriptionId);
   Task<IEnumerable<SubscriptionPlan>> GetAvailablePlansAsync();
   Task<SubscriptionPlan?> GetPlanByIdAsync(int planId);
   Task<SubscriptionPlan?> GetPlanByStripePriceIdAsync(string stripePriceId);

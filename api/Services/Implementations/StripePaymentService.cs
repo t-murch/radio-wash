@@ -12,6 +12,9 @@ public class StripePaymentService : IPaymentService
   private readonly IIdempotencyService _idempotencyService;
   private readonly IWebhookRetryService _webhookRetryService;
   private readonly IWebhookProcessor _webhookProcessor;
+  private readonly SessionService _checkoutSessionService;
+  private readonly Stripe.BillingPortal.SessionService _portalSessionService;
+  private readonly Stripe.SubscriptionService _stripeSubscriptionService;
   private readonly ILogger<StripePaymentService> _logger;
 
   public StripePaymentService(
@@ -20,6 +23,9 @@ public class StripePaymentService : IPaymentService
       IIdempotencyService idempotencyService,
       IWebhookRetryService webhookRetryService,
       IWebhookProcessor webhookProcessor,
+      SessionService checkoutSessionService,
+      Stripe.BillingPortal.SessionService portalSessionService,
+      Stripe.SubscriptionService stripeSubscriptionService,
       ILogger<StripePaymentService> logger)
   {
     _configuration = configuration;
@@ -27,12 +33,15 @@ public class StripePaymentService : IPaymentService
     _idempotencyService = idempotencyService;
     _webhookRetryService = webhookRetryService;
     _webhookProcessor = webhookProcessor;
+    _checkoutSessionService = checkoutSessionService;
+    _portalSessionService = portalSessionService;
+    _stripeSubscriptionService = stripeSubscriptionService;
     _logger = logger;
 
     StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
   }
 
-  public async Task<string> CreateCheckoutSessionAsync(int userId, string planPriceId)
+  public async Task<string> CreateCheckoutSessionAsync(int userId, string planPriceId, string? clientRequestId = null)
   {
     var options = new SessionCreateOptions
     {
@@ -46,7 +55,9 @@ public class StripePaymentService : IPaymentService
                 }
             },
       Mode = "subscription",
-      SuccessUrl = $"{_configuration["FrontendUrl"]}/subscription/success",
+      // {CHECKOUT_SESSION_ID} is substituted by Stripe; the success page uses it to
+      // reconcile the subscription server-side instead of racing the webhook.
+      SuccessUrl = $"{_configuration["FrontendUrl"]}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
       CancelUrl = $"{_configuration["FrontendUrl"]}/subscription/cancel",
       Metadata = new Dictionary<string, string>
             {
@@ -61,8 +72,16 @@ public class StripePaymentService : IPaymentService
       }
     };
 
-    var service = new SessionService();
-    var session = await service.CreateAsync(options);
+    var requestOptions = string.IsNullOrEmpty(clientRequestId)
+      ? null
+      : new RequestOptions { IdempotencyKey = $"checkout-{userId}-{clientRequestId}" };
+
+    var session = await _checkoutSessionService.CreateAsync(options, requestOptions);
+
+    if (string.IsNullOrEmpty(session.Url))
+    {
+      throw new InvalidOperationException($"Stripe checkout session {session.Id} has no redirect URL");
+    }
 
     _logger.LogInformation("Created Stripe checkout session {SessionId} for user {UserId}", session.Id, userId);
 
@@ -77,10 +96,27 @@ public class StripePaymentService : IPaymentService
       ReturnUrl = $"{_configuration["FrontendUrl"]}/dashboard"
     };
 
-    var service = new Stripe.BillingPortal.SessionService();
-    var session = await service.CreateAsync(options);
+    var session = await _portalSessionService.CreateAsync(options);
 
     return session.Url;
+  }
+
+  public async Task CancelAtPeriodEndAsync(string stripeSubscriptionId)
+  {
+    await _stripeSubscriptionService.UpdateAsync(stripeSubscriptionId, new SubscriptionUpdateOptions
+    {
+      CancelAtPeriodEnd = true
+    });
+
+    _logger.LogInformation("Requested cancel-at-period-end for Stripe subscription {SubscriptionId}", stripeSubscriptionId);
+  }
+
+  public async Task<Session> GetCheckoutSessionAsync(string sessionId)
+  {
+    return await _checkoutSessionService.GetAsync(sessionId, new SessionGetOptions
+    {
+      Expand = new List<string> { "subscription" }
+    });
   }
 
   public async Task HandleWebhookAsync(string payload, string signature)

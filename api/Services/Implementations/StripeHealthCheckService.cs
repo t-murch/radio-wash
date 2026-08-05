@@ -6,13 +6,16 @@ namespace RadioWash.Api.Services.Implementations;
 public class StripeHealthCheckService : IStripeHealthCheckService
 {
   private readonly IConfiguration _configuration;
+  private readonly IHostEnvironment _environment;
   private readonly ILogger<StripeHealthCheckService> _logger;
 
   public StripeHealthCheckService(
       IConfiguration configuration,
+      IHostEnvironment environment,
       ILogger<StripeHealthCheckService> logger)
   {
     _configuration = configuration;
+    _environment = environment;
     _logger = logger;
   }
 
@@ -21,6 +24,7 @@ public class StripeHealthCheckService : IStripeHealthCheckService
     try
     {
       var secretKey = _configuration["Stripe:SecretKey"];
+      var publishableKey = _configuration["Stripe:PublishableKey"];
       var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
       if (string.IsNullOrEmpty(secretKey))
@@ -45,6 +49,23 @@ public class StripeHealthCheckService : IStripeHealthCheckService
       {
         _logger.LogError("Stripe:WebhookSecret does not appear to be a valid Stripe webhook secret");
         return Task.FromResult(false);
+      }
+
+      // Test-mode keys in Production mean real users see checkout against a sandbox — fail
+      // startup rather than run in a silently broken mode.
+      if (_environment.IsProduction())
+      {
+        if (secretKey.StartsWith("sk_test_"))
+        {
+          _logger.LogError("Stripe:SecretKey is a test-mode key but the environment is Production");
+          return Task.FromResult(false);
+        }
+
+        if (publishableKey?.StartsWith("pk_test_") == true)
+        {
+          _logger.LogError("Stripe:PublishableKey is a test-mode key but the environment is Production");
+          return Task.FromResult(false);
+        }
       }
 
       _logger.LogInformation("Stripe configuration validation passed");
