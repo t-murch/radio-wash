@@ -159,6 +159,32 @@ describe('SubscriptionClient', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it('shows a friendly message when checkout is rate limited (429)', async () => {
+    setStatus(noSubscriptionStatus);
+    // The rate limiter responds without a Problem Details body, so the
+    // ApiError carries only a raw message.
+    setSubscribeMutation({
+      mutateAsync: vi
+        .fn()
+        .mockRejectedValue(new ApiError(429, 'Too Many Requests')),
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    renderClient();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Subscribe to Sync/i })
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'Too many attempts — please wait a minute and try again'
+      );
+    });
+    consoleErrorSpy.mockRestore();
+  });
+
   it('renders the scheduled-cancellation banner and hides the cancel button', () => {
     setStatus({ ...activeStatus, cancelAtPeriodEnd: true });
 

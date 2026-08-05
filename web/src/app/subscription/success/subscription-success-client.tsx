@@ -15,19 +15,28 @@ import { useQueryClient } from '@tanstack/react-query';
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 const DELAYED_POLL_INTERVAL_MS = 10000;
+// An activation that hasn't confirmed by now isn't going to confirm from this
+// tab — stop polling instead of hitting the API forever from abandoned tabs.
+const MAX_POLL_DURATION_MS = 10 * 60 * 1000;
 
 type ActivationState =
   | 'checking' // no session id — verifying the current status, no payment claims
   | 'activating' // fresh checkout session being reconciled
   | 'active'
   | 'delayed'
-  | 'unverified'; // the checkout session was rejected (403/404)
+  | 'unverified' // the checkout session was rejected (403/404)
+  | 'stalled'; // polling hit the hard cap without confirmation
 
 // 403/404 mean the session doesn't exist or belongs to another user —
 // retrying cannot succeed, and no payment can be claimed.
 const isSessionRejection = (error: unknown) =>
   error instanceof ApiError &&
   (error.status === 403 || error.status === 404);
+
+// A 401 means the session expired — no amount of polling can succeed until
+// the user signs in again.
+const isAuthExpiry = (error: unknown) =>
+  error instanceof ApiError && error.status === 401;
 
 export function SubscriptionSuccessClient({
   initialUser,
@@ -44,8 +53,10 @@ export function SubscriptionSuccessClient({
 
   useEffect(() => {
     let cancelled = false;
+    let stopped = false;
     let pollTimerId: ReturnType<typeof setTimeout> | undefined;
     let deadlineId: ReturnType<typeof setTimeout> | undefined;
+    let hardStopId: ReturnType<typeof setTimeout> | undefined;
     let delayed = false;
     let needsReconcile = false;
     let tick = 0;
@@ -53,6 +64,7 @@ export function SubscriptionSuccessClient({
     const stopTimers = () => {
       if (pollTimerId) clearTimeout(pollTimerId);
       if (deadlineId) clearTimeout(deadlineId);
+      if (hardStopId) clearTimeout(hardStopId);
     };
 
     const activate = () => {
@@ -66,7 +78,7 @@ export function SubscriptionSuccessClient({
     // One status request at a time: each completed request schedules the
     // next via setTimeout, so slow responses never stack.
     const scheduleNextPoll = () => {
-      if (cancelled) return;
+      if (cancelled || stopped) return;
       pollTimerId = setTimeout(
         pollOnce,
         delayed ? DELAYED_POLL_INTERVAL_MS : POLL_INTERVAL_MS
@@ -101,6 +113,11 @@ export function SubscriptionSuccessClient({
           setState('unverified');
           return;
         }
+        if (isAuthExpiry(error)) {
+          stopTimers();
+          router.replace('/auth');
+          return;
+        }
         // Transient failure — keep polling.
         console.error('Subscription status poll failed:', error);
       }
@@ -108,7 +125,8 @@ export function SubscriptionSuccessClient({
     };
 
     // Poll the subscription status until the webhook lands. After the
-    // deadline, switch to the slower "delayed" cadence but keep checking.
+    // deadline, switch to the slower "delayed" cadence but keep checking —
+    // until the hard cap, after which the page stops and says so.
     const startPolling = () => {
       if (cancelled) return;
       deadlineId = setTimeout(() => {
@@ -116,27 +134,50 @@ export function SubscriptionSuccessClient({
         delayed = true;
         setState((current) => (current === 'activating' ? 'delayed' : current));
       }, POLL_TIMEOUT_MS);
+      hardStopId = setTimeout(() => {
+        if (cancelled) return;
+        stopped = true;
+        stopTimers();
+        setState((current) =>
+          current === 'activating' || current === 'delayed'
+            ? 'stalled'
+            : current
+        );
+      }, MAX_POLL_DURATION_MS);
       scheduleNextPoll();
     };
 
     const run = async () => {
       if (!sessionId) {
         // Old bookmark or direct visit — nothing to reconcile and no payment
-        // to claim. Check once: active users see the success view, everyone
-        // else goes to the subscription page.
-        try {
-          const status = await getSubscriptionStatus();
-          if (cancelled) return;
-          if (status?.hasActiveSubscription) {
-            activate();
-          } else {
-            router.replace('/subscription');
+        // to claim. A subscribed user shouldn't be bounced by one transient
+        // failure, so retry the check once before redirecting.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const status = await getSubscriptionStatus();
+            if (cancelled) return;
+            if (status?.hasActiveSubscription) {
+              activate();
+            } else {
+              router.replace('/subscription');
+            }
+            return;
+          } catch (error) {
+            if (cancelled) return;
+            if (isAuthExpiry(error)) {
+              router.replace('/auth');
+              return;
+            }
+            console.error('Subscription status check failed:', error);
+            if (attempt === 0) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, POLL_INTERVAL_MS)
+              );
+              if (cancelled) return;
+            }
           }
-        } catch (error) {
-          if (cancelled) return;
-          console.error('Subscription status check failed:', error);
-          router.replace('/subscription');
         }
+        router.replace('/subscription');
         return;
       }
       try {
@@ -154,6 +195,10 @@ export function SubscriptionSuccessClient({
           // The session was rejected outright — don't claim a payment
           // happened, and don't poll on its behalf.
           setState('unverified');
+          return;
+        }
+        if (isAuthExpiry(error)) {
+          router.replace('/auth');
           return;
         }
         // Transient reconciliation failure (5xx / network). The endpoint is
@@ -244,6 +289,41 @@ export function SubscriptionSuccessClient({
               className="bg-info hover:bg-info-hover text-info-foreground"
             >
               Go to Dashboard
+            </Button>
+          </div>
+        )}
+
+        {state === 'stalled' && (
+          <div className="text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-warning-muted mb-4">
+              <svg
+                className="h-6 w-6 text-warning"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0"
+                />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Activation still pending
+            </h1>
+            <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
+              We&apos;ve stopped checking automatically. Your payment may still
+              be processing — check the subscription page in a few minutes, and
+              contact support if your subscription doesn&apos;t appear.
+            </p>
+            <Button
+              onClick={() => router.push('/subscription')}
+              size="lg"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground"
+            >
+              Go to Subscription
             </Button>
           </div>
         )}

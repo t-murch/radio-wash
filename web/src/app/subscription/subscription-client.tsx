@@ -77,6 +77,10 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
           toast.error(
             'Subscriptions are temporarily unavailable — please try again later'
           );
+        } else if (error.status === 429) {
+          // The rate limiter responds without a Problem Details body, so the
+          // generic detail fallback would show a raw message here.
+          toast.error('Too many attempts — please wait a minute and try again');
         } else {
           toast.error(error.detail ?? 'Subscription failed. Please try again.');
         }

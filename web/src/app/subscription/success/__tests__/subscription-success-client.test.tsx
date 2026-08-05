@@ -243,6 +243,76 @@ describe('SubscriptionSuccessClient with a checkout session', () => {
 
     expect(screen.getByText(/Subscription Successful!/i)).toBeInTheDocument();
   });
+
+  it('redirects to /auth when the initial reconcile hits a 401', async () => {
+    (completeCheckout as Mock).mockRejectedValue(
+      new ApiError(401, 'User not authenticated')
+    );
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('/auth');
+
+    // No poll loop starts on behalf of an expired session.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(getSubscriptionStatus).not.toHaveBeenCalled();
+  });
+
+  it('stops polling and redirects to /auth when the session expires mid-poll', async () => {
+    (completeCheckout as Mock).mockResolvedValue(inactiveStatus);
+    (getSubscriptionStatus as Mock).mockRejectedValue(
+      new ApiError(401, 'User not authenticated')
+    );
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('/auth');
+
+    const pollsAtRedirect = (getSubscriptionStatus as Mock).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect((getSubscriptionStatus as Mock).mock.calls.length).toBe(
+      pollsAtRedirect
+    );
+  });
+
+  it('stops checking at the hard cap and says so', async () => {
+    (completeCheckout as Mock).mockResolvedValue(inactiveStatus);
+    (getSubscriptionStatus as Mock).mockResolvedValue(inactiveStatus);
+
+    vi.useFakeTimers();
+    renderClient('cs_test_123');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1000);
+    });
+
+    // Copy matches behavior: the page says it stopped checking, and it has.
+    expect(screen.getByText(/Activation still pending/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/stopped checking automatically/i)
+    ).toBeInTheDocument();
+    expectNoPaymentClaims();
+
+    const pollsAtCap = (getSubscriptionStatus as Mock).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60000);
+    });
+    expect((getSubscriptionStatus as Mock).mock.calls.length).toBe(pollsAtCap);
+  });
 });
 
 describe('SubscriptionSuccessClient without a checkout session', () => {
@@ -279,7 +349,30 @@ describe('SubscriptionSuccessClient without a checkout session', () => {
     expect(completeCheckout).not.toHaveBeenCalled();
   });
 
-  it('redirects to /subscription when the status check fails', async () => {
+  it('retries a transiently failing status check before giving up', async () => {
+    (getSubscriptionStatus as Mock)
+      .mockRejectedValueOnce(new ApiError(500, 'Internal Server Error'))
+      .mockResolvedValue(activeStatus);
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    vi.useFakeTimers();
+    renderClient(null);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // A subscribed user is not bounced by one transient failure.
+    expect(screen.getByText(/Subscription Successful!/i)).toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(getSubscriptionStatus).toHaveBeenCalledTimes(2);
+    consoleErrorSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('redirects to /subscription when the status check keeps failing', async () => {
     (getSubscriptionStatus as Mock).mockRejectedValue(
       new ApiError(500, 'Internal Server Error')
     );
@@ -287,13 +380,33 @@ describe('SubscriptionSuccessClient without a checkout session', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
 
+    vi.useFakeTimers();
+    renderClient(null);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('/subscription');
+    expect(getSubscriptionStatus).toHaveBeenCalledTimes(2);
+    expectNoPaymentClaims();
+    consoleErrorSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('redirects to /auth when the status check hits a 401', async () => {
+    (getSubscriptionStatus as Mock).mockRejectedValue(
+      new ApiError(401, 'User not authenticated')
+    );
+
     renderClient(null);
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/subscription');
+      expect(mockReplace).toHaveBeenCalledWith('/auth');
     });
+    // 401 is terminal — no retry.
+    expect(getSubscriptionStatus).toHaveBeenCalledTimes(1);
     expectNoPaymentClaims();
-    consoleErrorSpy.mockRestore();
   });
 });
 
