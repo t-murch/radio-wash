@@ -208,24 +208,25 @@ public class SubscriptionControllerTests : IDisposable
   [Fact]
   public async Task CreateCheckoutSession_WithNullPlanId_ShouldUseFirstAvailablePlan()
   {
-    // Arrange
+    // Arrange - ClientRequestId must be a UUID (the frontend sends crypto.randomUUID())
+    var clientRequestId = "1c1b7f6e-9f6c-4f4e-8a58-0c8f4a1d2b3c";
     var plan = CreateSubscriptionPlan(1, "Basic", stripePriceId: "price_default");
     var checkoutUrl = "https://checkout.stripe.com/test";
 
     _mockSubscriptionService.Setup(x => x.GetAvailablePlansAsync())
         .ReturnsAsync(new[] { plan });
-    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, "price_default", "req-1"))
+    _mockPaymentService.Setup(x => x.CreateCheckoutSessionAsync(1, "price_default", clientRequestId))
         .ReturnsAsync(checkoutUrl);
 
     // Act
     var result = await _controller.CreateCheckoutSession(
-        new CreateCheckoutDto { PlanId = null, ClientRequestId = "req-1" });
+        new CreateCheckoutDto { PlanId = null, ClientRequestId = clientRequestId });
 
     // Assert
     var okResult = Assert.IsType<OkObjectResult>(result);
     Assert.NotNull(okResult.Value);
     Assert.Equal(checkoutUrl, GetProperty(okResult.Value!, "checkoutUrl"));
-    _mockPaymentService.Verify(x => x.CreateCheckoutSessionAsync(1, "price_default", "req-1"), Times.Once);
+    _mockPaymentService.Verify(x => x.CreateCheckoutSessionAsync(1, "price_default", clientRequestId), Times.Once);
     _mockSubscriptionService.Verify(x => x.GetPlanByIdAsync(It.IsAny<int>()), Times.Never);
   }
 
@@ -248,6 +249,26 @@ public class SubscriptionControllerTests : IDisposable
     var okResult = Assert.IsType<OkObjectResult>(result);
     Assert.Equal(checkoutUrl, GetProperty(okResult.Value!, "checkoutUrl"));
     _mockSubscriptionService.Verify(x => x.GetAvailablePlansAsync(), Times.Never);
+  }
+
+  [Theory]
+  [InlineData("not-a-uuid")]
+  [InlineData("checkout-1-injected'; DROP TABLE")]
+  public async Task CreateCheckoutSession_WithNonUuidClientRequestId_ShouldReturnBadRequest(string clientRequestId)
+  {
+    // Arrange - ClientRequestId feeds Stripe's idempotency key (255-char cap); arbitrary
+    // client strings must be rejected before any Stripe call.
+    var result = await _controller.CreateCheckoutSession(new CreateCheckoutDto
+    {
+      ClientRequestId = clientRequestId
+    });
+
+    // Assert
+    var objectResult = Assert.IsType<ObjectResult>(result);
+    var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+    Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+    _mockPaymentService.Verify(x => x.CreateCheckoutSessionAsync(
+        It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
   }
 
   [Fact]
@@ -570,7 +591,7 @@ public class SubscriptionControllerTests : IDisposable
     Assert.True((bool)GetProperty(okResult.Value!, "cancelAtPeriodEnd")!);
     Assert.Equal(subscription.CurrentPeriodEnd, GetProperty(okResult.Value!, "activeUntil"));
     _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync(It.IsAny<string>()), Times.Never);
-    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<int>()), Times.Never);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<string>()), Times.Never);
   }
 
   [Fact]
@@ -585,7 +606,7 @@ public class SubscriptionControllerTests : IDisposable
     _mockPaymentService.Setup(x => x.CancelAtPeriodEndAsync("sub_test123"))
         .Callback(() => callOrder.Add("stripe"))
         .Returns(Task.CompletedTask);
-    _mockSubscriptionService.Setup(x => x.MarkCancellationRequestedAsync(1))
+    _mockSubscriptionService.Setup(x => x.MarkCancellationRequestedAsync("sub_test123"))
         .Callback(() => callOrder.Add("local"))
         .ReturnsAsync(subscription);
 
@@ -599,7 +620,7 @@ public class SubscriptionControllerTests : IDisposable
     Assert.Equal(subscription.CurrentPeriodEnd, GetProperty(okResult.Value!, "activeUntil"));
 
     _mockPaymentService.Verify(x => x.CancelAtPeriodEndAsync("sub_test123"), Times.Once);
-    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(1), Times.Once);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync("sub_test123"), Times.Once);
     // Stripe must accept the cancellation before the local flag is persisted
     Assert.Equal(new[] { "stripe", "local" }, callOrder);
   }
@@ -621,7 +642,7 @@ public class SubscriptionControllerTests : IDisposable
     var objectResult = Assert.IsType<ObjectResult>(result);
     var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
     Assert.Equal(StatusCodes.Status500InternalServerError, problem.Status);
-    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<int>()), Times.Never);
+    _mockSubscriptionService.Verify(x => x.MarkCancellationRequestedAsync(It.IsAny<string>()), Times.Never);
   }
 
   #endregion

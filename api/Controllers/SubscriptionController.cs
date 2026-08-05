@@ -115,6 +115,16 @@ public class SubscriptionController : AuthenticatedControllerBase
         type: "https://radiowash.app/problems/already-subscribed");
     }
 
+    // ClientRequestId feeds Stripe's idempotency key (capped at 255 chars), so arbitrary
+    // client strings must not pass through — the frontend always sends crypto.randomUUID().
+    if (dto.ClientRequestId != null && !Guid.TryParse(dto.ClientRequestId, out _))
+    {
+      return Problem(
+        title: "Invalid request id",
+        detail: "clientRequestId must be a UUID.",
+        statusCode: StatusCodes.Status400BadRequest);
+    }
+
     // The Stripe price is resolved server-side from the local plan — client-supplied price
     // ids are never forwarded to Stripe.
     var plan = dto.PlanId.HasValue
@@ -149,7 +159,7 @@ public class SubscriptionController : AuthenticatedControllerBase
   // the session (and subscription) from Stripe and syncs it locally, so activation doesn't
   // depend on the webhook having already arrived. Idempotent.
   [HttpPost("checkout/complete")]
-  [EnableRateLimiting("checkout")]
+  [EnableRateLimiting("checkout-complete")]
   public async Task<ActionResult> CompleteCheckout([FromBody] CompleteCheckoutDto dto)
   {
     var userId = GetCurrentUserId();
@@ -276,9 +286,11 @@ public class SubscriptionController : AuthenticatedControllerBase
     try
     {
       // Stripe first: if this fails the user stays subscribed on both sides. The local
-      // flag follows only after Stripe accepted the cancellation.
+      // flag follows only after Stripe accepted the cancellation, and is keyed on the same
+      // Stripe subscription the cancel targeted — not re-resolved per user, which could
+      // pick a different row in the (alerted) duplicate-subscription state.
       await _paymentService.CancelAtPeriodEndAsync(subscription.StripeSubscriptionId);
-      await _subscriptionService.MarkCancellationRequestedAsync(userId);
+      await _subscriptionService.MarkCancellationRequestedAsync(subscription.StripeSubscriptionId);
 
       return Ok(new
       {

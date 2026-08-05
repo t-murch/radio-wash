@@ -272,17 +272,20 @@ public class SubscriptionService : ISubscriptionService
     return await _unitOfWork.UserSubscriptions.UpdateAsync(subscription);
   }
 
-  public async Task<UserSubscription> MarkCancellationRequestedAsync(int userId)
+  public async Task<UserSubscription> MarkCancellationRequestedAsync(string stripeSubscriptionId)
   {
-    var subscription = await _unitOfWork.UserSubscriptions.GetByUserIdAsync(userId);
+    // Keyed on the Stripe subscription id so the flag lands on the exact row whose Stripe
+    // counterpart was canceled — resolving by user could pick a different (newer) row when
+    // a user has duplicate subscriptions.
+    var subscription = await _unitOfWork.UserSubscriptions.GetByStripeSubscriptionIdAsync(stripeSubscriptionId);
     if (subscription == null)
     {
-      throw new InvalidOperationException($"No subscription found for user {userId}");
+      throw new InvalidOperationException($"No subscription found with Stripe id {stripeSubscriptionId}");
     }
 
     _logger.LogInformation(
-      "Marking subscription {SubscriptionId} for user {UserId} as cancel-at-period-end (active until {PeriodEnd})",
-      subscription.Id, userId, subscription.CurrentPeriodEnd);
+      "Marking subscription {SubscriptionId} (Stripe {StripeSubscriptionId}) as cancel-at-period-end (active until {PeriodEnd})",
+      subscription.Id, stripeSubscriptionId, subscription.CurrentPeriodEnd);
 
     // Deliberately no status change and no sync-config disabling: the user paid for the
     // rest of the period. customer.subscription.deleted performs the real deactivation.
