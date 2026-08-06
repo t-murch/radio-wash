@@ -107,16 +107,21 @@ questions that only arise once someone is drawing specific components.
 
 ---
 
-## Decide these before they stall you
+## Two decisions that add screens
 
-**Magic link or password** for email sign-in (brief §13). This changes which
-screens exist at all — magic link needs check-your-inbox and expired-link;
-password needs entry, reset, and confirmation. It will surface the moment auth
-is drawn.
+Both are settled, and both expand the scope beyond what the screenshots show.
 
-**Share feature: revive or delete.** Three components, roughly 800 lines, JSX
-commented out, `ShareSuccessModal` returning an empty `<div>`. Deciding now
-avoids designing around something that may not exist.
+**Email sign-in is a magic link** (brief §13). Four screens that exist nowhere
+today: enter-email, check-your-inbox, expired-link, and the
+opened-on-another-device case. That last one is the one usually forgotten and
+the one users hit most. It also means a magic-link user arrives at onboarding
+already mid-sequence, having crossed a device boundary — worth raising when
+onboarding is drawn (step 2 above), not later.
+
+**Sharing is revived, but rebuilt** (brief §14). It shares a *generated card*,
+not a link — Apple library playlists have no public URL, so the old URL-sharing
+components cannot be restored. Treat this as a new feature rather than a
+restoration. It belongs to the job-completion moment, so it comes up in step 4.
 
 ---
 

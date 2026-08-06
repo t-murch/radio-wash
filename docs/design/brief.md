@@ -43,6 +43,8 @@ and rarely fits the platform you actually add.
 | Spotify users     | **Clean removal.** There are **zero production users**, so there is no migration and no legacy data to accommodate. |
 | Paid tier         | **Stays.** Auto-Sync becomes a first-class Apple Music feature, visible-but-locked for free users.                   |
 | Onboarding        | **A guided route**, not a dashboard card. See §6.                                                                   |
+| Email sign-in     | **Magic link**, not a password. See §13.                                                                            |
+| Sharing           | **Revived** as a growth surface — but it must be rebuilt, not restored. See §14.                                    |
 | Visual identity   | **Warm editorial** — warm off-white ground, serif display, deep teal accent. Palette in §12.                        |
 
 **No existing users.** This is worth stating plainly because it removes a whole
@@ -231,9 +233,10 @@ The redesign is also a consolidation job. Current state:
   introduces one.
 - The landing page has **its own nav and footer**, entirely separate from the
   app's `GlobalHeader`. Two disconnected chromes.
-- **The share feature is dead code**: three components (~800 lines) with their
-  JSX commented out; `ShareSuccessModal` returns an empty `<div>`. Decide
-  revive-or-delete rather than designing around it.
+- **The share components are dead code**: three of them (~800 lines) with their
+  JSX commented out; `ShareSuccessModal` returns an empty `<div>`. Sharing is
+  being revived as a feature (§14), but these are not the starting point — they
+  share a URL, which does not exist for Apple library playlists.
 
 ## 10. Content guidance
 
@@ -409,13 +412,87 @@ looking like a bug and starts looking like what it is. Design the onboarding
 sequence so the Apple Music step reads as expected regardless of how the user
 signed in.
 
-**Email sign-in brings its own screens** that do not exist anywhere today:
-enter-email, check-your-inbox (or password entry), and the error/expired-link
-states. Whether this is a magic link or a password flow is an open
-implementation choice — worth deciding before designing, since the screens
-differ.
+**Email sign-in is a magic link, not a password.** No password field, no reset
+flow, no strength meter, no confirmation step. The screens it does need, none of
+which exist today:
+
+1. **Enter email** — a single field and one button.
+2. **Check your inbox** — the screen the user sits on while they switch to their
+   mail app. It must name the address the link went to (so a typo is visible),
+   offer a resend with a sensible cooldown, and let them correct the address
+   without starting over.
+3. **Link expired or already used** — a recoverable state, not an error page.
+   One button: send a new link.
+4. **Opened on a different device.** The common real-world case: request the
+   link on a laptop, tap it on a phone. Design what the laptop shows, and decide
+   whether the phone continues the session or tells them to return.
+
+Moment 4 is the one usually forgotten, and it is the one users hit most.
+
+> **Note the interaction with §6.** A magic-link user arrives already
+> mid-sequence: they have crossed a device boundary and an inbox detour before
+> reaching the Apple Music authorization step. The onboarding route must pick
+> them up gracefully rather than assuming an unbroken flow from the auth screen.
 
 **Apple sign-in returns limited identity.** Apple's `name email` scope may yield
 a relay email address and, if the user hides their name, no display name. The
 account/profile surface must not assume a real name is available.
+
+---
+
+## 14. Sharing — revived, but rebuilt
+
+**Decision: sharing stays and is treated as a growth surface.** A user who has
+just cleaned a playlist is at the moment of highest goodwill in the product,
+and that is the natural point to let them tell someone about it.
+
+Three components already exist for this (`SharePlaylistButton`, `ShareCard`,
+`ShareSuccessModal` — roughly 800 lines) with their JSX commented out. **Do not
+restore them.** They were written for Spotify and their central assumption does
+not survive the move to Apple Music.
+
+### Why the old approach cannot work
+
+The old code shares a **URL**: `playlistUrl`, falling back to
+`window.location.href`. On Apple Music both are dead ends.
+
+- Apple **library** playlists (`p.xxxxx`) have **no public URL** — see
+  `constraints.md`. There is nothing to link to.
+- The fallback, `window.location.href`, is a private `/jobs/123` route behind
+  authentication. A recipient gets a login wall.
+
+So a revived URL-share would post either a broken link or a sign-in page. That
+is worse than no share button.
+
+### What to design instead
+
+**Share an artifact, not a link.** The shareable thing is the *result* — "I
+cleaned a 187-track playlist and 61 of 64 tracks found clean versions" — as an
+image or card that stands on its own without a destination.
+
+This suits the constraint rather than fighting it. A generated card can carry
+real substance: playlist name, track count, how many were swapped, and a small
+sample of before → after pairs. That is more interesting than a link anyway, and
+it works identically on every future platform.
+
+**Design decisions needed:**
+
+- **What the card contains.** It must read on its own in a feed. Consider the
+  before/after framing — that is the product's whole story in one image.
+- **Where the invitation appears.** Job completion is the moment. Once, at the
+  end, not a persistent button on every screen.
+- **How it degrades.** `navigator.share` exists on mobile and mostly not on
+  desktop. Design both: native share sheet where available, download-or-copy
+  where not.
+- **Whether RadioWash is named on the card.** It is a growth surface, so
+  presumably yes — but it should read as a mark, not a watermark.
+
+**Privacy:** the card exposes a user's playlist name and listening. It is
+user-initiated, so that is their call — but nothing should be shareable by
+default, and no share artifact should be generated until asked for.
+
+> **Do not design a "share to Twitter/Facebook" row.** The old components had
+> one. Named-network buttons date quickly, and the platforms change terms. A
+> single share action that hands off to the OS (or copies the image) ages far
+> better.
 
