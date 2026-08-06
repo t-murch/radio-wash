@@ -4,7 +4,8 @@ Seed material for redesigning RadioWash as a single-provider **Apple Music** app
 
 | File | What it is |
 |---|---|
-| `brief.md` | The brief. Start here. |
+| `handoff.md` | How to hand this over, and in what order. **Read first.** |
+| `brief.md` | The brief. |
 | `screen-inventory.md` | Every screen, every state, with the screenshot filenames. |
 | `constraints.md` | What Apple Music can and cannot do, and what each limit forces in the UI. |
 | `tokens-baseline.md` | Current design tokens, and which are Spotify-derived. |
