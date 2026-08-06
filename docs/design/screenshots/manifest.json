@@ -1,0 +1,615 @@
+{
+  "capturedAtFixtureTime": "2026-08-04T12:00:00.000Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "shots": [
+    {
+      "file": "landing__light__desktop.png",
+      "id": "landing",
+      "route": "/",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "auth__light__desktop.png",
+      "id": "auth",
+      "route": "/auth",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "auth-error__light__desktop.png",
+      "id": "auth-error",
+      "route": "/auth?error=Could+not+authenticate+with+Spotify.+Please+try+again.",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-empty__light__desktop.png",
+      "id": "dashboard-empty",
+      "route": "/dashboard",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-spotify-only__light__desktop.png",
+      "id": "dashboard-spotify-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-spotify-only",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-both-connected__light__desktop.png",
+      "id": "dashboard-both-connected",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-apple-reconnect__light__desktop.png",
+      "id": "dashboard-apple-reconnect",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-reconnect",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-apple-only__light__desktop.png",
+      "id": "dashboard-apple-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-only",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-user-menu__light__desktop.png",
+      "id": "dashboard-user-menu",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-completed__light__desktop.png",
+      "id": "job-completed",
+      "route": "/jobs/101",
+      "scenario": "job-completed",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-processing__light__desktop.png",
+      "id": "job-processing",
+      "route": "/jobs/102",
+      "scenario": "job-processing",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-failed__light__desktop.png",
+      "id": "job-failed",
+      "route": "/jobs/103",
+      "scenario": "job-failed",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-pending__light__desktop.png",
+      "id": "job-pending",
+      "route": "/jobs/104",
+      "scenario": "job-pending",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "sync-free__light__desktop.png",
+      "id": "sync-free",
+      "route": "/dashboard/sync",
+      "scenario": "sync-free",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "sync-pro__light__desktop.png",
+      "id": "sync-pro",
+      "route": "/dashboard/sync",
+      "scenario": "sync-pro",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-free__light__desktop.png",
+      "id": "subscription-free",
+      "route": "/subscription",
+      "scenario": "subscription-free",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-active__light__desktop.png",
+      "id": "subscription-active",
+      "route": "/subscription",
+      "scenario": "subscription-active",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-canceling__light__desktop.png",
+      "id": "subscription-canceling",
+      "route": "/subscription",
+      "scenario": "subscription-canceling",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-cancel__light__desktop.png",
+      "id": "subscription-cancel",
+      "route": "/subscription/cancel",
+      "scenario": "subscription-free",
+      "theme": "light",
+      "viewport": "desktop"
+    },
+    {
+      "file": "landing__dark__desktop.png",
+      "id": "landing",
+      "route": "/",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "auth__dark__desktop.png",
+      "id": "auth",
+      "route": "/auth",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "auth-error__dark__desktop.png",
+      "id": "auth-error",
+      "route": "/auth?error=Could+not+authenticate+with+Spotify.+Please+try+again.",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-empty__dark__desktop.png",
+      "id": "dashboard-empty",
+      "route": "/dashboard",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-spotify-only__dark__desktop.png",
+      "id": "dashboard-spotify-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-spotify-only",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-both-connected__dark__desktop.png",
+      "id": "dashboard-both-connected",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-apple-reconnect__dark__desktop.png",
+      "id": "dashboard-apple-reconnect",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-reconnect",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-apple-only__dark__desktop.png",
+      "id": "dashboard-apple-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-only",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "dashboard-user-menu__dark__desktop.png",
+      "id": "dashboard-user-menu",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-completed__dark__desktop.png",
+      "id": "job-completed",
+      "route": "/jobs/101",
+      "scenario": "job-completed",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-processing__dark__desktop.png",
+      "id": "job-processing",
+      "route": "/jobs/102",
+      "scenario": "job-processing",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-failed__dark__desktop.png",
+      "id": "job-failed",
+      "route": "/jobs/103",
+      "scenario": "job-failed",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "job-pending__dark__desktop.png",
+      "id": "job-pending",
+      "route": "/jobs/104",
+      "scenario": "job-pending",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "sync-free__dark__desktop.png",
+      "id": "sync-free",
+      "route": "/dashboard/sync",
+      "scenario": "sync-free",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "sync-pro__dark__desktop.png",
+      "id": "sync-pro",
+      "route": "/dashboard/sync",
+      "scenario": "sync-pro",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-free__dark__desktop.png",
+      "id": "subscription-free",
+      "route": "/subscription",
+      "scenario": "subscription-free",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-active__dark__desktop.png",
+      "id": "subscription-active",
+      "route": "/subscription",
+      "scenario": "subscription-active",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-canceling__dark__desktop.png",
+      "id": "subscription-canceling",
+      "route": "/subscription",
+      "scenario": "subscription-canceling",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "subscription-cancel__dark__desktop.png",
+      "id": "subscription-cancel",
+      "route": "/subscription/cancel",
+      "scenario": "subscription-free",
+      "theme": "dark",
+      "viewport": "desktop"
+    },
+    {
+      "file": "landing__light__mobile.png",
+      "id": "landing",
+      "route": "/",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "auth__light__mobile.png",
+      "id": "auth",
+      "route": "/auth",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "auth-error__light__mobile.png",
+      "id": "auth-error",
+      "route": "/auth?error=Could+not+authenticate+with+Spotify.+Please+try+again.",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-empty__light__mobile.png",
+      "id": "dashboard-empty",
+      "route": "/dashboard",
+      "scenario": "dashboard-empty",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-spotify-only__light__mobile.png",
+      "id": "dashboard-spotify-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-spotify-only",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-both-connected__light__mobile.png",
+      "id": "dashboard-both-connected",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-apple-reconnect__light__mobile.png",
+      "id": "dashboard-apple-reconnect",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-reconnect",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-apple-only__light__mobile.png",
+      "id": "dashboard-apple-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-only",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-user-menu__light__mobile.png",
+      "id": "dashboard-user-menu",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-completed__light__mobile.png",
+      "id": "job-completed",
+      "route": "/jobs/101",
+      "scenario": "job-completed",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-processing__light__mobile.png",
+      "id": "job-processing",
+      "route": "/jobs/102",
+      "scenario": "job-processing",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-failed__light__mobile.png",
+      "id": "job-failed",
+      "route": "/jobs/103",
+      "scenario": "job-failed",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-pending__light__mobile.png",
+      "id": "job-pending",
+      "route": "/jobs/104",
+      "scenario": "job-pending",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "sync-free__light__mobile.png",
+      "id": "sync-free",
+      "route": "/dashboard/sync",
+      "scenario": "sync-free",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "sync-pro__light__mobile.png",
+      "id": "sync-pro",
+      "route": "/dashboard/sync",
+      "scenario": "sync-pro",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-free__light__mobile.png",
+      "id": "subscription-free",
+      "route": "/subscription",
+      "scenario": "subscription-free",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-active__light__mobile.png",
+      "id": "subscription-active",
+      "route": "/subscription",
+      "scenario": "subscription-active",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-canceling__light__mobile.png",
+      "id": "subscription-canceling",
+      "route": "/subscription",
+      "scenario": "subscription-canceling",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-cancel__light__mobile.png",
+      "id": "subscription-cancel",
+      "route": "/subscription/cancel",
+      "scenario": "subscription-free",
+      "theme": "light",
+      "viewport": "mobile"
+    },
+    {
+      "file": "landing__dark__mobile.png",
+      "id": "landing",
+      "route": "/",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "auth__dark__mobile.png",
+      "id": "auth",
+      "route": "/auth",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "auth-error__dark__mobile.png",
+      "id": "auth-error",
+      "route": "/auth?error=Could+not+authenticate+with+Spotify.+Please+try+again.",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-empty__dark__mobile.png",
+      "id": "dashboard-empty",
+      "route": "/dashboard",
+      "scenario": "dashboard-empty",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-spotify-only__dark__mobile.png",
+      "id": "dashboard-spotify-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-spotify-only",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-both-connected__dark__mobile.png",
+      "id": "dashboard-both-connected",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-apple-reconnect__dark__mobile.png",
+      "id": "dashboard-apple-reconnect",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-reconnect",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-apple-only__dark__mobile.png",
+      "id": "dashboard-apple-only",
+      "route": "/dashboard",
+      "scenario": "dashboard-apple-only",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "dashboard-user-menu__dark__mobile.png",
+      "id": "dashboard-user-menu",
+      "route": "/dashboard",
+      "scenario": "dashboard-both-connected",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-completed__dark__mobile.png",
+      "id": "job-completed",
+      "route": "/jobs/101",
+      "scenario": "job-completed",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-processing__dark__mobile.png",
+      "id": "job-processing",
+      "route": "/jobs/102",
+      "scenario": "job-processing",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-failed__dark__mobile.png",
+      "id": "job-failed",
+      "route": "/jobs/103",
+      "scenario": "job-failed",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "job-pending__dark__mobile.png",
+      "id": "job-pending",
+      "route": "/jobs/104",
+      "scenario": "job-pending",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "sync-free__dark__mobile.png",
+      "id": "sync-free",
+      "route": "/dashboard/sync",
+      "scenario": "sync-free",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "sync-pro__dark__mobile.png",
+      "id": "sync-pro",
+      "route": "/dashboard/sync",
+      "scenario": "sync-pro",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-free__dark__mobile.png",
+      "id": "subscription-free",
+      "route": "/subscription",
+      "scenario": "subscription-free",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-active__dark__mobile.png",
+      "id": "subscription-active",
+      "route": "/subscription",
+      "scenario": "subscription-active",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-canceling__dark__mobile.png",
+      "id": "subscription-canceling",
+      "route": "/subscription",
+      "scenario": "subscription-canceling",
+      "theme": "dark",
+      "viewport": "mobile"
+    },
+    {
+      "file": "subscription-cancel__dark__mobile.png",
+      "id": "subscription-cancel",
+      "route": "/subscription/cancel",
+      "scenario": "subscription-free",
+      "theme": "dark",
+      "viewport": "mobile"
+    }
+  ],
+  "failures": []
+}

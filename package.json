@@ -9,7 +9,10 @@
     "test": "cd web && vitest",
     "test:watch": "cd web && vitest --watch",
     "test:ui": "cd web && vitest --ui",
-    "test:e2e": "nx run web-e2e:e2e"
+    "test:e2e": "nx run web-e2e:e2e",
+    "design:mock": "node tools/design-capture/mock-server.mjs",
+    "design:web": "NEXT_PUBLIC_SERVICE_AVAILABLE=true NEXT_PUBLIC_API_URL=http://127.0.0.1:5199 API_BASE_URL=http://127.0.0.1:5199 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:5199 NEXT_PUBLIC_SUPABASE_ANON_KEY=design-capture-anon-key NEXT_PUBLIC_WEB_URL=http://127.0.0.1:3000 NEXT_PUBLIC_SENTRY_DSN= nx run web:dev -H 127.0.0.1 -p 3000",
+    "design:capture": "node tools/design-capture/capture.mjs"
   },
   "private": true,
   "dependencies": {
