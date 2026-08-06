@@ -163,10 +163,10 @@ Gaps the redesign should address:
 - **No settings or account page.** Only the dropdown.
 - **No legal pages** — no privacy, no terms. `sitemap.ts` lists only `/`.
 - **No modal primitive anywhere** — `components/ui/` has no `dialog.tsx`.
-- **Share is dead code** — `ShareSuccessModal`, `SharePlaylistButton`, and
-  `ShareCard` total ~800 lines with their JSX commented out. Sharing is being
-  revived (brief §14), but rebuilt around a generated card rather than a URL:
-  Apple library playlists have no public link to share.
+- **Share is dead code and is being deleted** — `ShareSuccessModal`,
+  `SharePlaylistButton`, and `ShareCard` total ~800 lines with their JSX
+  commented out. Sharing is dropped: Apple library playlists have no public URL,
+  so there is nothing to link to (brief §9).
 - **Email sign-in screens** — enter-email, check-inbox, expired-link, and the
   opened-on-another-device case. None exist; magic link is the chosen flow
   (brief §13).

@@ -44,7 +44,7 @@ and rarely fits the platform you actually add.
 | Paid tier         | **Stays.** Auto-Sync becomes a first-class Apple Music feature, visible-but-locked for free users.                   |
 | Onboarding        | **A guided route**, not a dashboard card. See §6.                                                                   |
 | Email sign-in     | **Magic link**, not a password. See §13.                                                                            |
-| Sharing           | **Revived** as a growth surface — but it must be rebuilt, not restored. See §14.                                    |
+| Sharing           | **Dropped.** Apple library playlists have no public URL, so there is nothing to share. See §9.                      |
 | Visual identity   | **Warm editorial** — warm off-white ground, serif display, deep teal accent. Palette in §12.                        |
 
 **No existing users.** This is worth stating plainly because it removes a whole
@@ -233,10 +233,17 @@ The redesign is also a consolidation job. Current state:
   introduces one.
 - The landing page has **its own nav and footer**, entirely separate from the
   app's `GlobalHeader`. Two disconnected chromes.
-- **The share components are dead code**: three of them (~800 lines) with their
-  JSX commented out; `ShareSuccessModal` returns an empty `<div>`. Sharing is
-  being revived as a feature (§14), but these are not the starting point — they
-  share a URL, which does not exist for Apple library playlists.
+- **The share components are dead code and should be deleted**: three of them
+  (~800 lines) with their JSX commented out; `ShareSuccessModal` returns an
+  empty `<div>`.
+
+  Sharing was considered as a growth surface and **dropped**. The components
+  share `playlistUrl`, falling back to `window.location.href` — and on Apple
+  Music both are dead ends. Library playlists (`p.xxxxx`) have no public URL,
+  and the fallback is a private `/jobs` route behind authentication, so a
+  recipient gets a broken link or a login wall.
+
+  Do not design a share affordance anywhere in the redesign.
 
 ## 10. Content guidance
 
@@ -264,6 +271,8 @@ and Apple library artwork is not reliably available.
   avoid.
 - **Do not let the teal decorate.** It belongs on the primary action and on
   progress. Not links, chips, headers, or icons.
+- **Do not design a share affordance.** Sharing is dropped — Apple library
+  playlists have no public URL, so there is nothing to link to. See §9.
 
 ## 12. Visual identity — decided: warm editorial
 
@@ -437,62 +446,3 @@ Moment 4 is the one usually forgotten, and it is the one users hit most.
 **Apple sign-in returns limited identity.** Apple's `name email` scope may yield
 a relay email address and, if the user hides their name, no display name. The
 account/profile surface must not assume a real name is available.
-
----
-
-## 14. Sharing — revived, but rebuilt
-
-**Decision: sharing stays and is treated as a growth surface.** A user who has
-just cleaned a playlist is at the moment of highest goodwill in the product,
-and that is the natural point to let them tell someone about it.
-
-Three components already exist for this (`SharePlaylistButton`, `ShareCard`,
-`ShareSuccessModal` — roughly 800 lines) with their JSX commented out. **Do not
-restore them.** They were written for Spotify and their central assumption does
-not survive the move to Apple Music.
-
-### Why the old approach cannot work
-
-The old code shares a **URL**: `playlistUrl`, falling back to
-`window.location.href`. On Apple Music both are dead ends.
-
-- Apple **library** playlists (`p.xxxxx`) have **no public URL** — see
-  `constraints.md`. There is nothing to link to.
-- The fallback, `window.location.href`, is a private `/jobs/123` route behind
-  authentication. A recipient gets a login wall.
-
-So a revived URL-share would post either a broken link or a sign-in page. That
-is worse than no share button.
-
-### What to design instead
-
-**Share an artifact, not a link.** The shareable thing is the *result* — "I
-cleaned a 187-track playlist and 61 of 64 tracks found clean versions" — as an
-image or card that stands on its own without a destination.
-
-This suits the constraint rather than fighting it. A generated card can carry
-real substance: playlist name, track count, how many were swapped, and a small
-sample of before → after pairs. That is more interesting than a link anyway, and
-it works identically on every future platform.
-
-**Design decisions needed:**
-
-- **What the card contains.** It must read on its own in a feed. Consider the
-  before/after framing — that is the product's whole story in one image.
-- **Where the invitation appears.** Job completion is the moment. Once, at the
-  end, not a persistent button on every screen.
-- **How it degrades.** `navigator.share` exists on mobile and mostly not on
-  desktop. Design both: native share sheet where available, download-or-copy
-  where not.
-- **Whether RadioWash is named on the card.** It is a growth surface, so
-  presumably yes — but it should read as a mark, not a watermark.
-
-**Privacy:** the card exposes a user's playlist name and listening. It is
-user-initiated, so that is their call — but nothing should be shareable by
-default, and no share artifact should be generated until asked for.
-
-> **Do not design a "share to Twitter/Facebook" row.** The old components had
-> one. Named-network buttons date quickly, and the platforms change terms. A
-> single share action that hands off to the OS (or copies the image) ages far
-> better.
-

@@ -107,9 +107,9 @@ questions that only arise once someone is drawing specific components.
 
 ---
 
-## Two decisions that add screens
+## Two decisions the screenshots don't show
 
-Both are settled, and both expand the scope beyond what the screenshots show.
+Both are settled. One adds screens; the other removes a feature.
 
 **Email sign-in is a magic link** (brief §13). Four screens that exist nowhere
 today: enter-email, check-your-inbox, expired-link, and the
@@ -118,10 +118,10 @@ the one users hit most. It also means a magic-link user arrives at onboarding
 already mid-sequence, having crossed a device boundary — worth raising when
 onboarding is drawn (step 2 above), not later.
 
-**Sharing is revived, but rebuilt** (brief §14). It shares a *generated card*,
-not a link — Apple library playlists have no public URL, so the old URL-sharing
-components cannot be restored. Treat this as a new feature rather than a
-restoration. It belongs to the job-completion moment, so it comes up in step 4.
+**Sharing is dropped** (brief §9, §11). It was considered as a growth surface
+and rejected: Apple library playlists have no public URL, so there is nothing to
+link to. The ~800 lines of dead share components are being deleted rather than
+revived. Do not design a share affordance anywhere.
 
 ---
 
