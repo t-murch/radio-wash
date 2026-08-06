@@ -32,10 +32,14 @@ There *is* a separate `--brand` token — purple (`#7c3aed` light / `#9333ea`
 dark) — but it is used sparingly: tabs, the sync promo, the Free badge. Product
 identity currently reads green, not purple.
 
-> **For the redesign:** RadioWash needs its own color identity. Do **not**
-> substitute Apple Music's pink/red — that repeats the original mistake of
-> deriving identity from a music service's brand. The `--brand` purple is an
-> existing candidate to build on, but the decision is open.
+> **Decided (brief §12): warm editorial.** These Spotify-derived values are all
+> replaced — warm off-white ground (`#FBF8F2`), warm near-black dark canvas
+> (`#17140F`), deep teal accent (`#0F5F5C` light / `#5FB3AB` dark). Full palette
+> in the brief. The existing `--brand` purple is **not** carried forward.
+>
+> Note the dark canvas moves from Spotify's cool `#121212` to a warm near-black.
+> Keeping warmth in the dark neutrals is what makes this direction hold together
+> in dark mode — sliding them to cool grey collapses it back into generic.
 
 ---
 
@@ -119,4 +123,8 @@ propagate reliably.
 No custom type scale is defined — the app uses Tailwind defaults throughout.
 No documented spacing rhythm; padding and gaps are chosen per component.
 
-> Both are open. There is no existing system to preserve.
+> Both still need building — there is no existing system to preserve. But the
+> chosen direction constrains them (brief §12): it needs a **display serif**
+> paired with a body sans, and it needs **tight corner radii** (`3px`, down from
+> the current `0.5rem`). Soft rounded cards on a warm ground is the generic look
+> this direction exists to avoid.

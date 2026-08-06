@@ -43,7 +43,7 @@ and rarely fits the platform you actually add.
 | Spotify users     | **Clean removal.** There are **zero production users**, so there is no migration and no legacy data to accommodate. |
 | Paid tier         | **Stays.** Auto-Sync becomes a first-class Apple Music feature, visible-but-locked for free users.                   |
 | Onboarding        | **A guided route**, not a dashboard card. See §6.                                                                   |
-| Visual identity   | Open. Three directions proposed in §12 — pick one before detailed screen work.                                      |
+| Visual identity   | **Warm editorial** — warm off-white ground, serif display, deep teal accent. Palette in §12.                        |
 
 **No existing users.** This is worth stating plainly because it removes a whole
 class of constraint: there is no migration, no grandfathering, no legacy job
@@ -256,11 +256,98 @@ and Apple library artwork is not reliably available.
 - **Do not design "coming soon," beta, or waitlist states for any feature.**
   The redesign ships only once Apple Music parity is complete, so every feature
   drawn is a feature that works. Nothing is placeheld.
+- **Do not soften the corners.** The chosen direction (§12) uses a 3px radius.
+  Warm ground plus rounded cards is the generic template look it exists to
+  avoid.
+- **Do not let the teal decorate.** It belongs on the primary action and on
+  progress. Not links, chips, headers, or icons.
 
-## 12. Visual identity — the one open decision
+## 12. Visual identity — decided: warm editorial
 
-Everything else in this brief is settled. This is not, and it should be decided
-before detailed screen work, because it propagates everywhere.
+**Direction C is chosen.** RadioWash gets a warm off-white ground, a serif
+display face, and a deep teal accent drawn from print rather than from software.
+
+This is the most differentiated of the three directions considered and the most
+demanding to execute. It was chosen over the safer near-monochrome option
+because RadioWash should feel like something rather than disappear into its
+function — nothing else in music software looks like this.
+
+### The palette
+
+Starting values, not a finished system. Contrast must be audited per pairing
+before these are locked.
+
+**Light**
+
+| Token | Value | Role |
+| ----- | ----- | ---- |
+| `--background` | `#FBF8F2` | Warm off-white canvas |
+| `--surface` / `--card` | `#F3EEE3` | Raised surfaces |
+| `--foreground` | `#221E17` | Deep warm neutral text |
+| `--muted-foreground` | `#6F6759` | Secondary text |
+| `--border` | `#E0D7C6` | Rules and dividers |
+| `--primary` | `#0F5F5C` | Deep teal — primary action, progress |
+| `--primary-foreground` | `#FBF8F2` | Text on teal |
+| `--primary-muted` | `#DCEAE7` | Tinted backgrounds |
+
+**Dark** — the hardest part of this direction. Warm palettes resist dark mode;
+these values keep the warmth in the neutrals rather than sliding to cool grey.
+
+| Token | Value | Role |
+| ----- | ----- | ---- |
+| `--background` | `#17140F` | Warm near-black |
+| `--surface` / `--card` | `#201C15` | Raised surfaces |
+| `--foreground` | `#F0E9DC` | Warm off-white text |
+| `--muted-foreground` | `#A89B85` | Secondary text |
+| `--border` | `#322B21` | Rules and dividers |
+| `--primary` | `#5FB3AB` | Lifted teal — the deep teal fails on dark |
+| `--primary-foreground` | `#10201E` | Text on teal |
+| `--primary-muted` | `#1D2E2C` | Tinted backgrounds |
+
+**Semantic families** shift warm to sit on this ground rather than keeping their
+current cool values:
+
+| Family | Light | Dark |
+| ------ | ----- | ---- |
+| `success` | `#3F6B34` | `#86B677` |
+| `warning` | `#9A6A11` | `#D6A24E` |
+| `error` | `#93341F` | `#D98368` |
+
+### Executing this direction
+
+Three things carry it. If any is done carelessly the direction fails and reads
+as an unfinished cream template.
+
+**The serif is doing the work.** The display face is the single largest carrier
+of personality here, and it is not yet chosen — the exploration used a system
+fallback stack. Pick a real face with intent: it should have warmth and some
+editorial character without tipping into decorative. Use it for headings,
+playlist names, and figures. Body and UI text stay in a clean sans; a
+wall of serif would read as a magazine, not a tool.
+
+**Corners stay tight.** `--radius: 3px`, not the current `0.5rem`. Soft rounded
+cards on a cream ground is precisely the generic look this direction has to
+avoid. Sharp corners plus warm color reads considered; round corners plus warm
+color reads like a template.
+
+**The teal is rationed.** It appears on the primary action and on progress.
+Not on links, not on chips, not on section headers, not on icons. The moment
+it decorates, the restraint collapses and the palette turns muddy against the
+warm ground.
+
+### Directions not taken
+
+Recorded so the decision is not relitigated.
+
+**A. Extend the existing purple** (`#7c3aed`). Cheapest — the token already
+exists — but violet-on-dark is the house style of developer tooling and would
+not distinguish the product.
+
+**B. Ink and a single accent** (near-monochrome, one blue). The safe and
+arguably most correct choice: restraint suits a tool people use briefly and
+trust with their library. Rejected as forgettable by design. Its core
+discipline — one accent, rationed strictly — is carried into C above and is
+worth preserving.
 
 ### The constraint
 
@@ -277,60 +364,22 @@ Two rules for whatever replaces it:
   able to join without the palette becoming a lie. This argues for an identity
   that reads as "clean audio tooling," not "the Apple Music app."
 
-### Three directions
+### Still to produce
 
-Each is a starting point, not a finished palette. All keep the existing semantic
-families (`success` / `warning` / `error` / `info`) — those are healthy and
-should not change.
+The palette above settles color. These remain undefined and must be built out
+(see `tokens-baseline.md`):
 
-**A. Extend the existing purple.** Promote `--brand` (`#7c3aed` light /
-`#9333ea` dark) to primary and build outward.
-
-> Cheapest path — the token already exists and is already used in a few places.
-> Purple reads as neutral-to-premium and is distinct from every major music
-> service. Risk: violet-on-dark is a crowded look in developer tooling, and it
-> can feel generic without careful supporting neutrals.
-
-**B. Ink and a single accent.** A near-monochrome interface — considered
-neutrals, strong typography, generous whitespace — with one saturated accent
-reserved for the primary action and progress.
-
-> Best fit for the product's actual character: RadioWash is a utility that
-> people use briefly and trust with their library. Restraint reads as
-> trustworthy, and it makes the *playlist* the subject of the screen, which is
-> the stated north star (§3). It also survives a second platform effortlessly.
-> Risk: demands genuinely good typography and spacing to avoid reading as
-> unfinished — there is less color to hide behind.
-
-**C. Warm and editorial.** Move away from the cool tech palette entirely —
-warm off-white canvas, deep neutral text, an accent drawn from print (a deep
-teal, an oxblood, a mustard).
-
-> Most differentiated, and the most likely to be remembered. Suits the
-> "curation" framing of cleaning a playlist. Risk: highest execution difficulty,
-> and warm palettes are harder to make work in a dark theme, which this app
-> supports.
-
-### Recommendation
-
-**B**, with the purple from A as its accent if a starting point is useful.
-
-The product is a tool people point at their library and trust to write to it.
-Restraint communicates that better than a strong color does, it directly serves
-the north star of making the playlist the subject, and it is the direction least
-likely to need rework when a second platform arrives.
-
-### What to produce
-
-Whichever direction is chosen, the redesign needs to define what does not exist
-today (see `tokens-baseline.md`):
-
-- A primary/accent that is not `--primary: #1db954`.
-- A dark canvas that is not `#121212`.
-- A **type scale** — there is none; the app uses Tailwind defaults throughout.
-- A **spacing rhythm** — there is none; padding is chosen per component.
+- **A display serif.** Not yet chosen — the exploration used a system fallback.
+  This is the largest carrier of the direction's personality, so choose it
+  deliberately rather than defaulting to Georgia.
+- **A body/UI sans** to pair with it, and a rule for which face goes where.
+- **A type scale.** There is none; the app uses Tailwind defaults throughout.
+- **A spacing rhythm.** There is none; padding is chosen per component.
 - Values for `--feature`, `--chart-1…5`, and `--sidebar-*`, which the Tailwind
-  config references but the CSS never defines.
+  config references but the CSS never defines. Chart colors in particular need
+  deriving from the warm palette rather than pulled from a default ramp.
+- **A contrast audit** of every foreground/background pairing in both themes.
+  The warm dark theme is the risk area — verify before locking.
 
 ## 13. Sign-in methods
 
