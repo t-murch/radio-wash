@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { authManager } from '@/services/auth';
+import { createClient } from '@/lib/supabase/client';
 import { ApiError } from '@/services/api';
 
 const isAuthError = (error: unknown) =>
@@ -36,11 +36,18 @@ const queryClient = new QueryClient({
 
 // Global error handler for auth issues
 queryClient.setMutationDefaults(['auth'], {
-  onError: (error: unknown) => {
-    if (isAuthError(error)) {
-      authManager.logout();
-      window.location.href = '/auth';
+  onError: async (error: unknown) => {
+    if (!isAuthError(error)) return;
+
+    // Clear the Supabase session before redirecting, so the auth page isn't
+    // reached with a stale cookie still set. Sign-out failure must not strand
+    // the user on a broken screen, so redirect either way.
+    try {
+      await createClient().auth.signOut();
+    } catch (signOutError) {
+      console.error('Failed to sign out after auth error:', signOutError);
     }
+    window.location.href = '/auth';
   },
 });
 
