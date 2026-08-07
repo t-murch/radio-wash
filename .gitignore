@@ -105,3 +105,8 @@ sentry-*
 .gemini/
 GEMINI.md
 .mcp.json
+
+# Claude Design output — kept locally, not in the repo.
+# These PDFs are the record of design decisions for the Apple Music
+# redesign; the written rationale lives in docs/design/*.md.
+docs/design/**/*.pdf
