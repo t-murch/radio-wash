@@ -13,7 +13,6 @@ public class TokenRefreshMiddleware
   {
     "/api/playlist",
     "/api/jobs",
-    "/api/spotify",
     "/api/cleanplaylist",
   };
 

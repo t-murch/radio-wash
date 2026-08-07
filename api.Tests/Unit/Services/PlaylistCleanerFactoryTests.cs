@@ -30,9 +30,8 @@ public class PlaylistCleanerFactoryTests
   }
 
   [Theory]
-  [InlineData("spotify")]
   [InlineData("apple_music")]
-  [InlineData("SPOTIFY")]
+  [InlineData("APPLE_MUSIC")]
   [InlineData("  Apple_Music  ")]
   public void CreateCleaner_WithSupportedProvider_ResolvesCleaner(string platform)
   {
@@ -60,7 +59,7 @@ public class PlaylistCleanerFactoryTests
   {
     // apple_music is on the allowlist but has no keyed registration in this container;
     // the factory must fail loudly instead of silently falling back to another provider.
-    using var sp = BuildServiceProvider(("spotify", new Mock<IMusicService>().Object));
+    using var sp = BuildServiceProvider();
     var factory = new PlaylistCleanerFactory(sp);
 
     Assert.ThrowsAny<InvalidOperationException>(() => factory.CreateCleaner("apple_music"));

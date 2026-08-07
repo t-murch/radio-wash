@@ -29,11 +29,12 @@ public class TokenRefreshMiddlewareTests
     _mockUserService = new Mock<IUserService>();
     _mockTokenService = new Mock<IMusicTokenService>();
 
-    // Single Spotify refresher so the middleware's per-provider loop iterates once over
-    // "spotify" — matches the behavior the pre-extraction tests asserted.
-    var spotifyRefresher = new Mock<IMusicTokenRefresher>();
-    spotifyRefresher.SetupGet(r => r.ProviderName).Returns("spotify");
-    _refreshers = new[] { spotifyRefresher.Object };
+    // A single refresher so the middleware's per-provider loop iterates exactly once. The
+    // provider key is incidental to what these tests cover (path matching and error
+    // handling), so any registered provider works.
+    var refresher = new Mock<IMusicTokenRefresher>();
+    refresher.SetupGet(r => r.ProviderName).Returns(MusicProviders.AppleMusic);
+    _refreshers = new[] { refresher.Object };
 
     _middleware = new TokenRefreshMiddleware(_mockNext.Object, _mockLogger.Object);
   }
@@ -92,8 +93,6 @@ public class TokenRefreshMiddlewareTests
   [InlineData("/api/playlist/test")]
   [InlineData("/api/jobs")]
   [InlineData("/api/jobs/123")]
-  [InlineData("/api/spotify")]
-  [InlineData("/api/spotify/playlists")]
   public async Task InvokeAsync_WithTargetEndpoint_ProcessesTokenRefresh(string path)
   {
     // Arrange
@@ -112,9 +111,9 @@ public class TokenRefreshMiddlewareTests
       RefreshFailureCount = 0,
       IsRevoked = false
     };
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(tokenInfo);
-    _mockTokenService.Setup(x => x.RefreshTokensAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.RefreshTokensAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(true);
 
     // Act
@@ -123,7 +122,7 @@ public class TokenRefreshMiddlewareTests
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
     _mockUserService.Verify(x => x.GetUserBySupabaseIdAsync(testUserId), Times.Once);
-    _mockTokenService.Verify(x => x.RefreshTokensAsync(1, "spotify"), Times.Once);
+    _mockTokenService.Verify(x => x.RefreshTokensAsync(1, MusicProviders.AppleMusic), Times.Once);
   }
 
   [Fact]
@@ -149,7 +148,7 @@ public class TokenRefreshMiddlewareTests
   public async Task InvokeAsync_WithTokenRefreshException_LogsWarningAndContinues()
   {
     // Arrange
-    var context = CreateHttpContext("/api/spotify");
+    var context = CreateHttpContext("/api/playlist");
     var testUserId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     AddAuthenticatedUser(context, testUserId);
 
@@ -158,7 +157,7 @@ public class TokenRefreshMiddlewareTests
         .ReturnsAsync(user);
 
     var exception = new InvalidOperationException("Token refresh failed");
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ThrowsAsync(exception);
 
     // Act
@@ -196,7 +195,7 @@ public class TokenRefreshMiddlewareTests
       RefreshFailureCount = 0,
       IsRevoked = false
     };
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(tokenInfo);
 
     // Act
@@ -226,7 +225,7 @@ public class TokenRefreshMiddlewareTests
       RefreshFailureCount = 0,
       IsRevoked = false
     };
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(tokenInfo);
 
     // Act
@@ -294,9 +293,9 @@ public class TokenRefreshMiddlewareTests
       RefreshFailureCount = 0,
       IsRevoked = false
     };
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(tokenInfo);
-    _mockTokenService.Setup(x => x.RefreshTokensAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.RefreshTokensAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync(true);
 
     // Act
@@ -304,7 +303,7 @@ public class TokenRefreshMiddlewareTests
 
     // Assert
     _mockNext.Verify(x => x(context), Times.Once);
-    _mockTokenService.Verify(x => x.RefreshTokensAsync(1, "spotify"), Times.Once);
+    _mockTokenService.Verify(x => x.RefreshTokensAsync(1, MusicProviders.AppleMusic), Times.Once);
   }
 
   [Fact]
@@ -319,7 +318,7 @@ public class TokenRefreshMiddlewareTests
     _mockUserService.Setup(x => x.GetUserBySupabaseIdAsync(testUserId))
         .ReturnsAsync(user);
 
-    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, "spotify"))
+    _mockTokenService.Setup(x => x.GetTokenInfoAsync(1, MusicProviders.AppleMusic))
         .ReturnsAsync((UserMusicToken?)null);
 
     // Act

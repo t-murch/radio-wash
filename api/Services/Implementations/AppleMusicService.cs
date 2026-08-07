@@ -13,7 +13,7 @@ namespace RadioWash.Api.Services.Implementations;
 
 public class AppleMusicService : IAppleMusicService
 {
-  // Mirrors SpotifyService: cap Retry-After so a hostile/misconfigured header can never
+  // Cap Retry-After so a hostile/misconfigured header can never
   // block a worker thread for an hour, and fall back to a short delay when it's absent.
   private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(60);
   private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(5);

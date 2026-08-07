@@ -8,7 +8,7 @@ using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
-using RadioWash.Api.Models.Spotify;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using RadioWash.Api.Tests.Integration.TestHelpers;
@@ -18,22 +18,22 @@ namespace RadioWash.Api.Tests.Integration;
 /// <summary>
 /// End-to-end integration test for the clean-playlist pipeline. Exercises the full service
 /// layer against a real PostgreSQL database (via Testcontainers) with a canned
-/// <see cref="ISpotifyService"/> stub at the HTTP boundary — so every EF Core save, every
+/// <see cref="IMusicService"/> stub at the provider boundary — so every EF Core save, every
 /// repository call, every transaction, and every concrete processor/cleaner path is real
 /// code running against real state. The assertions cover the three things that matter:
 /// the job moves Pending -> Processing -> Completed, the TrackMapping rows persist
-/// correctly, and the expected track-ID list is handed to the Spotify "add tracks" call.
+/// correctly, and the expected track-ID list is handed to the "add tracks" call.
 ///
 /// This is the critical-path safety net: any regression in the Dashboard -> processor ->
-/// Spotify pipeline surfaces here even if individual unit tests drift.
+/// provider pipeline surfaces here even if individual unit tests drift.
 /// </summary>
 public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBase
 {
-  private readonly FakeSpotifyService _fakeSpotify;
+  private readonly FakeMusicService _fakeMusic;
 
   public CleanPlaylistPipelineIntegrationTests()
   {
-    _fakeSpotify = _serviceProvider.GetRequiredService<FakeSpotifyService>();
+    _fakeMusic = _serviceProvider.GetRequiredService<FakeMusicService>();
   }
 
   // One of the existing migrations creates a trigger against auth.users (the Supabase-managed
@@ -46,11 +46,10 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     base.ConfigureServices(services);
     SeedSupabaseAuthSchemaStub();
 
-    // Register a single fake Spotify-service stand-in — it records observed calls and
-    // returns canned data so the processor and cleaner run against a realistic Spotify API
-    // shape without any network traffic.
-    services.AddSingleton<FakeSpotifyService>();
-    services.AddSingleton<ISpotifyService>(sp => sp.GetRequiredService<FakeSpotifyService>());
+    // Register a single fake music-service stand-in — it records observed calls and returns
+    // canned data so the processor and cleaner run against a realistic provider shape
+    // without any network traffic.
+    services.AddSingleton<FakeMusicService>();
 
     // Wire the full service graph the processor consumes. Mirrors Program.cs registrations
     // but kept in this fixture so we don't pull in the WebApplicationFactory (which would
@@ -70,13 +69,11 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     services.AddScoped<IUnitOfWork, EntityFrameworkUnitOfWork>();
 
     services.AddScoped<IMusicTokenService, MusicTokenService>();
-    services.AddScoped<IMusicTokenRefresher, SpotifyTokenRefresher>();
     services.AddHttpClient();
 
-    services.AddScoped<SpotifyMusicService>();
-    services.AddKeyedScoped<IMusicService>(
-      SpotifyMusicService.Provider,
-      (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
+    services.AddKeyedSingleton<IMusicService>(
+      MusicProviders.AppleMusic,
+      (sp, _) => sp.GetRequiredService<FakeMusicService>());
 
     services.AddScoped<IProgressTracker, SmartProgressTracker>();
     services.AddSingleton(new BatchConfiguration());
@@ -95,16 +92,16 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
   }
 
   [Fact]
-  public async Task ProcessJob_HappyPath_PersistsTrackMappingsAndAddsCleanTracksToSpotify()
+  public async Task ProcessJob_HappyPath_PersistsTrackMappingsAndAddsCleanTracksToProvider()
   {
-    // Arrange — seed a user with a valid Spotify token, and stage the fake Spotify service
+    // Arrange — seed a user with a valid provider token, and stage the fake music service
     // with a source playlist containing two explicit tracks and one clean one.
     var user = new User
     {
       SupabaseId = Guid.NewGuid().ToString(),
       DisplayName = "Integration Test User",
       Email = "integration@example.com",
-      PrimaryProvider = "spotify",
+      PrimaryProvider = MusicProviders.AppleMusic,
       CreatedAt = DateTime.UtcNow,
       UpdatedAt = DateTime.UtcNow
     };
@@ -115,11 +112,12 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     var token = new UserMusicToken
     {
       UserId = user.Id,
-      Provider = "spotify",
-      EncryptedAccessToken = encryption.EncryptToken("fake-access-token"),
-      EncryptedRefreshToken = encryption.EncryptToken("fake-refresh-token"),
+      Provider = MusicProviders.AppleMusic,
+      EncryptedAccessToken = encryption.EncryptToken("fake-music-user-token"),
+      // Apple Music User Tokens have no refresh counterpart.
+      EncryptedRefreshToken = null,
       ExpiresAt = DateTime.UtcNow.AddHours(1),
-      Scopes = "[\"playlist-modify-private\"]",
+      Scopes = "[]",
       CreatedAt = DateTime.UtcNow,
       UpdatedAt = DateTime.UtcNow
     };
@@ -130,29 +128,25 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     var explicitNoMatch = MakeTrack("e2", "Unreleased Mix", isExplicit: true);
     var alreadyClean = MakeTrack("c1", "Squeaky Clean", isExplicit: false);
 
-    _fakeSpotify.SourcePlaylistTracks["source-pl"] = new[] { explicitWithMatch, explicitNoMatch, alreadyClean };
-    _fakeSpotify.CleanVersionsBySourceId["e1"] = MakeTrack("e1-clean", "Explicit Hit", isExplicit: false);
+    _fakeMusic.SourcePlaylistTracks["source-pl"] = new[] { explicitWithMatch, explicitNoMatch, alreadyClean };
+    _fakeMusic.CleanVersionsBySourceId["e1"] = MakeTrack("e1-clean", "Explicit Hit", isExplicit: false);
     // e2 has no clean version — FindCleanVersion will return null for it
-    _fakeSpotify.UserPlaylists[user.Id] = new[]
+    _fakeMusic.UserPlaylists[user.Id] = new[]
     {
-      new PlaylistDto
-      {
-        Id = "source-pl",
-        Name = "Source Playlist",
-        Description = null,
-        ImageUrl = null,
-        TrackCount = 3,
-        OwnerId = "sp-owner",
-        OwnerName = "Owner"
-      }
+      new PlaylistSummary(
+        Id: "source-pl",
+        Name: "Source Playlist",
+        Description: null,
+        ImageUrl: null,
+        TrackCount: 3,
+        OwnerId: "am-owner",
+        OwnerName: "Owner")
     };
-    _fakeSpotify.UserProfile[user.Id] = new SpotifyUserProfile
-    {
-      Id = "sp-owner",
-      DisplayName = "Owner",
-      Email = "owner@example.com"
-    };
-    _fakeSpotify.CreatedPlaylistId = "target-pl";
+    _fakeMusic.UserProfile[user.Id] = new MusicUserProfile(
+      Id: "am-owner",
+      DisplayName: "Owner",
+      Email: "owner@example.com");
+    _fakeMusic.CreatedPlaylistId = "target-pl";
 
     // Act — create the job and run the processor directly (bypassing Hangfire scheduling).
     // Use separate DI scopes for the two phases so each gets its own DbContext, matching
@@ -196,15 +190,13 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     Assert.False(mappings.Single(m => m.SourceTrackId == "e2").HasCleanMatch);
     Assert.True(mappings.Single(m => m.SourceTrackId == "c1").HasCleanMatch);
 
-    // Assert — Spotify received the expected track list (raw IDs come out as spotify:track:<id>
-    // URIs by the time they reach the ISpotifyService fake).
-    Assert.Single(_fakeSpotify.AddTracksInvocations);
-    var invocation = _fakeSpotify.AddTracksInvocations.Single();
+    // Assert — the provider received the expected track list. IMusicService takes raw
+    // platform-native IDs; any URI formatting is the adapter's business, below this seam.
+    Assert.Single(_fakeMusic.AddTracksInvocations);
+    var invocation = _fakeMusic.AddTracksInvocations.Single();
     Assert.Equal(user.Id, invocation.UserId);
     Assert.Equal("target-pl", invocation.PlaylistId);
-    Assert.Equal(
-      new[] { "spotify:track:e1-clean", "spotify:track:c1" },
-      invocation.TrackUris);
+    Assert.Equal(new[] { "e1-clean", "c1" }, invocation.TrackIds);
   }
 
   private void SeedSupabaseAuthSchemaStub()
@@ -235,72 +227,71 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     new NoopJobOrchestrator(),
     sp.GetRequiredService<ILogger<CleanPlaylistService>>());
 
-  private static SpotifyTrack MakeTrack(string id, string name, bool isExplicit) => new()
-  {
-    Id = id,
-    Name = name,
-    Explicit = isExplicit,
-    Artists = new[] { new SpotifyArtist { Id = "a1", Name = "Artist" } },
-    Album = new SpotifyAlbum { Id = "al", Name = "Album" },
-    Uri = $"spotify:track:{id}"
-  };
+  private static MusicTrack MakeTrack(string id, string name, bool isExplicit) => new(
+    Id: id,
+    Name: name,
+    IsExplicit: isExplicit,
+    Artists: new[] { new MusicArtist("Artist") },
+    Isrc: null,
+    DurationMs: 200_000,
+    AlbumName: "Album");
 
-  // A fake Spotify service that records every call and returns canned responses. Playing the
-  // role of the HTTP boundary (ISpotifyService is the last hop before the network) so the
-  // rest of the pipeline — including the real SpotifyMusicService adapter and its
-  // spotify:track:<id> URI formatting — runs against real code.
-  private sealed class FakeSpotifyService : ISpotifyService
+  // A fake music service that records every call and returns canned responses. It sits at the
+  // provider boundary (IMusicService is the seam below which platform-specific HTTP lives), so
+  // everything above it — the processor, cleaner, progress tracking, repositories, and every
+  // EF Core write — runs as real code against the real database.
+  private sealed class FakeMusicService : IMusicService
   {
-    public Dictionary<string, IEnumerable<SpotifyTrack>> SourcePlaylistTracks { get; } = new();
-    public Dictionary<string, SpotifyTrack?> CleanVersionsBySourceId { get; } = new();
-    public Dictionary<int, IEnumerable<PlaylistDto>> UserPlaylists { get; } = new();
-    public Dictionary<int, SpotifyUserProfile> UserProfile { get; } = new();
+    public string ProviderName => MusicProviders.AppleMusic;
+
+    public Dictionary<string, IReadOnlyList<MusicTrack>> SourcePlaylistTracks { get; } = new();
+    public Dictionary<string, MusicTrack?> CleanVersionsBySourceId { get; } = new();
+    public Dictionary<int, IReadOnlyList<PlaylistSummary>> UserPlaylists { get; } = new();
+    public Dictionary<int, MusicUserProfile> UserProfile { get; } = new();
     public string CreatedPlaylistId { get; set; } = "target-pl";
 
     public List<AddTracksInvocation> AddTracksInvocations { get; } = new();
 
-    public Task<SpotifyUserProfile> GetUserProfileAsync(int userId, CancellationToken cancellationToken = default) =>
+    public Task<MusicUserProfile> GetUserProfileAsync(int userId, CancellationToken cancellationToken) =>
       Task.FromResult(UserProfile[userId]);
 
-    public Task<IEnumerable<PlaylistDto>> GetUserPlaylistsAsync(int userId, CancellationToken cancellationToken = default) =>
+    public Task<IReadOnlyList<PlaylistSummary>> GetUserPlaylistsAsync(int userId, CancellationToken cancellationToken) =>
       Task.FromResult(UserPlaylists[userId]);
 
-    public Task<IEnumerable<SpotifyTrack>> GetPlaylistTracksAsync(int userId, string playlistId, CancellationToken cancellationToken = default) =>
+    public Task<IReadOnlyList<MusicTrack>> GetPlaylistTracksAsync(int userId, string playlistId, CancellationToken cancellationToken) =>
       Task.FromResult(SourcePlaylistTracks[playlistId]);
 
-    public Task<SpotifyPlaylist> CreatePlaylistAsync(int userId, string name, string? description = null, CancellationToken cancellationToken = default) =>
-      Task.FromResult(new SpotifyPlaylist
-      {
-        Id = CreatedPlaylistId,
-        Name = name,
-        Description = description,
-        Tracks = new SpotifyPlaylistTracksRef { Total = 0, Href = "href" },
-        Owner = new SpotifyUser { Id = "sp-owner", DisplayName = "Owner" }
-      });
+    public Task<PlaylistSummary> CreatePlaylistAsync(int userId, string name, string? description, CancellationToken cancellationToken) =>
+      Task.FromResult(new PlaylistSummary(
+        Id: CreatedPlaylistId,
+        Name: name,
+        Description: description,
+        ImageUrl: null,
+        TrackCount: 0,
+        OwnerId: "am-owner",
+        OwnerName: "Owner"));
 
-    public Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default)
+    public Task AddTracksToPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackIds, CancellationToken cancellationToken)
     {
-      AddTracksInvocations.Add(new AddTracksInvocation(userId, playlistId, trackUris.ToArray()));
+      AddTracksInvocations.Add(new AddTracksInvocation(userId, playlistId, trackIds.ToArray()));
       return Task.CompletedTask;
     }
 
-    public Task RemoveTracksFromPlaylistAsync(int userId, string playlistId, IEnumerable<string> trackUris, CancellationToken cancellationToken = default) =>
-      Task.CompletedTask;
-
-    public Task<SpotifyTrack?> FindCleanVersionAsync(int userId, SpotifyTrack explicitTrack, CancellationToken cancellationToken = default)
+    public Task<MusicTrack?> FindCleanVersionAsync(int userId, MusicTrack explicitTrack, CancellationToken cancellationToken)
     {
-      if (!explicitTrack.Explicit) return Task.FromResult<SpotifyTrack?>(explicitTrack);
+      if (!explicitTrack.IsExplicit) return Task.FromResult<MusicTrack?>(explicitTrack);
       return Task.FromResult(CleanVersionsBySourceId.TryGetValue(explicitTrack.Id, out var clean) ? clean : null);
     }
 
-    public Task<IReadOnlyList<SpotifyTrack>> SearchTracksAsync(int userId, string query, int limit, CancellationToken cancellationToken = default) =>
-      Task.FromResult<IReadOnlyList<SpotifyTrack>>(Array.Empty<SpotifyTrack>());
+    public Task<IReadOnlyDictionary<string, MusicTrack>> GetTracksByIsrcAsync(
+        int userId, IReadOnlyCollection<string> isrcs, CancellationToken cancellationToken) =>
+      Task.FromResult<IReadOnlyDictionary<string, MusicTrack>>(new Dictionary<string, MusicTrack>());
 
-    public Task<SpotifyTrack?> GetTrackByIsrcAsync(int userId, string isrc, CancellationToken cancellationToken = default) =>
-      Task.FromResult<SpotifyTrack?>(null);
+    public Task<IReadOnlyList<MusicTrack>> SearchTracksAsync(int userId, string query, int limit, CancellationToken cancellationToken) =>
+      Task.FromResult<IReadOnlyList<MusicTrack>>(Array.Empty<MusicTrack>());
   }
 
-  private sealed record AddTracksInvocation(int UserId, string PlaylistId, string[] TrackUris);
+  private sealed record AddTracksInvocation(int UserId, string PlaylistId, string[] TrackIds);
 
   private sealed class FakeProgressBroadcast : IProgressBroadcastService
   {

@@ -16,7 +16,7 @@ namespace RadioWash.Api.Services.Implementations;
 public class PlaylistCopier : IPlaylistCopier
 {
   // Upper bound on ISRCs sent to the batched prefetch. Apple resolves these 25-per-request,
-  // but Spotify has no batch ISRC endpoint and spends one search per ISRC, so an uncapped
+  // but a provider without a batch ISRC endpoint spends one search per ISRC, so an uncapped
   // prefetch on a large playlist front-loads hundreds of sequential calls before the first
   // track is matched. Past the cap, tracks simply fall through to the search fallback in
   // TrackMatcher — a lower-confidence match, not a dropped track.

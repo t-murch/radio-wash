@@ -21,7 +21,6 @@ using RadioWash.Api.Services.BackgroundServices;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
-builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection(SpotifySettings.SectionName));
 builder.Services.Configure<AppleMusicSettings>(builder.Configuration.GetSection(AppleMusicSettings.SectionName));
 builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
@@ -52,9 +51,13 @@ builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IMusicTokenService, MusicTokenService>();
 // Per-provider token refreshers. MusicTokenService takes IEnumerable<IMusicTokenRefresher>
-// and routes by ProviderName, so adding Apple Music is a single AddScoped here — no
+// and routes by ProviderName, so adding a provider is a single AddScoped here — no
 // MusicTokenService edits required.
-builder.Services.AddScoped<IMusicTokenRefresher, SpotifyTokenRefresher>();
+//
+// None are registered today. Apple Music's Music User Token has no refresh flow, so the
+// collection is intentionally empty and MusicTokenService falls through to returning the
+// stored token, deferring to Apple's own 403. The seam stays because a second provider
+// (Tidal is the candidate) is expected to need it.
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -71,16 +74,12 @@ builder.Services.AddScoped<IPlaylistSyncHistoryRepository, PlaylistSyncHistoryRe
 
 // Services
 builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IUserProviderTokenService, SupabaseUserProviderTokenService>();
-builder.Services.AddScoped<ISpotifyService, SpotifyService>();
-// Provider-agnostic music-service adapter. Registered as a keyed IMusicService so the
-// IPlaylistCleanerFactory can resolve the right adapter per job.Provider, and as the
-// default unkeyed IMusicService for callers that don't yet pick by key.
-builder.Services.AddScoped<SpotifyMusicService>();
-builder.Services.AddKeyedScoped<IMusicService>(
-    SpotifyMusicService.Provider,
-    (sp, _) => sp.GetRequiredService<SpotifyMusicService>());
-builder.Services.AddScoped<IMusicService>(sp => sp.GetRequiredService<SpotifyMusicService>());
+// Provider-agnostic music-service adapters are registered as *keyed* IMusicService only, so
+// every caller resolves through IMusicServiceFactory with an explicit provider. There is
+// deliberately no unkeyed default registration: an unkeyed IMusicService would silently pick
+// one provider for callers that forgot to specify, which is exactly the class of bug that
+// made the app default to the wrong provider for users who had only connected one.
+//
 // Typed client so Apple calls get an explicit timeout instead of HttpClient's 100s default.
 // Copy jobs issue hundreds of these per playlist; a hung request must not stall a worker for
 // over a minute when the service's own retry loop can move on.
@@ -132,8 +131,8 @@ builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 builder.Services.AddSingleton<IRandomProvider, SystemRandomProvider>();
 
 // Apple Music developer token (ES256 JWT). Singleton so the signed token is cached
-// process-wide; missing configuration fails at first use, not at startup, so
-// Spotify-only deployments keep booting.
+// process-wide; missing configuration fails at first use rather than at startup, so an
+// unconfigured deployment still boots and can report the problem through its API.
 builder.Services.AddSingleton<IAppleDeveloperTokenProvider, AppleDeveloperTokenProvider>();
 
 // SOLID Refactored Services

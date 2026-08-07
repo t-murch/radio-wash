@@ -7,7 +7,7 @@ namespace RadioWash.Api.Services.Implementations;
 
 /// <summary>
 /// Adapter that exposes <see cref="IAppleMusicService"/> through the provider-agnostic
-/// <see cref="IMusicService"/> contract, mirroring <see cref="SpotifyMusicService"/>.
+/// <see cref="IMusicService"/> contract.
 /// Owns the Apple-specific concerns: library-vs-catalog id resolution (cleaners and copiers
 /// always see catalog song ids), contentRating mapping, and clean-version search heuristics.
 /// </summary>
@@ -126,7 +126,7 @@ public class AppleMusicMusicService : IMusicService
     if (!explicitTrack.IsExplicit) return explicitTrack;
 
     var artists = string.Join(" ", explicitTrack.Artists.Select(a => a.Name));
-    // Apple search has no explicit-exclusion operator (unlike Spotify's -tag:explicit);
+    // Apple search has no explicit-exclusion operator;
     // fetch candidates and filter on contentRating.
     var candidates = await _appleMusic.SearchCatalogSongsAsync(
       userId, $"{explicitTrack.Name} {artists}", 10, cancellationToken);
@@ -164,7 +164,7 @@ public class AppleMusicMusicService : IMusicService
     CancellationToken cancellationToken)
   {
     // IDs are catalog song ids; the client owns the {id, type: "songs"} body format the way
-    // SpotifyMusicService owns spotify:track:<id> URIs.
+    // Apple takes bare catalog IDs, so no URI wrapping is needed here.
     //
     // Library ids ("i.XXXX" — personal uploads, region-gap tracks) can still reach here: the
     // clean pipeline hands a non-explicit track's own id back as its "clean version", and for

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Models.Domain;
-using RadioWash.Api.Models.Spotify;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Implementations;
 using Xunit;
 
@@ -21,8 +21,8 @@ public class PlaylistDeltaCalculatorBasicTests
   public async Task CalculateDelta_WithEmptyLists_ShouldReturnEmptyDelta()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>();
-    var targetTracks = new List<SpotifyTrack>();
+    var sourceTracks = new List<MusicTrack>();
+    var targetTracks = new List<MusicTrack>();
     var existingMappings = new List<TrackMapping>();
 
     // Act

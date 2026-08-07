@@ -44,12 +44,12 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var accessToken = "access_token_123";
     var refreshToken = "refresh_token_123";
     var expiresInSeconds = 3600;
     var scopes = new[] { "playlist-read-private", "playlist-modify-public" };
-    var metadata = new { userId = "spotify_user_123" };
+    var metadata = new { userId = "provider_user_123" };
 
     var encryptedAccessToken = "encrypted_access_token";
     var encryptedRefreshToken = "encrypted_refresh_token";
@@ -97,7 +97,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var accessToken = "new_access_token";
     var refreshToken = "new_refresh_token";
     var expiresInSeconds = 3600;
@@ -141,7 +141,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var accessToken = "access_token_123";
     var expiresInSeconds = 3600;
 
@@ -170,7 +170,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var tokenRecord = CreateTestToken(userId, provider);
     tokenRecord.ExpiresAt = DateTime.UtcNow.AddHours(1); // Valid token
 
@@ -193,7 +193,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
         .ReturnsAsync((UserMusicToken?)null);
@@ -205,24 +205,30 @@ public class MusicTokenServiceTests
     Assert.Contains($"No tokens found for user {userId} provider {provider}", exception.Message);
   }
 
+  /// <summary>
+  /// For a provider with no refresh flow, a stored ExpiresAt is an assumed lifetime rather
+  /// than an authority — Apple never tells us when a Music User Token dies. Passing the
+  /// assumed expiry must therefore hand back the stored token and let Apple's own 403 be the
+  /// judge, not reject it locally and force a needless reconnect.
+  /// </summary>
   [Fact]
-  public async Task GetValidAccessTokenAsync_WithExpiredTokenAndNoRefresh_ThrowsUnauthorizedAccessException()
+  public async Task GetValidAccessTokenAsync_PastAssumedExpiry_ReturnsStoredTokenForProviderWithoutRefresh()
   {
-    // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var tokenRecord = CreateTestToken(userId, provider);
-    tokenRecord.ExpiresAt = DateTime.UtcNow.AddMinutes(-10); // Expired token
-    tokenRecord.EncryptedRefreshToken = null; // No refresh token
+    tokenRecord.ExpiresAt = DateTime.UtcNow.AddMinutes(-10);
+    tokenRecord.EncryptedRefreshToken = null;
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
         .ReturnsAsync(tokenRecord);
+    _mockEncryptionService.Setup(x => x.DecryptToken(tokenRecord.EncryptedAccessToken))
+        .Returns("decrypted_token");
 
-    // Act & Assert
-    var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-        _musicTokenService.GetValidAccessTokenAsync(userId, provider));
+    var token = await _musicTokenService.GetValidAccessTokenAsync(userId, provider);
 
-    Assert.Contains("Token expired and refresh failed", exception.Message);
+    Assert.Equal("decrypted_token", token);
+    Assert.False(MusicProviders.SupportsTokenRefresh(provider));
   }
 
   [Fact]
@@ -230,7 +236,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var tokenRecord = CreateTestToken(userId, provider);
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
@@ -249,7 +255,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
 
     _mockTokenRepository.Setup(x => x.HasValidTokensAsync(userId, provider))
         .ReturnsAsync(true);
@@ -267,15 +273,15 @@ public class MusicTokenServiceTests
   {
     // Two requests arrive at roughly the same instant for the same (user, provider) with an
     // expired access token. Before the fix, both threads pass the IsExpired check, both call
-    // into RefreshSpotifyTokenAsync, and both POST the same refresh token to Spotify. Spotify
+    // into the provider refresh path, and both POST the same refresh token upstream. A provider
     // invalidates refresh tokens on first use, so the slower thread locks the user out until
     // they re-authenticate.
     //
     // After the fix, the second caller blocks on a per-user semaphore. When it acquires the
     // lock, it re-reads the token, sees a fresh expiry, and returns true without dispatching
-    // another Spotify OAuth call.
+    // another provider OAuth call.
     var userId = 42;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var expiredToken = new UserMusicToken
     {
       Id = 1,
@@ -306,7 +312,7 @@ public class MusicTokenServiceTests
     // Gate the refresh dispatch so we can force the two callers to overlap inside the lock.
     var gate = new TaskCompletionSource<bool>();
     var refreshCalls = 0;
-    var fakeRefresher = new FakeSpotifyRefresher(async () =>
+    var fakeRefresher = new FakeTokenRefresher(async () =>
     {
       Interlocked.Increment(ref refreshCalls);
       // Hold inside the lock so the second caller is guaranteed to arrive while we are still
@@ -345,7 +351,7 @@ public class MusicTokenServiceTests
   {
     // Different (userId, provider) pairs must not block each other. The lock is per-user,
     // not global.
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var userA = 1;
     var userB = 2;
 
@@ -368,7 +374,7 @@ public class MusicTokenServiceTests
     var startedCount = 0;
     var releaseGate = new TaskCompletionSource<bool>();
 
-    var fakeRefresher = new FakeSpotifyRefresher(async () =>
+    var fakeRefresher = new FakeTokenRefresher(async () =>
     {
       if (Interlocked.Increment(ref startedCount) == 2)
       {
@@ -425,52 +431,19 @@ public class MusicTokenServiceTests
     Assert.Equal("music-user-token", token);
   }
 
-  [Fact]
-  public async Task GetValidAccessTokenAsync_ForProviderWithRefreshFlow_StillFailsWhenRefreshFails()
-  {
-    // The bypass above is keyed on the provider's capability, not on DI wiring or on whether
-    // this particular row happens to carry a refresh token. Spotify has a refresh flow, so a
-    // genuinely expired token whose refresh fails must still throw rather than being handed
-    // out as "probably fine".
-    var userId = 1;
-    var provider = "spotify";
-
-    _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
-        .ReturnsAsync(new UserMusicToken
-        {
-          Id = 1,
-          UserId = userId,
-          Provider = provider,
-          EncryptedAccessToken = "encrypted",
-          EncryptedRefreshToken = "encrypted-refresh",
-          ExpiresAt = DateTime.UtcNow.AddMinutes(-10)
-        });
-
-    var service = new MusicTokenService(
-      _mockTokenRepository.Object,
-      _mockEncryptionService.Object,
-      _mockConfiguration.Object,
-      _mockLogger.Object,
-      _mockHttpClient.Object,
-      new IMusicTokenRefresher[] { new FakeSpotifyRefresher(() => Task.FromResult(false)) });
-
-    await Assert.ThrowsAsync<UnauthorizedAccessException>(
-      () => service.GetValidAccessTokenAsync(userId, provider));
-  }
-
-  // Fake refresher keyed to "spotify" so MusicTokenService resolves it from the injected
+  // Fake refresher keyed to the supported provider so MusicTokenService resolves it from the injected
   // collection. Each call awaits a caller-provided delegate so concurrency tests can gate
   // the refresh dispatch precisely.
-  private sealed class FakeSpotifyRefresher : IMusicTokenRefresher
+  private sealed class FakeTokenRefresher : IMusicTokenRefresher
   {
     private readonly Func<Task<bool>> _dispatch;
 
-    public FakeSpotifyRefresher(Func<Task<bool>> dispatch)
+    public FakeTokenRefresher(Func<Task<bool>> dispatch)
     {
       _dispatch = dispatch;
     }
 
-    public string ProviderName => "spotify";
+    public string ProviderName => MusicProviders.AppleMusic;
 
     public Task<bool> RefreshAsync(UserMusicToken token, CancellationToken cancellationToken) =>
       _dispatch();
@@ -481,7 +454,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
         .ReturnsAsync((UserMusicToken?)null);
@@ -506,7 +479,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var tokenRecord = CreateTestToken(userId, provider);
     tokenRecord.EncryptedRefreshToken = null;
 
@@ -551,7 +524,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var tokenRecord = CreateTestToken(userId, provider);
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
@@ -577,7 +550,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))
         .ReturnsAsync((UserMusicToken?)null);
@@ -594,7 +567,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var grantedScopes = new[] { "playlist-read-private", "playlist-modify-public", "user-read-email" };
     var requiredScopes = new[] { "playlist-read-private", "playlist-modify-public" };
 
@@ -616,7 +589,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var grantedScopes = new[] { "playlist-read-private" };
     var requiredScopes = new[] { "playlist-read-private", "playlist-modify-public" };
 
@@ -638,7 +611,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var requiredScopes = new[] { "playlist-read-private" };
 
     var tokenRecord = CreateTestToken(userId, provider);
@@ -659,7 +632,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var requiredScopes = new[] { "playlist-read-private" };
 
     var tokenRecord = CreateTestToken(userId, provider);
@@ -688,7 +661,7 @@ public class MusicTokenServiceTests
   {
     // Arrange
     var userId = 1;
-    var provider = "spotify";
+    var provider = MusicProviders.AppleMusic;
     var requiredScopes = new[] { "playlist-read-private" };
 
     _mockTokenRepository.Setup(x => x.GetByUserAndProviderAsync(userId, provider))

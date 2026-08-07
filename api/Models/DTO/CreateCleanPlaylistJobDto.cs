@@ -6,8 +6,8 @@ public class CreateCleanPlaylistJobDto
   public string? TargetPlaylistName { get; set; }
 
   /// <summary>
-  /// Optional source music-provider identifier ("spotify", "apple_music"). Omit to accept
-  /// the server default of "spotify" — current frontend omits this field and must keep working.
+  /// Optional source music-provider identifier ("apple_music"). Omit to accept
+  /// the server default of "apple_music" — the frontend omits this field.
   /// </summary>
   public string? Provider { get; set; }
 

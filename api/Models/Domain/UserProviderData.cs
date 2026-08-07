@@ -10,7 +10,7 @@ public class UserProviderData
   public int UserId { get; set; }
 
   [Required]
-  public string Provider { get; set; } = null!; // "spotify", "apple", "email"
+  public string Provider { get; set; } = null!; // "apple", "google", "email"
 
   [Required]
   public string ProviderId { get; set; } = null!; // Provider-specific user ID

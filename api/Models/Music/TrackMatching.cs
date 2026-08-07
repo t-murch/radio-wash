@@ -40,7 +40,7 @@ public static class TrackMatching
   }
 
   /// <summary>
-  /// Providers shape artist lists differently (Spotify: one entry per artist; Apple: a single
+  /// Providers shape artist lists differently (some give one entry per artist; Apple: a single
   /// joined string), so overlap checks containment in both directions.
   /// </summary>
   public static bool HasArtistOverlap(

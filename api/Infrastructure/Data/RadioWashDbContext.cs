@@ -40,19 +40,18 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
         .WithMany(u => u.Jobs)
         .HasForeignKey(j => j.UserId);
 
-    // Music-provider discriminator. Stored as text with a short cap matching UserMusicToken.Provider
-    // and a "spotify" default so existing rows backfill transparently on migration.
+    // Music-provider discriminator. Stored as text with a short cap matching UserMusicToken.Provider.
     modelBuilder.Entity<CleanPlaylistJob>()
         .Property(j => j.Provider)
         .IsRequired()
         .HasMaxLength(50)
-        .HasDefaultValue("spotify");
+        .HasDefaultValue(MusicProviders.AppleMusic);
 
     modelBuilder.Entity<CleanPlaylistJob>()
         .Property(j => j.TargetProvider)
         .IsRequired()
         .HasMaxLength(50)
-        .HasDefaultValue("spotify");
+        .HasDefaultValue(MusicProviders.AppleMusic);
 
     modelBuilder.Entity<CleanPlaylistJob>()
         .Property(j => j.JobType)

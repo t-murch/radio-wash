@@ -141,7 +141,7 @@ public class CleanPlaylistServiceTests
   }
 
   [Fact]
-  public async Task CreateJobAsync_WithNoProvider_DefaultsToSpotify()
+  public async Task CreateJobAsync_WithNoProvider_DefaultsToAppleMusic()
   {
     var userId = 1;
     var playlistId = "playlist123";
@@ -160,20 +160,20 @@ public class CleanPlaylistServiceTests
 
     var result = await _service.CreateJobAsync(userId, createDto);
 
-    Assert.Equal("spotify", result.Provider);
-    _mockMusicServiceFactory.Verify(x => x.GetService("spotify"), Times.Once);
-    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "spotify")), Times.Once);
+    Assert.Equal("apple_music", result.Provider);
+    _mockMusicServiceFactory.Verify(x => x.GetService("apple_music"), Times.Once);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "apple_music")), Times.Once);
   }
 
   [Fact]
-  public async Task CreateJobAsync_WithMixedCaseSpotifyProvider_NormalizesProvider()
+  public async Task CreateJobAsync_WithMixedCaseProvider_NormalizesProvider()
   {
     var userId = 1;
     var playlistId = "playlist123";
     var createDto = new CreateCleanPlaylistJobDto
     {
       SourcePlaylistId = playlistId,
-      Provider = "Spotify"
+      Provider = "Apple_Music"
     };
     var user = new User { Id = userId, SupabaseId = "sb123" };
 
@@ -186,8 +186,8 @@ public class CleanPlaylistServiceTests
 
     var result = await _service.CreateJobAsync(userId, createDto);
 
-    Assert.Equal("spotify", result.Provider);
-    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "spotify")), Times.Once);
+    Assert.Equal("apple_music", result.Provider);
+    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(job => job.Provider == "apple_music")), Times.Once);
   }
 
   [Fact]
@@ -263,68 +263,12 @@ public class CleanPlaylistServiceTests
     _mockUnitOfWork.Verify(x => x.RollbackTransactionAsync(), Times.Never);
   }
 
-  [Fact]
-  public async Task CreateJobAsync_WithDifferentTargetProvider_CreatesCopyJobAndChecksBothConnections()
-  {
-    var userId = 1;
-    var createDto = new CreateCleanPlaylistJobDto
-    {
-      SourcePlaylistId = "playlist123",
-      Provider = "spotify",
-      TargetProvider = "apple_music",
-      SwapExplicitForClean = false
-    };
-    var user = new User { Id = userId, SupabaseId = "sb123" };
-
-    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
-        .ReturnsAsync(SinglePlaylist("playlist123", "Road Trip"));
-    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
-      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
-    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
-
-    var result = await _service.CreateJobAsync(userId, createDto);
-
-    Assert.Equal("copy", result.JobType);
-    Assert.Equal("spotify", result.Provider);
-    Assert.Equal("apple_music", result.TargetProvider);
-    Assert.False(result.SwapExplicitForClean);
-    // Faithful copies keep the source playlist's name.
-    Assert.Equal("Road Trip", result.TargetPlaylistName);
-    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "spotify"), Times.Once);
-    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "apple_music"), Times.Once);
-    // Source playlist is validated on the SOURCE provider.
-    _mockMusicServiceFactory.Verify(x => x.GetService("spotify"), Times.Once);
-    _mockJobRepo.Verify(x => x.CreateAsync(It.Is<CleanPlaylistJob>(j =>
-      j.JobType == "copy" && j.TargetProvider == "apple_music" && !j.SwapExplicitForClean)), Times.Once);
-  }
-
-  [Fact]
-  public async Task CreateJobAsync_CopyWithCleanToggle_DefaultsNameToCleanPrefix()
-  {
-    var userId = 1;
-    var createDto = new CreateCleanPlaylistJobDto
-    {
-      SourcePlaylistId = "playlist123",
-      Provider = "apple_music",
-      TargetProvider = "spotify"
-      // SwapExplicitForClean omitted → defaults to true
-    };
-    var user = new User { Id = userId, SupabaseId = "sb123" };
-
-    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
-    _mockMusicService.Setup(x => x.GetUserPlaylistsAsync(userId, It.IsAny<CancellationToken>()))
-        .ReturnsAsync(SinglePlaylist("playlist123", "Road Trip"));
-    _mockJobRepo.Setup(x => x.CreateAsync(It.IsAny<CleanPlaylistJob>()))
-      .ReturnsAsync(new CleanPlaylistJob { Id = 1 });
-    _mockJobOrchestrator.Setup(x => x.EnqueueJobAsync(It.IsAny<int>())).ReturnsAsync("hangfire123");
-
-    var result = await _service.CreateJobAsync(userId, createDto);
-
-    Assert.Equal("copy", result.JobType);
-    Assert.True(result.SwapExplicitForClean);
-    Assert.Equal("Clean - Road Trip", result.TargetPlaylistName);
-  }
+  // Two tests covering cross-provider copy jobs were removed here when Spotify was withdrawn.
+  // CreateJobAsync derives JobType from `targetProvider != sourceProvider`, and with a single
+  // supported provider MusicProviders.NormalizeOrThrow rejects any other key — so a copy job
+  // cannot be constructed at all. The copy path itself (JobTypes.Copy, IPlaylistCopier,
+  // CleanPlaylistJob.TargetProvider) is deliberately retained for a future second provider and
+  // still has unit coverage in PlaylistCopierTests. Restore these tests alongside that provider.
 
   [Fact]
   public async Task CreateJobAsync_SameSourceAndTarget_IsCleanJobAndAlwaysSwaps()
@@ -333,8 +277,8 @@ public class CleanPlaylistServiceTests
     var createDto = new CreateCleanPlaylistJobDto
     {
       SourcePlaylistId = "playlist123",
-      Provider = "spotify",
-      TargetProvider = "spotify",
+      Provider = "apple_music",
+      TargetProvider = "apple_music",
       // Clean jobs ignore an explicit false: cleaning IS the product for same-service jobs.
       SwapExplicitForClean = false
     };
@@ -352,7 +296,7 @@ public class CleanPlaylistServiceTests
     Assert.Equal("clean", result.JobType);
     Assert.True(result.SwapExplicitForClean);
     // Same-service: only one connection check.
-    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "spotify"), Times.Once);
+    _mockMusicTokenService.Verify(x => x.HasValidTokensAsync(userId, "apple_music"), Times.Once);
   }
 
   [Fact]

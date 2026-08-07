@@ -25,17 +25,18 @@ public class CleanPlaylistJob
   public User User { get; set; } = null!;
 
   /// <summary>
-  /// Source music-provider discriminator ("spotify", "apple_music", ...). Used by the
-  /// processor to resolve the right IPlaylistCleaner / source IMusicService. Defaults to
-  /// "spotify" for existing jobs and for callers that don't specify explicitly.
+  /// Source music-provider discriminator ("apple_music", ...). Used by the processor to
+  /// resolve the right IPlaylistCleaner / source IMusicService. Defaults to "apple_music"
+  /// for callers that don't specify explicitly.
   /// </summary>
-  public string Provider { get; set; } = "spotify";
+  public string Provider { get; set; } = MusicProviders.AppleMusic;
 
   /// <summary>
   /// Provider the resulting playlist is created on. Equals <see cref="Provider"/> for
-  /// clean jobs; differs for cross-service copy jobs.
+  /// clean jobs; differs for cross-service copy jobs. With a single supported provider it
+  /// always equals <see cref="Provider"/> — retained for a future second service.
   /// </summary>
-  public string TargetProvider { get; set; } = "spotify";
+  public string TargetProvider { get; set; } = MusicProviders.AppleMusic;
 
   /// <summary>One of <see cref="JobTypes"/>; derived from source/target provider equality.</summary>
   public string JobType { get; set; } = JobTypes.Clean;

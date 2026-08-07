@@ -98,25 +98,24 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
   }
 
   [Fact]
-  public async Task CreateAsync_JobWithoutExplicitProvider_DefaultsToSpotify()
+  public async Task CreateAsync_JobWithoutExplicitProvider_DefaultsToAppleMusic()
   {
     // New jobs must carry a Provider discriminator so the processor can route to the right
     // IPlaylistCleaner (the provider-neutral PlaylistCleaner). Existing callers do not set
-    // Provider explicitly — they should get "spotify" for back-compat with the current
-    // Spotify-only flow.
+    // Provider explicitly — they should get the single supported provider.
     var user = CreateTestUser();
     await SeedAsync(user);
     var job = CreateTestCleanPlaylistJob(user.Id);
 
     var created = await _jobRepository.CreateAsync(job);
 
-    Assert.Equal("spotify", created.Provider);
+    Assert.Equal("apple_music", created.Provider);
 
     // Round-trip through the DB — the default must be persisted, not just applied in memory.
     DetachAllEntities();
     var fetched = await _context.CleanPlaylistJobs.FindAsync(created.Id);
     Assert.NotNull(fetched);
-    Assert.Equal("spotify", fetched.Provider);
+    Assert.Equal("apple_music", fetched.Provider);
   }
 
   [Fact]
@@ -330,7 +329,7 @@ public class CleanPlaylistJobRepositoryTests : RepositoryTestBase
     await SeedAsync(job);
 
     var originalUpdatedAt = job.UpdatedAt;
-    var errorMessage = "Spotify API rate limit exceeded";
+    var errorMessage = "Provider API rate limit exceeded";
 
     // Act
     await _jobRepository.UpdateErrorAsync(job.Id, errorMessage);

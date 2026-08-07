@@ -3,7 +3,7 @@ namespace RadioWash.Api.Models.Music;
 /// <summary>
 /// Provider-agnostic representation of a single track. Thin by design — carries only the
 /// fields the platform-independent cleaner loop reads. Do not extend this to mirror every
-/// Spotify or Apple Music field; extend only when a cleaner truly needs that data.
+/// Apple Music field; extend only when a cleaner truly needs that data.
 /// The optional tail (Isrc, DurationMs, AlbumName) exists for the cross-service copy
 /// pipeline: ISRC is the cross-catalog bridge, duration and album disambiguate search
 /// fallback matches.

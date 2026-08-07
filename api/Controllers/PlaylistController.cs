@@ -19,7 +19,7 @@ public class PlaylistController : AuthenticatedControllerBase
   }
 
   /// <summary>
-  /// Gets all playlists for the authenticated user on the given provider (default Spotify)
+  /// Gets all playlists for the authenticated user on the given provider (default Apple Music)
   /// </summary>
   [HttpGet("user/me")]
   public async Task<IActionResult> GetUserPlaylists([FromQuery] string? provider = null)
@@ -56,7 +56,7 @@ public class PlaylistController : AuthenticatedControllerBase
   }
 
   /// <summary>
-  /// Gets all tracks in a playlist on the given provider (default Spotify)
+  /// Gets all tracks in a playlist on the given provider (default Apple Music)
   /// </summary>
   [HttpGet("playlist/{playlistId}/tracks")]
   public async Task<IActionResult> GetPlaylistTracks(string playlistId, [FromQuery] string? provider = null)
@@ -104,7 +104,7 @@ public class PlaylistController : AuthenticatedControllerBase
     badRequest = null;
     if (string.IsNullOrWhiteSpace(provider))
     {
-      normalizedProvider = MusicProviders.Spotify;
+      normalizedProvider = MusicProviders.AppleMusic;
       return true;
     }
 
@@ -120,6 +120,6 @@ public class PlaylistController : AuthenticatedControllerBase
   private static string ProviderLabel(string provider) => provider switch
   {
     MusicProviders.AppleMusic => "Apple Music",
-    _ => "Spotify"
+    _ => provider
   };
 }

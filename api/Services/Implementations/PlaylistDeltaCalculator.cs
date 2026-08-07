@@ -1,5 +1,5 @@
 using RadioWash.Api.Models.Domain;
-using RadioWash.Api.Models.Spotify;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
@@ -14,8 +14,8 @@ public class PlaylistDeltaCalculator : IPlaylistDeltaCalculator
   }
 
   public async Task<PlaylistDelta> CalculateDeltaAsync(
-      List<SpotifyTrack> sourceTracks,
-      List<SpotifyTrack> targetTracks,
+      List<MusicTrack> sourceTracks,
+      List<MusicTrack> targetTracks,
       List<TrackMapping> existingMappings)
   {
     _logger.LogInformation("Calculating playlist delta for {SourceCount} source tracks, {TargetCount} target tracks, {MappingCount} existing mappings",
@@ -75,7 +75,7 @@ public class PlaylistDeltaCalculator : IPlaylistDeltaCalculator
     return await Task.FromResult(delta);
   }
 
-  private List<string> CalculateDesiredOrder(List<SpotifyTrack> sourceTracks, Dictionary<string, TrackMapping> mappingsBySourceId)
+  private List<string> CalculateDesiredOrder(List<MusicTrack> sourceTracks, Dictionary<string, TrackMapping> mappingsBySourceId)
   {
     var desiredOrder = new List<string>();
 

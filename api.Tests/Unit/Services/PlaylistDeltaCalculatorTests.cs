@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using RadioWash.Api.Models.Domain;
-using RadioWash.Api.Models.Spotify;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 using Xunit;
@@ -23,17 +23,17 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithNewTracksInSource_ShouldIdentifyNewTracks()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1"),
-            CreateSpotifyTrack("2", "Track 2"),
-            CreateSpotifyTrack("3", "Track 3") // New track
+            CreateTrack("1", "Track 1"),
+            CreateTrack("2", "Track 2"),
+            CreateTrack("3", "Track 3") // New track
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)"),
-            CreateSpotifyTrack("clean-2", "Track 2 (Clean)")
+            CreateTrack("clean-1", "Track 1 (Clean)"),
+            CreateTrack("clean-2", "Track 2 (Clean)")
         };
 
     var existingMappings = new List<TrackMapping>
@@ -56,16 +56,16 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithMissingTracksInSource_ShouldIdentifyTracksToRemove()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1")
+            CreateTrack("1", "Track 1")
             // Track 2 is missing from source
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)"),
-            CreateSpotifyTrack("clean-2", "Track 2 (Clean)")
+            CreateTrack("clean-1", "Track 1 (Clean)"),
+            CreateTrack("clean-2", "Track 2 (Clean)")
         };
 
     var existingMappings = new List<TrackMapping>
@@ -88,15 +88,15 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithMappedTracksNotInTarget_ShouldIdentifyTracksToAdd()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1"),
-            CreateSpotifyTrack("2", "Track 2")
+            CreateTrack("1", "Track 1"),
+            CreateTrack("2", "Track 2")
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)")
+            CreateTrack("clean-1", "Track 1 (Clean)")
             // clean-2 is missing from target but has mapping
         };
 
@@ -120,16 +120,16 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithNoChanges_ShouldReturnEmptyDelta()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1"),
-            CreateSpotifyTrack("2", "Track 2")
+            CreateTrack("1", "Track 1"),
+            CreateTrack("2", "Track 2")
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)"),
-            CreateSpotifyTrack("clean-2", "Track 2 (Clean)")
+            CreateTrack("clean-1", "Track 1 (Clean)"),
+            CreateTrack("clean-2", "Track 2 (Clean)")
         };
 
     var existingMappings = new List<TrackMapping>
@@ -151,15 +151,15 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithMappingsWithoutCleanMatch_ShouldIgnoreMapping()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1"),
-            CreateSpotifyTrack("2", "Track 2 Explicit")
+            CreateTrack("1", "Track 1"),
+            CreateTrack("2", "Track 2 Explicit")
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)")
+            CreateTrack("clean-1", "Track 1 (Clean)")
         };
 
     var existingMappings = new List<TrackMapping>
@@ -181,18 +181,18 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_ShouldCalculateDesiredTrackOrder()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1"),
-            CreateSpotifyTrack("2", "Track 2"),
-            CreateSpotifyTrack("3", "Track 3")
+            CreateTrack("1", "Track 1"),
+            CreateTrack("2", "Track 2"),
+            CreateTrack("3", "Track 3")
         };
 
-    var targetTracks = new List<SpotifyTrack>
+    var targetTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("clean-3", "Track 3 (Clean)"),
-            CreateSpotifyTrack("clean-1", "Track 1 (Clean)"),
-            CreateSpotifyTrack("clean-2", "Track 2 (Clean)")
+            CreateTrack("clean-3", "Track 3 (Clean)"),
+            CreateTrack("clean-1", "Track 1 (Clean)"),
+            CreateTrack("clean-2", "Track 2 (Clean)")
         };
 
     var existingMappings = new List<TrackMapping>
@@ -216,8 +216,8 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithEmptyLists_ShouldReturnEmptyDelta()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>();
-    var targetTracks = new List<SpotifyTrack>();
+    var sourceTracks = new List<MusicTrack>();
+    var targetTracks = new List<MusicTrack>();
     var existingMappings = new List<TrackMapping>();
 
     // Act
@@ -234,12 +234,12 @@ public class PlaylistDeltaCalculatorTests
   public async Task CalculateDelta_WithNullTargetTrackId_ShouldSkipMapping()
   {
     // Arrange
-    var sourceTracks = new List<SpotifyTrack>
+    var sourceTracks = new List<MusicTrack>
         {
-            CreateSpotifyTrack("1", "Track 1")
+            CreateTrack("1", "Track 1")
         };
 
-    var targetTracks = new List<SpotifyTrack>();
+    var targetTracks = new List<MusicTrack>();
 
     var existingMappings = new List<TrackMapping>
         {
@@ -255,18 +255,13 @@ public class PlaylistDeltaCalculatorTests
     Assert.Empty(delta.NewTracks);
   }
 
-  private static SpotifyTrack CreateSpotifyTrack(string id, string name, bool isExplicit = false)
+  private static MusicTrack CreateTrack(string id, string name, bool isExplicit = false)
   {
-    return new SpotifyTrack
-    {
-      Id = id,
-      Name = name,
-      Explicit = isExplicit,
-      Artists = new[]
-        {
-                new SpotifyArtist { Name = "Test Artist" }
-            }
-    };
+    return new MusicTrack(
+        Id: id,
+        Name: name,
+        IsExplicit: isExplicit,
+        Artists: new[] { new MusicArtist("Test Artist") });
   }
 
   private static TrackMapping CreateTrackMapping(string sourceTrackId, string? targetTrackId, bool hasCleanMatch)

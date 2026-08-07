@@ -3,7 +3,7 @@ using RadioWash.Api.Models.Music;
 namespace RadioWash.Api.Services.Interfaces;
 
 /// <summary>
-/// Provider-agnostic surface for a music service (Spotify, Apple Music, ...). Cleaners and
+/// Provider-agnostic surface for a music service (Apple Music, ...). Cleaners and
 /// the processor depend on this interface so the same playlist-cleaning logic can drive any
 /// supported platform. Provider-specific quirks (URI formats, search query syntax, OAuth
 /// flows) live inside each concrete implementation.
@@ -11,7 +11,7 @@ namespace RadioWash.Api.Services.Interfaces;
 public interface IMusicService
 {
   /// <summary>
-  /// Identifies which platform this implementation serves (e.g., "spotify", "apple_music").
+  /// Identifies which platform this implementation serves (e.g., "apple_music").
   /// Must match the value stored in <c>CleanPlaylistJob.Provider</c> and the key used to
   /// register the service in DI.
   /// </summary>
@@ -64,8 +64,7 @@ public interface IMusicService
 
   /// <summary>
   /// Adds the given platform-native track IDs to the target playlist. The adapter is
-  /// responsible for any platform-specific URI/identifier formatting (e.g., Spotify's
-  /// <c>spotify:track:&lt;id&gt;</c>). Callers pass raw IDs.
+  /// responsible for any platform-specific URI/identifier formatting. Callers pass raw IDs.
   /// </summary>
   Task AddTracksToPlaylistAsync(
       int userId,

@@ -2,12 +2,10 @@ namespace RadioWash.Api.Models.Domain;
 
 public static class MusicProviders
 {
-  public const string Spotify = "spotify";
   public const string AppleMusic = "apple_music";
 
   private static readonly Dictionary<string, string> SupportedProviders = new(StringComparer.OrdinalIgnoreCase)
   {
-    [Spotify] = Spotify,
     [AppleMusic] = AppleMusic
   };
 
@@ -17,13 +15,11 @@ public static class MusicProviders
   /// </summary>
   public static IReadOnlyCollection<string> All { get; } = SupportedProviders.Values.Distinct().ToArray();
 
-  // Providers whose credentials can be renewed without user interaction. Apple Music is
-  // absent by design: a Music User Token has no refresh flow and no expiry signal, so its
-  // stored ExpiresAt is an assumed lifetime rather than an authority.
-  private static readonly HashSet<string> ProvidersWithTokenRefresh = new(StringComparer.OrdinalIgnoreCase)
-  {
-    Spotify
-  };
+  // Providers whose credentials can be renewed without user interaction. Empty today:
+  // Apple Music's Music User Token has no refresh flow and no expiry signal, so its stored
+  // ExpiresAt is an assumed lifetime rather than an authority. Kept as a concept because a
+  // second provider is expected to have refresh, and the token layer branches on it.
+  private static readonly HashSet<string> ProvidersWithTokenRefresh = new(StringComparer.OrdinalIgnoreCase);
 
   /// <summary>
   /// Whether the provider offers a token refresh flow. False means a stored expiry is a
@@ -54,7 +50,7 @@ public static class MusicProviders
     throw new ArgumentException($"Provider '{provider}' is not supported.");
   }
 
-  public static string NormalizeOrDefault(string? provider, string defaultProvider = Spotify)
+  public static string NormalizeOrDefault(string? provider, string defaultProvider = AppleMusic)
   {
     return string.IsNullOrWhiteSpace(provider)
       ? defaultProvider

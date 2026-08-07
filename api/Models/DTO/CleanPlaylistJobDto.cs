@@ -1,10 +1,12 @@
+using RadioWash.Api.Models.Domain;
+
 namespace RadioWash.Api.Models.DTO;
 
 public class CleanPlaylistJobDto
 {
   public int Id { get; set; }
-  public string Provider { get; set; } = "spotify";
-  public string TargetProvider { get; set; } = "spotify";
+  public string Provider { get; set; } = MusicProviders.AppleMusic;
+  public string TargetProvider { get; set; } = MusicProviders.AppleMusic;
   public string JobType { get; set; } = "clean";
   public bool SwapExplicitForClean { get; set; } = true;
   public string SourcePlaylistId { get; set; } = null!;

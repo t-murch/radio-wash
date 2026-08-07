@@ -13,7 +13,7 @@ public class MusicTokenService : IMusicTokenService
 {
   // Per-(user, provider) semaphore to serialize concurrent refresh attempts. Without this, two
   // concurrent requests that both see an expired token will both POST the refresh_token to the
-  // provider; Spotify invalidates it after first use, locking the user out. This is in-process
+  // provider; some providers invalidate it after first use, locking the user out. This is in-process
   // only (single-server deployment); a distributed lock would be needed for horizontal scaling.
   private static readonly ConcurrentDictionary<(int UserId, string Provider), SemaphoreSlim> RefreshLocks = new();
 
@@ -107,7 +107,7 @@ public class MusicTokenService : IMusicTokenService
       //
       // Keyed on the provider's capability rather than on DI wiring, so a missing refresher
       // registration surfaces as a loud refresh failure instead of silently downgrading
-      // Spotify to "never expires".
+      // a missing expiry to "never expires".
       if (!MusicProviders.SupportsTokenRefresh(provider))
       {
         _logger.LogDebug(

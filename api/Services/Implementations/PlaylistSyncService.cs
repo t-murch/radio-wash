@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Models.Music;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
@@ -8,7 +9,7 @@ namespace RadioWash.Api.Services.Implementations;
 public class PlaylistSyncService : IPlaylistSyncService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ISpotifyService _spotifyService;
+    private readonly IMusicServiceFactory _musicServiceFactory;
     private readonly IPlaylistDeltaCalculator _deltaCalculator;
     private readonly ISubscriptionService _subscriptionService;
     private readonly ISyncTimeCalculator _syncTimeCalculator;
@@ -16,14 +17,14 @@ public class PlaylistSyncService : IPlaylistSyncService
 
     public PlaylistSyncService(
         IUnitOfWork unitOfWork,
-        ISpotifyService spotifyService,
+        IMusicServiceFactory musicServiceFactory,
         IPlaylistDeltaCalculator deltaCalculator,
         ISubscriptionService subscriptionService,
         ISyncTimeCalculator syncTimeCalculator,
         ILogger<PlaylistSyncService> logger)
     {
         _unitOfWork = unitOfWork;
-        _spotifyService = spotifyService;
+        _musicServiceFactory = musicServiceFactory;
         _deltaCalculator = deltaCalculator;
         _subscriptionService = subscriptionService;
         _syncTimeCalculator = syncTimeCalculator;
@@ -66,16 +67,22 @@ public class PlaylistSyncService : IPlaylistSyncService
                 throw new InvalidOperationException("User does not have an active subscription");
             }
 
+            // A sync config carries no provider of its own — it inherits the provider of
+            // the job that produced the clean playlist.
+            var musicService = await ResolveMusicServiceAsync(config);
+
             // 1. Fetch current source playlist
-            var sourcePlaylist = await _spotifyService.GetPlaylistTracksAsync(
+            var sourcePlaylist = await musicService.GetPlaylistTracksAsync(
                 config.UserId,
-                config.SourcePlaylistId
+                config.SourcePlaylistId,
+                CancellationToken.None
             );
 
             // 2. Fetch current target playlist
-            var targetPlaylistTracks = await _spotifyService.GetPlaylistTracksAsync(
+            var targetPlaylistTracks = await musicService.GetPlaylistTracksAsync(
                 config.UserId,
-                config.TargetPlaylistId
+                config.TargetPlaylistId,
+                CancellationToken.None
             );
             var targetPlaylist = targetPlaylistTracks.ToList();
 
@@ -90,19 +97,33 @@ public class PlaylistSyncService : IPlaylistSyncService
             );
 
             // 5. Process new tracks (find clean versions)
-            var newMappings = await ProcessNewTracksAsync(delta.NewTracks, config);
+            var newMappings = await ProcessNewTracksAsync(musicService, delta.NewTracks, config);
 
             // 6. Apply changes to target playlist
-            await ApplyDeltaToPlaylistAsync(config, delta, newMappings);
+            await ApplyDeltaToPlaylistAsync(musicService, config, delta, newMappings);
 
             stopwatch.Stop();
+
+            var tracksAdded = delta.TracksToAdd.Count + newMappings.Count(m => m.HasCleanMatch);
+
+            // Sync is additive: nothing is ever removed (see ApplyDeltaToPlaylistAsync), so
+            // the removed count is always zero and every pre-existing target track is
+            // unchanged. Reporting delta.TracksToRemove here would claim removals that
+            // never happened.
+            if (delta.TracksToRemove.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Sync config {ConfigId}: {DriftCount} track(s) in the clean playlist no longer have a source track. " +
+                    "They are left in place — the provider API cannot remove tracks from a library playlist.",
+                    config.Id, delta.TracksToRemove.Count);
+            }
 
             // 7. Update sync history and config
             await _unitOfWork.SyncHistory.CompleteHistoryAsync(
                 syncHistory.Id,
-                delta.TracksToAdd.Count + newMappings.Count(m => m.HasCleanMatch),
-                delta.TracksToRemove.Count,
-                targetPlaylist.Count - delta.TracksToRemove.Count,
+                tracksAdded,
+                0,
+                targetPlaylist.Count,
                 (int)stopwatch.ElapsedMilliseconds
             );
 
@@ -116,15 +137,15 @@ public class PlaylistSyncService : IPlaylistSyncService
             var nextSync = _syncTimeCalculator.CalculateNextSyncTime(config.SyncFrequency, DateTime.UtcNow);
             await _unitOfWork.SyncConfigs.UpdateNextScheduledSyncAsync(config.Id, nextSync);
 
-            _logger.LogInformation("Sync completed for config {ConfigId}. Added: {Added}, Removed: {Removed}, Time: {ElapsedMs}ms",
-                config.Id, delta.TracksToAdd.Count + newMappings.Count(m => m.HasCleanMatch), delta.TracksToRemove.Count, stopwatch.ElapsedMilliseconds);
+            _logger.LogInformation("Sync completed for config {ConfigId}. Added: {Added}, Time: {ElapsedMs}ms",
+                config.Id, tracksAdded, stopwatch.ElapsedMilliseconds);
 
             return new PlaylistSyncResult
             {
                 Success = true,
-                TracksAdded = delta.TracksToAdd.Count + newMappings.Count(m => m.HasCleanMatch),
-                TracksRemoved = delta.TracksToRemove.Count,
-                TracksUnchanged = targetPlaylist.Count - delta.TracksToRemove.Count,
+                TracksAdded = tracksAdded,
+                TracksRemoved = 0,
+                TracksUnchanged = targetPlaylist.Count,
                 ExecutionTime = stopwatch.Elapsed
             };
         }
@@ -254,7 +275,24 @@ public class PlaylistSyncService : IPlaylistSyncService
         return await _unitOfWork.SyncHistory.GetByConfigIdAsync(syncConfigId, limit);
     }
 
-    private async Task<List<TrackMapping>> ProcessNewTracksAsync(List<Models.Spotify.SpotifyTrack> newTracks, PlaylistSyncConfig config)
+    /// <summary>
+    /// A <see cref="PlaylistSyncConfig"/> has no provider column of its own; it inherits the
+    /// provider of the job whose clean playlist it keeps updated.
+    /// </summary>
+    private async Task<IMusicService> ResolveMusicServiceAsync(PlaylistSyncConfig config)
+    {
+        var job = await _unitOfWork.Jobs.GetByIdAsync(config.OriginalJobId);
+        if (job == null)
+        {
+            throw new InvalidOperationException(
+                $"Sync config {config.Id} references job {config.OriginalJobId}, which no longer exists.");
+        }
+
+        return _musicServiceFactory.GetService(job.TargetProvider);
+    }
+
+    private async Task<List<TrackMapping>> ProcessNewTracksAsync(
+        IMusicService musicService, List<MusicTrack> newTracks, PlaylistSyncConfig config)
     {
         var newMappings = new List<TrackMapping>();
 
@@ -269,14 +307,14 @@ public class PlaylistSyncService : IPlaylistSyncService
         {
             try
             {
-                var cleanTrack = await _spotifyService.FindCleanVersionAsync(config.UserId, track);
+                var cleanTrack = await musicService.FindCleanVersionAsync(config.UserId, track, CancellationToken.None);
                 var mapping = new TrackMapping
                 {
                     JobId = config.OriginalJobId,
                     SourceTrackId = track.Id,
                     SourceTrackName = track.Name,
                     SourceArtistName = string.Join(", ", track.Artists.Select(a => a.Name)),
-                    IsExplicit = track.Explicit,
+                    IsExplicit = track.IsExplicit,
                     HasCleanMatch = cleanTrack != null,
                     TargetTrackId = cleanTrack?.Id,
                     TargetTrackName = cleanTrack?.Name,
@@ -297,27 +335,34 @@ public class PlaylistSyncService : IPlaylistSyncService
         return newMappings;
     }
 
-    private async Task ApplyDeltaToPlaylistAsync(PlaylistSyncConfig config, PlaylistDelta delta, List<TrackMapping> newMappings)
+    /// <summary>
+    /// Applies the delta to the clean playlist. Additive only.
+    /// </summary>
+    /// <remarks>
+    /// Sync never removes tracks, and this is a permanent constraint rather than an
+    /// unfinished feature. Apple Music's REST API offers no way to remove an item from a
+    /// library playlist — it exposes only additions to the Cloud Library and to editable
+    /// playlists. The one removal path Apple provides is native MusicKit rewriting the
+    /// playlist's whole item list, which is available only on Apple platforms and only for
+    /// playlists the app itself created; a .NET service using MusicKit JS cannot reach it.
+    ///
+    /// So <see cref="PlaylistDelta.TracksToRemove"/> is deliberately not acted on. Do not
+    /// "fix" this by adding a remove method to <see cref="IMusicService"/> — the interface
+    /// is add-only by design. The UI states plainly that removals do not propagate.
+    /// </remarks>
+    private async Task ApplyDeltaToPlaylistAsync(
+        IMusicService musicService, PlaylistSyncConfig config, PlaylistDelta delta, List<TrackMapping> newMappings)
     {
-        // Add clean versions of new tracks
+        // Add clean versions of new tracks. The adapter owns any provider-specific ID or
+        // URI formatting, so bare track IDs are passed through.
         var trackIdsToAdd = delta.TracksToAdd.ToList();
         trackIdsToAdd.AddRange(newMappings.Where(m => m.HasCleanMatch && !string.IsNullOrEmpty(m.TargetTrackId)).Select(m => m.TargetTrackId!));
 
         if (trackIdsToAdd.Any())
         {
-            // Convert track IDs to Spotify URIs
-            var trackUris = trackIdsToAdd.Select(id => $"spotify:track:{id}").ToList();
-            _logger.LogInformation("Adding {TrackCount} tracks to playlist {PlaylistId}", trackUris.Count, config.TargetPlaylistId);
-            await _spotifyService.AddTracksToPlaylistAsync(config.UserId, config.TargetPlaylistId, trackUris);
-        }
-
-        // Remove tracks that are no longer in source
-        if (delta.TracksToRemove.Any())
-        {
-            // Convert track IDs to Spotify URIs for removal
-            var trackUrisToRemove = delta.TracksToRemove.Select(id => $"spotify:track:{id}").ToList();
-            _logger.LogInformation("Removing {TrackCount} tracks from playlist {PlaylistId}", trackUrisToRemove.Count, config.TargetPlaylistId);
-            await _spotifyService.RemoveTracksFromPlaylistAsync(config.UserId, config.TargetPlaylistId, trackUrisToRemove);
+            _logger.LogInformation("Adding {TrackCount} tracks to playlist {PlaylistId}", trackIdsToAdd.Count, config.TargetPlaylistId);
+            await musicService.AddTracksToPlaylistAsync(
+                config.UserId, config.TargetPlaylistId, trackIdsToAdd, CancellationToken.None);
         }
     }
 }

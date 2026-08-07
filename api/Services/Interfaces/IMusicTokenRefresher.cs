@@ -14,7 +14,7 @@ public interface IMusicTokenRefresher
 {
   /// <summary>
   /// Provider key used when resolving this refresher via keyed DI. Must match the value
-  /// stored on <see cref="UserMusicToken.Provider"/> for the matching tokens (e.g., "spotify").
+  /// stored on <see cref="UserMusicToken.Provider"/> for the matching tokens.
   /// </summary>
   string ProviderName { get; }
 

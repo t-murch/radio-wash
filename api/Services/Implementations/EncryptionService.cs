@@ -10,6 +10,9 @@ public class EncryptionService : IEncryptionService
   public EncryptionService(IDataProtectionProvider provider)
   {
     // The purpose string makes this protector unique.
+    // Data Protection purpose string. Deliberately unchanged despite the Spotify name:
+    // it is a key-derivation input, so altering it would make every already-encrypted
+    // token undecryptable. It is an opaque identifier, not a statement about providers.
     _protector = provider.CreateProtector("RadioWash.Spotify.v1");
   }
 

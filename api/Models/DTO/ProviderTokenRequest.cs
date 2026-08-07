@@ -1,6 +1,10 @@
 namespace RadioWash.Api.Models.DTO;
 
-public class SpotifyTokenRequest
+/// <summary>
+/// Body for <c>POST /api/auth/tokens/{provider}</c>. Provider-neutral: OAuth happens entirely
+/// in the frontend and the API only receives the already-obtained credentials.
+/// </summary>
+public class ProviderTokenRequest
 {
   public string AccessToken { get; set; } = string.Empty;
 

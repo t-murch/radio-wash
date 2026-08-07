@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace RadioWash.Api.Models.Domain;
 
 /// <summary>
-/// Stores encrypted OAuth tokens for music service providers (Spotify, Apple Music, etc.)
+/// Stores encrypted OAuth tokens for music service providers (Apple Music, etc.)
 /// Implements secure token storage with encryption, validation, and automatic refresh capabilities
 /// </summary>
 public class UserMusicToken
@@ -15,7 +15,7 @@ public class UserMusicToken
 
   [Required]
   [MaxLength(50)]
-  public string Provider { get; set; } = null!; // "spotify", "apple_music", etc.
+  public string Provider { get; set; } = null!; // "apple_music", etc.
 
   /// <summary>
   /// Encrypted access token using ASP.NET Core Data Protection API

@@ -9,7 +9,6 @@ using RadioWash.Api.Infrastructure.Data;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.DTO;
 using RadioWash.Api.Services.Interfaces;
-using SpotifyAPI.Web;
 
 namespace RadioWash.Api.Controllers;
 
@@ -17,8 +16,10 @@ namespace RadioWash.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-  // Spotify access tokens expire in 3600 seconds.
-  private const int SpotifyExpiresInSeconds = 3600;
+  // Fallback assumed lifetime for a provider that reports no expiry of its own. One hour is
+  // the conventional OAuth access-token lifetime and errs short: a premature reconnect prompt
+  // is recoverable, a token believed valid past its death is not.
+  private const int DefaultExpiresInSeconds = 3600;
 
   private readonly ILogger<AuthController> _logger;
   private readonly IMemoryCache _memoryCache;
@@ -54,18 +55,18 @@ public class AuthController : ControllerBase
   private int ExpiresInSecondsFor(string provider) => provider switch
   {
     MusicProviders.AppleMusic => _appleMusicSettings.UserTokenAssumedLifetimeDays * 24 * 3600,
-    _ => SpotifyExpiresInSeconds
+    _ => DefaultExpiresInSeconds
   };
 
 
   /// <summary>
   /// Stores OAuth tokens for a music provider received from the frontend OAuth callback.
-  /// Replaces the provider-specific <c>/spotify/tokens</c> route; that route remains as an
-  /// <c>[Obsolete]</c> alias until the frontend migrates.
+  /// Provider-neutral: the frontend performs the OAuth/MusicKit dance and posts the
+  /// resulting credentials here.
   /// </summary>
   [HttpPost("tokens/{provider}")]
   [Authorize]
-  public async Task<IActionResult> StoreTokens(string provider, [FromBody] SpotifyTokenRequest request)
+  public async Task<IActionResult> StoreTokens(string provider, [FromBody] ProviderTokenRequest request)
   {
     if (!MusicProviders.TryNormalize(provider, out var normalizedProvider))
     {
@@ -158,8 +159,7 @@ public class AuthController : ControllerBase
   /// <summary>
   /// Disconnects a music provider by deleting the tokens stored for the authenticated user.
   /// This is the extent of what the server can do: neither provider supports revoking the
-  /// credential itself from here — Spotify has no OAuth revocation endpoint (users remove
-  /// the app at spotify.com/account/apps) and Apple Music User Tokens are managed in Apple's
+  /// credential itself from here — Apple Music User Tokens are managed in Apple's
   /// settings. The frontend additionally drops the browser-side MusicKit grant for Apple.
   /// Idempotent: disconnecting an already-disconnected provider succeeds.
   /// </summary>
@@ -226,11 +226,6 @@ public class AuthController : ControllerBase
 
   private static string[] ScopesForProvider(string provider) => provider.ToLowerInvariant() switch
   {
-    MusicProviders.Spotify => new[]
-    {
-      "user-read-private", "user-read-email", "playlist-read-private",
-      "playlist-read-collaborative", "playlist-modify-public", "playlist-modify-private"
-    },
     // Apple Music user tokens are scope-less; authorization is all-or-nothing via MusicKit.
     MusicProviders.AppleMusic => Array.Empty<string>(),
     _ => Array.Empty<string>()
@@ -287,7 +282,7 @@ public class AuthController : ControllerBase
         if (user != null)
         {
           // Every provider, not a hardcoded list — this path previously only revoked
-          // Spotify and silently left Apple Music connected on shared devices.
+          // one provider and silently left another connected on shared devices.
           foreach (var provider in MusicProviders.All)
           {
             await _musicTokenService.RevokeTokensAsync(user.Id, provider);
