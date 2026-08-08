@@ -138,9 +138,9 @@ export function ProviderConnectionStatus({
 
   if (status.loading) {
     return (
-      <div className="bg-card rounded-lg shadow p-6">
+      <div className="rounded-md border border-border bg-card p-6">
         <div className="flex items-center space-x-3">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-success"></div>
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
           <span className="text-muted-foreground">
             Checking {label} connection...
           </span>
@@ -157,7 +157,7 @@ export function ProviderConnectionStatus({
     : null;
 
   return (
-    <div className="bg-card rounded-lg shadow p-6">
+    <div className="rounded-md border border-border bg-card p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div
@@ -193,7 +193,7 @@ export function ProviderConnectionStatus({
           <button
             onClick={handleConnect}
             disabled={connectDisabled}
-            className="px-4 py-2 bg-success text-success-foreground rounded-md hover:bg-success-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-success text-sm font-medium disabled:opacity-50"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
           >
             {connecting ? 'Connecting...' : `Connect ${label}`}
           </button>
@@ -205,7 +205,7 @@ export function ProviderConnectionStatus({
               <button
                 onClick={handleConnect}
                 disabled={connectDisabled}
-                className="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
+                className="px-4 py-2 border border-input bg-background text-foreground rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
               >
                 Reconnect
               </button>

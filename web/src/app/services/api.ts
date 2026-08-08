@@ -176,12 +176,21 @@ const toApiError = (
   );
 };
 
-// Server-side API function
-export const fetchWithSupabaseAuthServer = async (
+// The server and client wrappers differ only in how the Supabase client is
+// constructed; everything after the session lookup is shared here.
+interface SupabaseSessionSource {
+  auth: {
+    getSession(): Promise<{
+      data: { session: { access_token: string } | null };
+    }>;
+  };
+}
+
+const fetchWithAuth = async (
+  supabase: SupabaseSessionSource,
   url: string,
   options: RequestInit = {}
 ) => {
-  const supabase = await createServerClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -218,49 +227,18 @@ export const fetchWithSupabaseAuthServer = async (
   }
   return;
 };
+
+// Server-side API function
+export const fetchWithSupabaseAuthServer = async (
+  url: string,
+  options: RequestInit = {}
+) => fetchWithAuth(await createServerClient(), url, options);
 
 // Client-side API function
 export const fetchWithSupabaseAuth = async (
   url: string,
   options: RequestInit = {}
-) => {
-  const supabase = createClientClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const token = session?.access_token;
-
-  if (!token) {
-    throw new Error('User not authenticated');
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(
-      `API Error: ${response.status} ${response.statusText}`,
-      `Error Body: "${errorBody}"`,
-      `URL: "${url}"`
-    );
-    throw toApiError(response.status, response.statusText, errorBody);
-  }
-
-  const contentType = response.headers.get('content-type');
-  if (contentType && contentType.indexOf('application/json') !== -1) {
-    const json = await response.json();
-    return json;
-  }
-  return;
-};
+) => fetchWithAuth(createClientClient(), url, options);
 
 // --- Server-side API Functions ---
 export const getMeServer = async (): Promise<User> => {
@@ -350,7 +328,9 @@ export const getUserPlaylists = (
 ): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
 > =>
-  fetchWithSupabaseAuth(`${API_BASE_URL}/playlist/user/me?provider=${provider}`);
+  fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlist/user/me?provider=${provider}`
+  );
 
 export const getJobTrackMappings = (
   userId: number,
@@ -395,9 +375,10 @@ export const getSubscriptionStatus = (): Promise<SubscriptionStatus> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/status`);
 };
 
-export const getCurrentSubscription = (): Promise<UserSubscriptionDto | null> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
-};
+export const getCurrentSubscription =
+  (): Promise<UserSubscriptionDto | null> => {
+    return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/current`);
+  };
 
 export interface SubscriptionPlanDto {
   id: number;
@@ -420,7 +401,10 @@ export const subscribeToSync = (): Promise<{ checkoutUrl?: string }> => {
   // resolved server-side. clientRequestId makes the checkout idempotent.
   return fetchWithSupabaseAuth(`${API_BASE_URL}/subscription/checkout`, {
     method: 'POST',
-    body: JSON.stringify({ planId: null, clientRequestId: crypto.randomUUID() }),
+    body: JSON.stringify({
+      planId: null,
+      clientRequestId: crypto.randomUUID(),
+    }),
   });
 };
 
@@ -455,14 +439,18 @@ export const cancelSubscription = (): Promise<{
 };
 
 // --- Sync Management API Functions ---
-export const enableSyncForJob = (jobId: number): Promise<PlaylistSyncConfig> => {
+export const enableSyncForJob = (
+  jobId: number
+): Promise<PlaylistSyncConfig> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/enable`, {
     method: 'POST',
     body: JSON.stringify({ jobId }),
   });
 };
 
-export const disableSync = (syncConfigId: number): Promise<{ success: boolean }> => {
+export const disableSync = (
+  syncConfigId: number
+): Promise<{ success: boolean }> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}`, {
     method: 'DELETE',
   });
@@ -476,16 +464,24 @@ export const updateSyncFrequency = (
   syncConfigId: number,
   frequency: string
 ): Promise<PlaylistSyncConfig> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`, {
-    method: 'PATCH',
-    body: JSON.stringify({ frequency }),
-  });
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ frequency }),
+    }
+  );
 };
 
-export const triggerManualSync = (syncConfigId: number): Promise<SyncResult> => {
-  return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync/${syncConfigId}/sync`, {
-    method: 'POST',
-  });
+export const triggerManualSync = (
+  syncConfigId: number
+): Promise<SyncResult> => {
+  return fetchWithSupabaseAuth(
+    `${API_BASE_URL}/playlistsync/${syncConfigId}/sync`,
+    {
+      method: 'POST',
+    }
+  );
 };
 
 export const getSyncHistory = (
