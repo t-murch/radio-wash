@@ -92,11 +92,12 @@
   --radius: 3px;
 
   /*
-   * The display serif has not been chosen yet — the design exploration ran on a
-   * system fallback stack. This variable is the seam: swap in the real face
-   * here and every heading follows. Keep layout conservative until it lands.
+   * Source Serif 4, loaded by next/font in layout.tsx as --font-display-face and
+   * self-hosted at build time. The system serifs behind it cover the moment
+   * before the font file lands and any environment that blocks it.
    */
-  --font-display: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-display: var(--font-display-face), ui-serif, Georgia, Cambria,
+    'Times New Roman', Times, serif;
   --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -224,5 +225,15 @@
     font-family: var(--font-display);
     /* Keep multi-line headings from stranding a single word on the last line. */
     text-wrap: balance;
+  }
+}
+
+@layer utilities {
+  /*
+   * Fixed-width digits. Anywhere a number updates in place — the job progress
+   * counter above all — proportional figures make the text jitter as it counts.
+   */
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

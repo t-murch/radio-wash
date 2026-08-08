@@ -4,15 +4,33 @@ import { ThemeProvider } from './providers/ThemeProvider';
 import { Toaster } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
 import { Metadata, Viewport } from 'next';
+import { Source_Serif_4 } from 'next/font/google';
 import PlausibleProvider from 'next-plausible';
+
+/**
+ * The display serif that carries the warm editorial direction. Self-hosted at
+ * build time by next/font, so there is no CDN request and no flash of fallback
+ * text. Variable weight: one file covers every heading size.
+ *
+ * Chosen for legibility at small sizes — CardTitle and section headings use it,
+ * not just hero copy — and for real tabular figures, which the job progress
+ * counter ("88 of 187") depends on to avoid digits jittering as it counts up.
+ */
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-display-face',
+});
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
+  // Matches --background in globals.css so the browser chrome does not flash a
+  // colour the page never uses.
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+    { media: '(prefers-color-scheme: light)', color: '#fbf8f2' },
+    { media: '(prefers-color-scheme: dark)', color: '#17140f' },
   ],
 };
 
@@ -82,7 +100,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={sourceSerif.variable}>
       <head>
         <PlausibleProvider domain="radiowash.com" />
       </head>

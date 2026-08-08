@@ -51,6 +51,16 @@ const signInWithProvider = async (provider: IdentityProvider) => {
 export const signInWithApple = async () => signInWithProvider('apple');
 export const signInWithGoogle = async () => signInWithProvider('google');
 
+/**
+ * Clears the session server-side so the auth cookie is actually removed, then
+ * returns the user to the landing page.
+ */
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect('/');
+}
+
 export type MagicLinkState = {
   status: 'idle' | 'sent' | 'error';
   email?: string;

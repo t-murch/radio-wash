@@ -1,30 +1,28 @@
 import { Metadata } from 'next';
+
+import { createClient } from '@/lib/supabase/server';
 import LandingPage from './components/ux/LandingPage';
 import { StructuredData } from './components/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Clean Your Spotify Playlists - AI-Powered Explicit Content Filter',
+  title: 'RadioWash — clean copies of your Apple Music playlists',
   description:
-    'Transform explicit Spotify playlists into clean versions with RadioWash. Our AI-powered tool automatically finds clean alternatives for explicit tracks with an 80%+ success rate. Perfect for family listening, work environments, and personal preference. Free to use, no credit card required.',
+    'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
   keywords: [
-    'Spotify playlist cleaner',
-    'remove explicit lyrics',
-    'clean music filter',
-    'family-friendly Spotify',
-    'explicit content remover',
+    'Apple Music playlist cleaner',
+    'clean version playlist',
+    'radio edit playlist',
+    'remove explicit tracks',
+    'family-friendly Apple Music',
     'clean playlist generator',
-    'Spotify explicit filter',
-    'AI music matching',
-    'clean alternatives',
-    'work-safe music',
   ],
   alternates: {
     canonical: 'https://radiowash.com',
   },
   openGraph: {
-    title: 'RadioWash - Clean Your Spotify Playlists Instantly',
+    title: 'RadioWash — clean copies of your Apple Music playlists',
     description:
-      'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks. 80%+ success rate, completely free.',
+      'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
     url: 'https://radiowash.com',
     siteName: 'RadioWash',
     type: 'website',
@@ -32,17 +30,25 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'RadioWash - Clean Your Spotify Playlists Instantly',
+    title: 'RadioWash — clean copies of your Apple Music playlists',
     description:
-      'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks. 80%+ success rate, completely free.',
+      'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  // The landing page greets a returning user differently, so it needs to know
+  // whether there is a session. getUser() validates against Supabase rather than
+  // trusting the cookie's contents.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <>
       <StructuredData />
-      <LandingPage />
+      <LandingPage signedIn={Boolean(user)} email={user?.email ?? undefined} />
     </>
   );
 }

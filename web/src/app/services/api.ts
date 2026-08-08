@@ -314,6 +314,15 @@ export const getConnectionStatus = (
 ): Promise<ConnectionStatus> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/auth/status/${provider}`);
 
+/**
+ * Server-side connection check. Onboarding needs this before it renders: deciding
+ * which step to show on the client would flash the wrong screen first.
+ */
+export const getConnectionStatusServer = (
+  provider: MusicProvider
+): Promise<ConnectionStatus> =>
+  fetchWithSupabaseAuthServer(`${API_BASE_URL}/auth/status/${provider}`);
+
 export const storeProviderTokens = (
   provider: MusicProvider,
   accessToken: string,

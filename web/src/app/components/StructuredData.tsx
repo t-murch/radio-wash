@@ -1,26 +1,32 @@
+import { FAQ } from '@/lib/content/landing';
+
+const SITE_URL = 'https://radiowash.com';
+
+/**
+ * Schema.org metadata for search results.
+ *
+ * The FAQ entries come from the same source as the visible page. They used to be
+ * hand-copied here, which meant search results could quote answers the page no
+ * longer gave.
+ */
 export function StructuredData() {
   const websiteSchema = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'RadioWash',
-    url: 'https://radiowash.com',
+    url: SITE_URL,
     description:
-      'Transform explicit Spotify playlists into clean versions with AI-powered matching',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: 'https://radiowash.com/auth',
-      'query-input': 'required name=search_term_string',
-    },
+      'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched.',
   };
 
   const organizationSchema = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'RadioWash',
-    url: 'https://radiowash.com',
-    logo: 'https://radiowash.com/icon.png',
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.png`,
     description:
-      'AI-powered tool to clean explicit content from Spotify playlists',
+      'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
     foundingDate: '2024',
     sameAs: [],
   };
@@ -31,76 +37,53 @@ export function StructuredData() {
     name: 'RadioWash',
     applicationCategory: 'MultimediaApplication',
     operatingSystem: 'Web',
-    offers: {
-      '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'USD',
-    },
-    description:
-      'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks with an 80%+ success rate.',
-    featureList: [
-      'AI-Powered Matching',
-      'Lightning Fast Processing',
-      'Secure & Private',
-      'High Success Rate (80%+)',
-      'Preserves Quality',
-      'Completely Free',
+    // Two offers, because the free and paid parts are genuinely different things:
+    // cleaning is free without limit, and Auto-Sync is the only paid feature.
+    offers: [
+      {
+        '@type': 'Offer',
+        name: 'Playlist cleaning',
+        price: '0',
+        priceCurrency: 'USD',
+      },
+      {
+        '@type': 'Offer',
+        name: 'Auto-Sync',
+        price: '5.00',
+        priceCurrency: 'USD',
+      },
     ],
+    description:
+      'RadioWash creates clean copies of Apple Music playlists: the same songs with radio edits substituted where they exist. Tracks without a clean version are left out, so the copy contains only non-explicit material. The original playlist is never changed. Cleaning is free; Auto-Sync ($5/month) keeps a copy in step with its source. Requires an active Apple Music subscription.',
   };
 
   const faqSchema = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: [
-      {
-        '@type': 'Question',
-        name: 'How does RadioWash find clean alternatives?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: "We use advanced matching algorithms to search Spotify's catalog for clean versions of the same songs by the same artists, or similar tracks with clean lyrics.",
-        },
+    mainEntity: FAQ.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
       },
-      {
-        '@type': 'Question',
-        name: 'Is my Spotify data safe?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Absolutely. We only access your playlists to read track information and create new clean playlists. We never store your personal data or modify your existing playlists.',
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'What if no clean version exists?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: "If we can't find a clean alternative, the track simply won't be included in the new playlist. You'll see a detailed report of what was and wasn't matched.",
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'Does this work with all Spotify accounts?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Yes! RadioWash works with both free and premium Spotify accounts.',
-        },
-      },
-    ],
+    })),
   };
 
   return (
     <>
-      <script type="application/ld+json">
-        {JSON.stringify(websiteSchema)}
-      </script>
-      <script type="application/ld+json">
-        {JSON.stringify(organizationSchema)}
-      </script>
-      <script type="application/ld+json">
-        {JSON.stringify(softwareApplicationSchema)}
-      </script>
-      <script type="application/ld+json">
-        {JSON.stringify(faqSchema)}
-      </script>
+      {[
+        websiteSchema,
+        organizationSchema,
+        softwareApplicationSchema,
+        faqSchema,
+      ].map((schema, i) => (
+        <script
+          key={i}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+        />
+      ))}
     </>
   );
 }
