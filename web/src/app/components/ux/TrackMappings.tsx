@@ -63,7 +63,11 @@ function TrackLink({
   );
 }
 
-export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps) {
+export default function TrackMappings({
+  userId,
+  jobId,
+  job,
+}: TrackMappingsProps) {
   const [trackMappings, setTrackMappings] = useState<TrackMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,10 +148,10 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
   }
 
   return (
-    <div className="bg-card shadow rounded-lg">
+    <div className="rounded-md border border-border bg-card">
       {/* Fixed Header */}
-      <div className="p-6 border-b border bg-card rounded-t-lg">
-        <h2 className="text-xl font-semibold text-foreground mb-4">
+      <div className="p-6 border-b border-border">
+        <h2 className="font-display text-xl font-semibold text-foreground mb-4">
           Track Mappings
         </h2>
 
@@ -157,9 +161,9 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1 text-sm rounded-full ${
+              className={`px-3 py-1 text-sm rounded-sm ${
                 filter === f
-                  ? 'bg-info text-info-foreground'
+                  ? 'bg-foreground text-background'
                   : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -240,7 +244,10 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
                             <TrackLink
                               provider={targetProvider}
                               trackId={mapping.targetTrackId}
-                              name={truncateText(mapping.targetTrackName || '', 40)}
+                              name={truncateText(
+                                mapping.targetTrackName || '',
+                                40
+                              )}
                               className="block text-sm font-medium text-foreground hover:underline"
                             />
                             <p
@@ -249,11 +256,15 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
                             >
                               {truncateText(mapping.targetArtistName || '', 40)}
                             </p>
-                            {isCopy && <MatchMethodChip method={mapping.matchMethod} />}
+                            {isCopy && (
+                              <MatchMethodChip method={mapping.matchMethod} />
+                            )}
                           </div>
                         ) : mapping.isExplicit || isCopy ? (
                           <span className="text-sm text-muted-foreground">
-                            {isCopy ? 'No match found' : 'No clean version found'}
+                            {isCopy
+                              ? 'No match found'
+                              : 'No clean version found'}
                           </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">
@@ -272,7 +283,7 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
               {filteredMappings.map((mapping) => (
                 <div
                   key={mapping.id}
-                  className="border rounded-lg p-4 bg-muted/50"
+                  className="rounded-md border border-border p-4 bg-muted/50"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
@@ -298,7 +309,7 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
                   </div>
 
                   {(mapping.isExplicit || isCopy) && (
-                    <div className="pt-3 border-t border">
+                    <div className="pt-3 border-t border-border">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                         {matchedColumnLabel}
                       </p>
@@ -316,7 +327,9 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
                           >
                             {mapping.targetArtistName}
                           </p>
-                          {isCopy && <MatchMethodChip method={mapping.matchMethod} />}
+                          {isCopy && (
+                            <MatchMethodChip method={mapping.matchMethod} />
+                          )}
                         </div>
                       ) : (
                         <span className="text-sm text-muted-foreground">
