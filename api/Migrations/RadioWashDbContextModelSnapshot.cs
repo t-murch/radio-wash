@@ -79,7 +79,7 @@ namespace RadioWash.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasDefaultValue("spotify");
+                        .HasDefaultValue("apple_music");
 
                     b.Property<string>("SourcePlaylistId")
                         .IsRequired()
@@ -110,7 +110,7 @@ namespace RadioWash.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasDefaultValue("spotify");
+                        .HasDefaultValue("apple_music");
 
                     b.Property<int>("TotalTracks")
                         .HasColumnType("integer");

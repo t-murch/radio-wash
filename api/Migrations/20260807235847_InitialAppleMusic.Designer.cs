@@ -12,8 +12,8 @@ using RadioWash.Api.Infrastructure.Data;
 namespace RadioWash.Api.Migrations
 {
     [DbContext(typeof(RadioWashDbContext))]
-    [Migration("20260720215251_AddCrossServiceCopyJobFields")]
-    partial class AddCrossServiceCopyJobFields
+    [Migration("20260807235847_InitialAppleMusic")]
+    partial class InitialAppleMusic
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -82,7 +82,7 @@ namespace RadioWash.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasDefaultValue("spotify");
+                        .HasDefaultValue("apple_music");
 
                     b.Property<string>("SourcePlaylistId")
                         .IsRequired()
@@ -113,7 +113,7 @@ namespace RadioWash.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasDefaultValue("spotify");
+                        .HasDefaultValue("apple_music");
 
                     b.Property<int>("TotalTracks")
                         .HasColumnType("integer");
@@ -254,6 +254,9 @@ namespace RadioWash.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
 
@@ -265,11 +268,16 @@ namespace RadioWash.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsSuccessful")
-                        .HasColumnType("boolean");
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("ProcessedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -525,6 +533,9 @@ namespace RadioWash.Api.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("CanceledAt")
                         .HasColumnType("timestamp with time zone");

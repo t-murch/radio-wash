@@ -81,6 +81,11 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
 
     services.AddScoped<IPlaylistCleanerFactory, PlaylistCleanerFactory>();
     services.AddScoped<IMusicServiceFactory, MusicServiceFactory>();
+    // CleanPlaylistJobProcessor still takes IPlaylistCopier: the copy path is retained
+    // dormant for a future second provider. It is unreachable in a single-provider build,
+    // but the constructor dependency is real, so DI has to satisfy it.
+    services.AddScoped<ITrackMatcher, TrackMatcher>();
+    services.AddScoped<IPlaylistCopier, PlaylistCopier>();
     services.AddScoped<ICleanPlaylistJobProcessor, CleanPlaylistJobProcessor>();
 
     // Fake data-protection-backed encryption needs a data protection provider. Add the
