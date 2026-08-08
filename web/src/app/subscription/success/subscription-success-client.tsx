@@ -30,8 +30,7 @@ type ActivationState =
 // 403/404 mean the session doesn't exist or belongs to another user —
 // retrying cannot succeed, and no payment can be claimed.
 const isSessionRejection = (error: unknown) =>
-  error instanceof ApiError &&
-  (error.status === 403 || error.status === 404);
+  error instanceof ApiError && (error.status === 403 || error.status === 404);
 
 // A 401 means the session expired — no amount of polling can succeed until
 // the user signs in again.
@@ -91,8 +90,7 @@ export function SubscriptionSuccessClient({
       // checkout/complete is idempotent and designed for retry — after a
       // transient failure, re-attempt it on every other tick instead of
       // relying solely on GET /status.
-      const reconcileThisTick =
-        needsReconcile && !!sessionId && tick % 2 === 0;
+      const reconcileThisTick = needsReconcile && !!sessionId && tick % 2 === 0;
       try {
         let status;
         if (reconcileThisTick && sessionId) {
@@ -229,11 +227,11 @@ export function SubscriptionSuccessClient({
         {state === 'checking' && (
           <div className="text-center">
             <div
-              className="mx-auto h-12 w-12 rounded-full border-4 border-muted border-t-brand animate-spin mb-4"
+              className="mx-auto h-12 w-12 rounded-full border-4 border-muted border-t-primary animate-spin mb-4"
               role="status"
               aria-label="Checking"
             ></div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               Checking subscription status…
             </h1>
             <p className="text-lg text-muted-foreground">
@@ -245,11 +243,11 @@ export function SubscriptionSuccessClient({
         {state === 'activating' && (
           <div className="text-center">
             <div
-              className="mx-auto h-12 w-12 rounded-full border-4 border-muted border-t-brand animate-spin mb-4"
+              className="mx-auto h-12 w-12 rounded-full border-4 border-muted border-t-primary animate-spin mb-4"
               role="status"
               aria-label="Activating"
             ></div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               Activating your subscription…
             </h1>
             <p className="text-lg text-muted-foreground">
@@ -275,7 +273,7 @@ export function SubscriptionSuccessClient({
                 />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               Still activating…
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
@@ -283,11 +281,7 @@ export function SubscriptionSuccessClient({
               checking automatically — you can also head to the dashboard and
               come back later.
             </p>
-            <Button
-              onClick={() => router.push('/dashboard')}
-              size="lg"
-              className="bg-info hover:bg-info-hover text-info-foreground"
-            >
+            <Button onClick={() => router.push('/dashboard')} size="lg">
               Go to Dashboard
             </Button>
           </div>
@@ -310,7 +304,7 @@ export function SubscriptionSuccessClient({
                 />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               Activation still pending
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
@@ -318,11 +312,7 @@ export function SubscriptionSuccessClient({
               be processing — check the subscription page in a few minutes, and
               contact support if your subscription doesn&apos;t appear.
             </p>
-            <Button
-              onClick={() => router.push('/subscription')}
-              size="lg"
-              className="bg-brand hover:bg-brand-hover text-brand-foreground"
-            >
+            <Button onClick={() => router.push('/subscription')} size="lg">
               Go to Subscription
             </Button>
           </div>
@@ -345,18 +335,14 @@ export function SubscriptionSuccessClient({
                 />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               We couldn&apos;t verify this checkout session
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
               This link may be outdated or belong to a different account. Check
               your subscription status on the subscription page.
             </p>
-            <Button
-              onClick={() => router.push('/subscription')}
-              size="lg"
-              className="bg-brand hover:bg-brand-hover text-brand-foreground"
-            >
+            <Button onClick={() => router.push('/subscription')} size="lg">
               Go to Subscription
             </Button>
           </div>
@@ -380,7 +366,7 @@ export function SubscriptionSuccessClient({
               </svg>
             </div>
 
-            <h1 className="text-3xl font-bold text-foreground mb-2">
+            <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
               Subscription Successful!
             </h1>
 
@@ -414,11 +400,7 @@ export function SubscriptionSuccessClient({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                onClick={() => router.push('/dashboard')}
-                size="lg"
-                className="bg-info hover:bg-info-hover text-info-foreground"
-              >
+              <Button onClick={() => router.push('/dashboard')} size="lg">
                 Go to Dashboard
               </Button>
               <Button

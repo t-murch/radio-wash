@@ -128,11 +128,11 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
       />
       <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground">
-            Subscription Management
+          <h1 className="font-display text-3xl font-semibold text-foreground">
+            Auto-Sync
           </h1>
           <p className="text-muted-foreground mt-2">
-            Manage your RadioWash sync subscription
+            The one paid feature: keeping your clean copies current.
           </p>
         </div>
 
@@ -140,8 +140,8 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
           {subscriptionStatus?.hasActiveSubscription ? (
             <div className="space-y-6">
               <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 bg-success rounded-full"></div>
-                <h2 className="text-xl font-semibold text-foreground">
+                <div className="w-2.5 h-2.5 bg-success rounded-full"></div>
+                <h2 className="font-display text-xl font-semibold text-foreground">
                   Active Subscription
                 </h2>
               </div>
@@ -194,10 +194,15 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
                 <div className="space-y-2">
                   <h3 className="font-medium text-foreground">Features</h3>
                   <ul className="text-sm space-y-1 text-muted-foreground">
-                    <li>✓ Automatic daily playlist synchronization</li>
-                    <li>✓ Unlimited playlist sync configurations</li>
-                    <li>✓ Manual sync triggering</li>
-                    <li>✓ Sync history and status tracking</li>
+                    <li>
+                      Daily sync — new songs get their clean versions added
+                    </li>
+                    <li>
+                      Up to {CURRENT_PLAN.FEATURES.MAX_PLAYLISTS} synced
+                      playlists
+                    </li>
+                    <li>Manual sync anytime</li>
+                    <li>Sync history and status</li>
                   </ul>
                 </div>
               </div>
@@ -243,147 +248,74 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
               )}
             </div>
           ) : (
-            <div className="text-center space-y-8">
-              <div>
-                <h2 className="text-3xl font-bold text-foreground mb-3">
-                  Never Manually Update Playlists Again
+            <div className="mx-auto max-w-xl space-y-8">
+              <div className="space-y-3">
+                <h2 className="font-display text-2xl font-semibold text-foreground">
+                  A clean copy is a snapshot of the day you made it
                 </h2>
-                <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                  Your source playlists change. Your clean playlists should too.
-                  Auto-Sync keeps everything updated automatically.
+                <p className="text-muted-foreground">
+                  Auto-Sync checks your source playlist daily and adds the clean
+                  versions of any new songs, so the copy keeps up without you
+                  re-running jobs.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  It only ever adds — nothing is removed from your copy.
                 </p>
               </div>
 
-              {/* Value Proposition */}
-              <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-info-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span className="text-2xl">⏰</span>
-                  </div>
-                  <h3 className="font-semibold text-foreground mb-2">
-                    Save Time
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    No more checking for changes or running new jobs manually
-                  </p>
-                </div>
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-success-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span className="text-2xl">🎯</span>
-                  </div>
-                  <h3 className="font-semibold text-foreground mb-2">
-                    Stay Updated
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Your clean playlists automatically reflect source changes
-                  </p>
-                </div>
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-brand/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span className="text-2xl">🔄</span>
-                  </div>
-                  <h3 className="font-semibold text-foreground mb-2">
-                    Set & Forget
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Enable once, works forever in the background
-                  </p>
-                </div>
-              </div>
-
-              {/* Pricing Card */}
-              <div className="bg-gradient-to-br from-brand/10 to-info/10 border border-brand/50 rounded-xl p-8 max-w-md mx-auto">
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-4">
-                    <span className="text-4xl font-bold text-foreground">
-                      {CURRENT_PLAN.MARKETING_PRICE}
-                    </span>
-                    <span className="text-muted-foreground ml-1">/month</span>
-                  </div>
-                  <h3 className="text-xl font-semibold text-foreground mb-4">
+              <div className="rounded-md border border-border bg-background p-6">
+                <div className="flex items-baseline justify-between">
+                  <h3 className="font-display text-lg font-semibold text-foreground">
                     Sync Plan
                   </h3>
-
-                  <div className="space-y-3 text-left mb-6">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Playlists</span>
-                      <span className="font-medium text-foreground">
-                        Up to 10
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Tracks per playlist
-                      </span>
-                      <span className="font-medium text-foreground">
-                        Up to 200
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Sync frequency
-                      </span>
-                      <span className="font-medium text-foreground">Daily</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Manual triggering
-                      </span>
-                      <span className="font-medium text-foreground">
-                        ✓ Included
-                      </span>
-                    </div>
-                  </div>
+                  <p className="text-foreground">
+                    <span className="tabular text-2xl font-semibold">
+                      {CURRENT_PLAN.MARKETING_PRICE}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      /month
+                    </span>
+                  </p>
                 </div>
+                <dl className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Synced playlists</dt>
+                    <dd className="font-medium text-foreground">
+                      Up to {CURRENT_PLAN.FEATURES.MAX_PLAYLISTS}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">
+                      Checks for new songs
+                    </dt>
+                    <dd className="font-medium text-foreground">Daily</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Manual sync</dt>
+                    <dd className="font-medium text-foreground">Included</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Cancel</dt>
+                    <dd className="font-medium text-foreground">Anytime</dd>
+                  </div>
+                </dl>
               </div>
 
-              {/* Features List */}
-              <div className="bg-card border border-border rounded-lg p-6 max-w-2xl mx-auto">
-                <h3 className="text-lg font-semibold text-foreground mb-4 text-center">
-                  Everything Included
-                </h3>
-                <div className="grid md:grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Daily automatic synchronization</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Smart track matching & cleaning</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Manual sync triggering</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Sync history & status tracking</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Enable/disable anytime</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-success mr-2">✓</span>
-                    <span>Cancel anytime</span>
-                  </div>
-                </div>
+              <div className="space-y-3">
+                <Button
+                  onClick={handleSubscribe}
+                  disabled={subscribeToSyncMutation.isPending}
+                  size="lg"
+                >
+                  {subscribeToSyncMutation.isPending
+                    ? 'Subscribing...'
+                    : 'Subscribe to Sync'}
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Cleaning playlists stays free either way. You can cancel any
+                  time from this page.
+                </p>
               </div>
-
-              <Button
-                onClick={handleSubscribe}
-                disabled={subscribeToSyncMutation.isPending}
-                size="lg"
-                className="bg-brand hover:bg-brand-hover text-brand-foreground"
-              >
-                {subscribeToSyncMutation.isPending
-                  ? 'Subscribing...'
-                  : 'Subscribe to Sync'}
-              </Button>
-
-              <p className="text-xs text-muted-foreground">
-                You can cancel your subscription at any time from this page
-              </p>
             </div>
           )}
         </div>
@@ -391,4 +323,3 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     </div>
   );
 }
-
