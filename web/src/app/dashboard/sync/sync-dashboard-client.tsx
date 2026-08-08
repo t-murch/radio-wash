@@ -122,7 +122,7 @@ function SyncConfigCard({
           size="sm"
           onClick={() => onDisable(config.id)}
           disabled={isProcessing}
-          className="text-red-600 hover:text-red-700"
+          className="text-error hover:text-error-hover"
         >
           Disable
         </Button>
@@ -274,7 +274,7 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
                 </h2>
                 <div className="text-sm text-muted-foreground">
                   Subscription Status: 
-                  <span className="text-green-600 font-medium ml-1">Active</span>
+                  <span className="text-success font-medium ml-1">Active</span>
                 </div>
               </div>
               <Button

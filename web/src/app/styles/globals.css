@@ -1,131 +1,151 @@
 @import 'tailwindcss';
 
-/* Spotify Theme - ShadCN Variables */
+/*
+ * RadioWash — warm editorial.
+ *
+ * A warm off-white ground, a serif display face, and a deep teal reserved for
+ * primary actions and progress. Teal is the only saturated colour in the
+ * interface by design: when everything is quiet, the one thing you can act on
+ * reads instantly. Do not reach for it to decorate.
+ *
+ * Status colours (success/warning/error/info) are muted and earthy so they sit
+ * on the warm ground without shouting; they carry meaning, not emphasis.
+ */
 :root {
-  /* Core Backgrounds - Light Mode */
-  --background: #ffffff; /* Pure white main background */
-  --foreground: #000000; /* Black text */
+  /* Ground and ink */
+  --background: #fbf8f2;
+  --foreground: #221e17;
 
-  /* Card/Surface Colors */
-  --card: #f8f9fa; /* Very light gray cards */
-  --card-foreground: #000000; /* Black text on cards */
-  --popover: #ffffff; /* White popups */
-  --popover-foreground: #000000; /* Black popup text */
+  /* Raised surfaces */
+  --card: #f3eee3;
+  --card-foreground: #221e17;
+  --popover: #f3eee3;
+  --popover-foreground: #221e17;
 
-  /* Primary Colors (Spotify Green) */
-  --primary: #1db954; /* Spotify's actual green (slightly darker) */
-  --primary-foreground: #ffffff; /* White text on green */
+  /* Primary action — deep teal. Reserved for primary actions and progress. */
+  --primary: #0f5f5c;
+  --primary-foreground: #fbf8f2;
+  --primary-muted: #dceae7;
 
-  /* Secondary Elements */
-  --secondary: #f1f3f4; /* Light gray secondary buttons */
-  --secondary-foreground: #000000; /* Black text on secondary */
+  /* Secondary — a warmer, deeper tint of the surface */
+  --secondary: #eae3d5;
+  --secondary-foreground: #221e17;
 
-  /* Muted/Subtle Elements */
-  --muted: #f8f9fa; /* Light gray subtle backgrounds */
-  --muted-foreground: #6c757d; /* Medium gray subtle text */
+  /* Muted / subtle */
+  --muted: #f3eee3;
+  --muted-foreground: #6f6759;
 
-  /* Accent stays green */
-  --accent: #1db954; /* Same green */
-  --accent-foreground: #ffffff; /* White text on green */
+  /*
+   * Accent is a warm neutral, NOT the teal. Sharing a value with --primary is
+   * what let Spotify green leak across the old UI and made two different
+   * buttons look like the same affordance.
+   */
+  --accent: #eae3d5;
+  --accent-foreground: #221e17;
 
-  /* Destructive Colors */
-  --destructive: #dc2626; /* red-600 for light mode */
-  --destructive-foreground: #ffffff;
+  --destructive: #93341f;
+  --destructive-foreground: #fbf8f2;
 
-  /* Borders - Improved contrast for light mode */
-  --border: rgba(0, 0, 0, 0.15); /* Increased from 0.08 to 0.15 for better visibility */
-  --input: #ffffff; /* White input backgrounds */
-  --ring: #1db954; /* Green focus rings */
+  --border: #e0d7c6;
+  --input: #fbf8f2;
+  /* Focus rings stay teal: focus is an action affordance. */
+  --ring: #0f5f5c;
 
-  /* RadioWash Semantic Colors - Light Mode (Higher Contrast) */
-  --brand: #7c3aed; /* purple-700 - better contrast on light backgrounds */
-  --brand-foreground: #ffffff;
-  --brand-hover: #6d28d9; /* purple-800 */
-  
-  --success: #16a34a; /* green-600 - better contrast for light mode */
-  --success-foreground: #ffffff;
-  --success-hover: #15803d; /* green-700 */
-  --success-muted: #dcfce7; /* green-100 - more visible on light */
-  
-  --warning: #d97706; /* yellow-600 - better contrast */
-  --warning-foreground: #ffffff;
-  --warning-hover: #b45309; /* yellow-700 */
-  --warning-muted: #fef3c7; /* yellow-100 - more visible */
-  
-  --error: #dc2626; /* red-600 - better contrast for light mode */
-  --error-foreground: #ffffff;
-  --error-hover: #b91c1c; /* red-700 */
-  --error-muted: #fee2e2; /* red-100 - more visible on light */
-  
-  --info: #2563eb; /* blue-600 - better contrast for light mode */
-  --info-foreground: #ffffff;
-  --info-hover: #1d4ed8; /* blue-700 */
-  --info-muted: #dbeafe; /* blue-100 - more visible on light */
+  /*
+   * Semantic families. `brand` is the product's own voice and is the same teal
+   * as --primary — RadioWash has one accent, not two.
+   */
+  --brand: #0f5f5c;
+  --brand-foreground: #fbf8f2;
+  --brand-hover: #0c4a48;
 
-  /* Utility */
-  --radius: 0.5rem; /* Spotify uses subtle rounded corners */
+  --success: #3f6b34;
+  --success-foreground: #fbf8f2;
+  --success-hover: #345829;
+  --success-muted: #e4ebdd;
+
+  --warning: #9a6a11;
+  --warning-foreground: #fbf8f2;
+  --warning-hover: #7d550d;
+  --warning-muted: #f4e9d3;
+
+  --error: #93341f;
+  --error-foreground: #fbf8f2;
+  --error-hover: #7a2917;
+  --error-muted: #f5e2dc;
+
+  --info: #2f5468;
+  --info-foreground: #fbf8f2;
+  --info-hover: #264454;
+  --info-muted: #dee7ec;
+
+  /*
+   * 3px, not 0.5rem. Editorial work is squared off; a soft radius reads as a
+   * consumer app and undercuts the direction.
+   */
+  --radius: 3px;
+
+  /*
+   * The display serif has not been chosen yet — the design exploration ran on a
+   * system fallback stack. This variable is the seam: swap in the real face
+   * here and every heading follows. Keep layout conservative until it lands.
+   */
+  --font-display: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 .dark {
-  /* Core Backgrounds - Dark Mode */
-  --background: #121212; /* Spotify's actual dark gray (not pure black) */
-  --foreground: #ffffff; /* white - primary text */
+  --background: #17140f;
+  --foreground: #f0e9dc;
 
-  /* Card/Surface Colors */
-  --card: #181818; /* eerie-black - cards, panels */
-  --card-foreground: #ffffff; /* white - text on cards */
-  --popover: #181818; /* eerie-black - dropdowns, tooltips */
-  --popover-foreground: #ffffff; /* white - popover text */
+  --card: #201c15;
+  --card-foreground: #f0e9dc;
+  --popover: #201c15;
+  --popover-foreground: #f0e9dc;
 
-  /* Brand/Action Colors */
-  --primary: #1ed760; /* malachite - Spotify green */
-  --primary-foreground: #000000; /* black - text on green buttons */
+  --primary: #5fb3ab;
+  --primary-foreground: #10201e;
+  --primary-muted: #1d2e2c;
 
-  /* Secondary Elements */
-  --secondary: #535353; /* davys-gray - secondary buttons */
-  --secondary-foreground: #ffffff; /* white - text on secondary */
+  --secondary: #2a251c;
+  --secondary-foreground: #f0e9dc;
 
-  /* Muted/Subtle Elements */
-  --muted: #181818; /* eerie-black - subtle backgrounds */
-  --muted-foreground: #b3b3b3; /* silver - subtle text, descriptions */
+  --muted: #201c15;
+  --muted-foreground: #a89b85;
 
-  /* Accent/Highlight */
-  --accent: #1ed760; /* malachite - same as primary for consistency */
-  --accent-foreground: #000000; /* black - text on accent */
+  --accent: #2a251c;
+  --accent-foreground: #f0e9dc;
 
-  /* Destructive Colors */
-  --destructive: #ff4444; /* red for delete actions in dark mode */
-  --destructive-foreground: #ffffff;
+  --destructive: #d98368;
+  --destructive-foreground: #17140f;
 
-  /* Borders and Inputs */
-  --border: rgba(255, 255, 255, 0.08); /* Very subtle white border */
-  --input: #2a2a2a; /* Slightly lighter than cards */
-  --ring: #1ed760; /* malachite - focus rings */
+  --border: #322b21;
+  --input: #201c15;
+  --ring: #5fb3ab;
 
-  /* RadioWash Semantic Colors - Dark Mode */
-  --brand: #9333ea; /* purple-600 - consistent across themes */
-  --brand-foreground: #ffffff;
-  --brand-hover: #a855f7; /* purple-500 - lighter on dark */
-  
-  --success: #22c55e; /* green-500 */
-  --success-foreground: #ffffff;
-  --success-hover: #22c55e;
-  --success-muted: rgba(34, 197, 94, 0.1); /* green-500/10 */
-  
-  --warning: #f59e0b; /* yellow-500 */
-  --warning-foreground: #000000; /* black for contrast */
-  --warning-hover: #f59e0b;
-  --warning-muted: rgba(245, 158, 11, 0.1); /* yellow-500/10 */
-  
-  --error: #ef4444; /* red-500 */
-  --error-foreground: #ffffff;
-  --error-hover: #ef4444;
-  --error-muted: rgba(239, 68, 68, 0.1); /* red-500/10 */
-  
-  --info: #3b82f6; /* blue-500 */
-  --info-foreground: #ffffff;
-  --info-hover: #3b82f6;
-  --info-muted: rgba(59, 130, 246, 0.1); /* blue-500/10 */
+  --brand: #5fb3ab;
+  --brand-foreground: #10201e;
+  --brand-hover: #7cc4bd;
+
+  --success: #86b677;
+  --success-foreground: #17140f;
+  --success-hover: #9bc48e;
+  --success-muted: #1e2a1a;
+
+  --warning: #d6a24e;
+  --warning-foreground: #17140f;
+  --warning-hover: #e0b26a;
+  --warning-muted: #2e2515;
+
+  --error: #d98368;
+  --error-foreground: #17140f;
+  --error-hover: #e29a83;
+  --error-muted: #2e1c15;
+
+  --info: #7ba7bd;
+  --info-foreground: #17140f;
+  --info-hover: #95b9cb;
+  --info-muted: #1a242a;
 }
 
 @theme inline {
@@ -137,6 +157,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -148,44 +169,35 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  
-  /* RadioWash Semantic Color Utilities */
+
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 5px);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+
+  /* RadioWash semantic colour utilities */
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-hover: var(--brand-hover);
-  
+
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-success-hover: var(--success-hover);
   --color-success-muted: var(--success-muted);
-  
+
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-hover: var(--warning-hover);
   --color-warning-muted: var(--warning-muted);
-  
+
   --color-error: var(--error);
   --color-error-foreground: var(--error-foreground);
   --color-error-hover: var(--error-hover);
   --color-error-muted: var(--error-muted);
-  
+
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-info-hover: var(--info-hover);
@@ -198,5 +210,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    /* Keep multi-line headings from stranding a single word on the last line. */
+    text-wrap: balance;
   }
 }

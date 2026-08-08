@@ -33,30 +33,6 @@ const nextConfig = {
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'i.scdn.co',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'mosaic.scdn.co',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'image-cdn-ak.spotifycdn.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'image-cdn-fa.spotifycdn.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
         // Apple Music artwork. Apple serves it from a rotating pool of numbered hosts
         // (is1-ssl, is2-ssl, is5-ssl, …), so match the subdomain rather than pinning one.
         protocol: 'https',
@@ -64,7 +40,7 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
-    ], // Spotify and Apple Music image domains
+    ],
   },
   // SEO: Redirect www to apex domain
   async redirects() {

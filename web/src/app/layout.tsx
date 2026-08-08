@@ -89,8 +89,8 @@ export default function RootLayout({
       <body>
         <ThemeProvider
           attribute="class"
-          // defaultTheme="system"
-          // enableSystem
+          defaultTheme="system"
+          enableSystem
           disableTransitionOnChange
         >
           <QueryProvider>{children}</QueryProvider>

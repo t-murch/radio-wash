@@ -18,15 +18,18 @@ export default function AppleIcon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #16a34a 0%, #059669 100%)',
+          // Literal hex: Edge runtime, no CSS custom properties. Tracks --primary
+          // and --primary-foreground (light) — update alongside icon.tsx.
+          background: '#0f5f5c',
           borderRadius: '22.5%',
         }}
       >
         <div
           style={{
             fontSize: 96,
-            fontWeight: 'bold',
-            color: 'white',
+            fontWeight: 600,
+            color: '#fbf8f2',
+            fontFamily: 'Georgia, serif',
           }}
         >
           R

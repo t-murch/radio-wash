@@ -64,7 +64,9 @@ export function GlobalHeader({
             </Button>
           )}
           <Link href={user ? '/dashboard' : '/'} className="flex items-center">
-            <h1 className="text-2xl font-bold text-green-600">RadioWash</h1>
+            <h1 className="font-display text-2xl font-semibold text-foreground">
+              RadioWash
+            </h1>
           </Link>
         </div>
 

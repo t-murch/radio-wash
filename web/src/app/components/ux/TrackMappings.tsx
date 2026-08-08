@@ -119,12 +119,12 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
     hasCleanMatch: boolean;
   }) => {
     if (!isExplicit) {
-      return <span className="text-green-600 text-sm">✓</span>;
+      return <span className="text-success text-sm">✓</span>;
     }
     return hasCleanMatch ? (
-      <span className="text-green-600 text-sm">✓</span>
+      <span className="text-success text-sm">✓</span>
     ) : (
-      <span className="text-red-600 text-sm">⚠</span>
+      <span className="text-warning text-sm">⚠</span>
     );
   };
 

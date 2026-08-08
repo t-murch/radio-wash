@@ -18,15 +18,19 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #16a34a 0%, #059669 100%)',
+          // Literal hex: this renders in the Edge runtime, where the CSS custom
+          // properties in globals.css are not available. Values track --primary
+          // and --primary-foreground (light) — update both together.
+          background: '#0f5f5c',
           borderRadius: '20%',
         }}
       >
         <div
           style={{
             fontSize: 20,
-            fontWeight: 'bold',
-            color: 'white',
+            fontWeight: 600,
+            color: '#fbf8f2',
+            fontFamily: 'Georgia, serif',
           }}
         >
           R
