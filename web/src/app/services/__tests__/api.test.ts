@@ -51,7 +51,7 @@ describe('api error handling', () => {
         title: 'Already subscribed',
         detail: 'You already have an active subscription.',
         status: 409,
-        type: 'https://radiowash.app/problems/already-subscribed',
+        type: 'https://radiowash.com/problems/already-subscribed',
       })
     );
 
@@ -64,7 +64,7 @@ describe('api error handling', () => {
     expect(error.message).toBe('Already subscribed');
     expect(error.detail).toBe('You already have an active subscription.');
     expect(error.problemType).toBe(
-      'https://radiowash.app/problems/already-subscribed'
+      'https://radiowash.com/problems/already-subscribed'
     );
     // The boundary still logs the raw failure once.
     expect(consoleErrorSpy).toHaveBeenCalled();

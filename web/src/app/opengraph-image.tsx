@@ -85,7 +85,7 @@ export default async function Image() {
             marginTop: 'auto',
           }}
         >
-          radiowash.app
+          radiowash.com
         </div>
       </div>
     ),

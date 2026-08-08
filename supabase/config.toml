@@ -174,7 +174,11 @@ otp_length = 6
 # governs local development only.
 otp_expiry = 900
 
-# Use a production-ready SMTP server
+# Use a production-ready SMTP server.
+# Deployed environments must send from the RadioWash domain — sign-in@radiowash.com
+# — with SPF and DKIM configured for it. Without those records the sign-in emails
+# land in spam no matter how well the template reads, and a magic-link product
+# whose links never arrive is simply broken.
 # [auth.email.smtp]
 # enabled = true
 # host = "smtp.sendgrid.net"

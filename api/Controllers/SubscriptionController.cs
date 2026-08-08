@@ -103,7 +103,7 @@ public class SubscriptionController : AuthenticatedControllerBase
         title: "Checkout disabled",
         detail: "Subscriptions are temporarily unavailable. Please try again later.",
         statusCode: StatusCodes.Status503ServiceUnavailable,
-        type: "https://radiowash.app/problems/checkout-disabled");
+        type: "https://radiowash.com/problems/checkout-disabled");
     }
 
     if (await _subscriptionService.HasActiveSubscriptionAsync(userId))
@@ -112,7 +112,7 @@ public class SubscriptionController : AuthenticatedControllerBase
         title: "Already subscribed",
         detail: "You already have an active subscription.",
         statusCode: StatusCodes.Status409Conflict,
-        type: "https://radiowash.app/problems/already-subscribed");
+        type: "https://radiowash.com/problems/already-subscribed");
     }
 
     // ClientRequestId feeds Stripe's idempotency key (capped at 255 chars), so arbitrary
@@ -137,7 +137,7 @@ public class SubscriptionController : AuthenticatedControllerBase
         title: "Plan unavailable",
         detail: "The requested subscription plan is not available.",
         statusCode: StatusCodes.Status400BadRequest,
-        type: "https://radiowash.app/problems/plan-unavailable");
+        type: "https://radiowash.com/problems/plan-unavailable");
     }
 
     try

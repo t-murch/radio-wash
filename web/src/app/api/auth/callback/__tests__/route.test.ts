@@ -116,12 +116,12 @@ describe('Auth Callback Route', () => {
 
     await GET(
       request('http://internal:3000/api/auth/callback?code=abc', {
-        'x-forwarded-host': 'radiowash.app',
+        'x-forwarded-host': 'radiowash.com',
       })
     );
 
     expect(NextResponse.redirect).toHaveBeenCalledWith(
-      'https://radiowash.app/onboarding'
+      'https://radiowash.com/onboarding'
     );
   });
 

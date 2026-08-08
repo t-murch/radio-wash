@@ -432,7 +432,7 @@ builder.Services.AddRateLimiter(options =>
         context.HttpContext.Response.ContentType = "application/json";
         var problem = new
         {
-            type = "https://radiowash.app/problems/rate-limit-exceeded",
+            type = "https://radiowash.com/problems/rate-limit-exceeded",
             title = "Too many requests",
             status = StatusCodes.Status429TooManyRequests,
             detail = "You've issued too many requests in a short period. Please wait a moment and try again."

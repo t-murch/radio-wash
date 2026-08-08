@@ -68,7 +68,7 @@ public class GlobalExceptionMiddleware
                 context.Response.StatusCode = (int)HttpStatusCode.Forbidden;
                 var problem = new
                 {
-                    type = "https://radiowash.app/problems/plan-limit-exceeded",
+                    type = "https://radiowash.com/problems/plan-limit-exceeded",
                     title = "Plan limit exceeded",
                     status = (int)HttpStatusCode.Forbidden,
                     detail = planLimit.Message,

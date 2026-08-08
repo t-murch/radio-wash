@@ -107,7 +107,7 @@ describe('SubscriptionClient', () => {
             409,
             'Already subscribed',
             'You already have an active subscription.',
-            'https://radiowash.app/problems/already-subscribed'
+            'https://radiowash.com/problems/already-subscribed'
           )
         ),
     });
@@ -138,7 +138,7 @@ describe('SubscriptionClient', () => {
             503,
             'Checkout disabled',
             'Subscriptions are temporarily unavailable. Please try again later.',
-            'https://radiowash.app/problems/checkout-disabled'
+            'https://radiowash.com/problems/checkout-disabled'
           )
         ),
     });
