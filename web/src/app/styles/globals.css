@@ -1,4 +1,10 @@
 @import 'tailwindcss';
+/*
+ * Enter/exit animation utilities (animate-in, fade-in-0, …) used by the Radix-backed
+ * primitives. The package was already a dependency but was never imported, so every
+ * `data-[state=open]:animate-in` in dropdown-menu resolved to nothing.
+ */
+@import 'tw-animate-css';
 
 /*
  * RadioWash — warm editorial.
