@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { TrackMapping, getJobTrackMappings, Job } from '@/services/api';
+import {
+  TrackMapping,
+  getJobTrackMappings,
+  Job,
+  MusicProvider,
+} from '@/services/api';
 import { trackUrl } from '@/lib/providers';
 
 interface TrackMappingsProps {
@@ -37,7 +42,7 @@ function TrackLink({
   name: string;
   className: string;
 }) {
-  const url = trackUrl(provider as 'spotify' | 'apple_music' | undefined, trackId);
+  const url = trackUrl(provider as MusicProvider | undefined, trackId);
   if (!url) {
     return (
       <span className={className.replace('hover:underline', '')} title={name}>
@@ -100,8 +105,8 @@ export default function TrackMappings({ userId, jobId, job }: TrackMappingsProps
 
   const filteredMappings = getFilteredMappings();
 
-  const sourceProvider = job?.provider ?? 'spotify';
-  const targetProvider = job?.targetProvider ?? 'spotify';
+  const sourceProvider = job?.provider ?? 'apple_music';
+  const targetProvider = job?.targetProvider ?? 'apple_music';
   const isCopy = job?.jobType === 'copy';
   const matchedColumnLabel = isCopy ? 'Matched Version' : 'Clean Version';
 

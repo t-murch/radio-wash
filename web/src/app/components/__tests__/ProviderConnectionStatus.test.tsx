@@ -8,7 +8,6 @@ import {
   storeProviderTokens,
 } from '../../services/api';
 import { useMusicKit } from '../../hooks/useMusicKit';
-import { signInWithSpotify } from '../../auth/actions';
 
 vi.mock('../../services/api', () => ({
   getConnectionStatus: vi.fn(),
@@ -18,7 +17,6 @@ vi.mock('../../services/api', () => ({
 
 // Server action — invoked directly so a signed-in user isn't bounced off /auth.
 vi.mock('../../auth/actions', () => ({
-  signInWithSpotify: vi.fn(),
 }));
 
 vi.mock('../../hooks/useMusicKit', () => ({
@@ -46,42 +44,11 @@ describe('ProviderConnectionStatus', () => {
   });
 
   const connectedStatus = (overrides = {}) => ({
-    provider: 'spotify',
+    provider: 'apple_music',
     connected: true,
     connectedAt: '2026-01-01T00:00:00Z',
     canRefresh: true,
     ...overrides,
-  });
-
-  it('shows connected state for Spotify', async () => {
-    (getConnectionStatus as Mock).mockResolvedValue(connectedStatus());
-
-    render(<ProviderConnectionStatus provider="spotify" />);
-
-    await waitFor(() =>
-      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
-    );
-    expect(getConnectionStatus).toHaveBeenCalledWith('spotify');
-    expect(screen.queryByText('Reconnect')).not.toBeInTheDocument();
-  });
-
-  it('starts Spotify OAuth via the server action, not a route to /auth', async () => {
-    // /auth redirects any signed-in session straight back to the dashboard, so navigating
-    // there makes connect/reconnect a silent no-op. The action goes to Spotify directly.
-    (getConnectionStatus as Mock).mockResolvedValue(
-      connectedStatus({ connected: false })
-    );
-    const user = userEvent.setup();
-
-    render(<ProviderConnectionStatus provider="spotify" />);
-    await waitFor(() =>
-      expect(screen.getByText('Spotify Not Connected')).toBeInTheDocument()
-    );
-
-    await user.click(screen.getByRole('button', { name: /connect spotify/i }));
-
-    expect(signInWithSpotify).toHaveBeenCalledOnce();
-    expect(mockAuthorize).not.toHaveBeenCalled();
   });
 
   it('connects Apple Music through MusicKit and stores the Music User Token', async () => {
@@ -109,7 +76,6 @@ describe('ProviderConnectionStatus', () => {
     );
     expect(mockAuthorize).toHaveBeenCalledOnce();
     expect(storeProviderTokens).toHaveBeenCalledWith('apple_music', 'mut-token');
-    expect(signInWithSpotify).not.toHaveBeenCalled();
   });
 
   it('shows a friendly error when Apple authorization fails (e.g. no subscription)', async () => {
@@ -188,7 +154,7 @@ describe('ProviderConnectionStatus', () => {
   });
 
   it('does NOT prompt Apple reconnect just because canRefresh is false', async () => {
-    // Apple has no refresh flow — canRefresh is always false. The Spotify heuristic
+    // Apple has no refresh flow — canRefresh is always false. A canRefresh heuristic
     // (connected && !canRefresh → Reconnect) must not carry over.
     const farExpiry = new Date(Date.now() + 100 * 24 * 3600 * 1000).toISOString();
     (getConnectionStatus as Mock).mockResolvedValue(
@@ -225,45 +191,6 @@ describe('ProviderConnectionStatus', () => {
     );
 
     expect(screen.getByText('Reconnect')).toBeInTheDocument();
-  });
-
-  it('prompts Spotify reconnect when tokens cannot refresh, and reconnect re-runs OAuth', async () => {
-    (getConnectionStatus as Mock).mockResolvedValue(
-      connectedStatus({ canRefresh: false })
-    );
-    const user = userEvent.setup();
-
-    render(<ProviderConnectionStatus provider="spotify" />);
-    await waitFor(() =>
-      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
-    );
-
-    // The reconnecting user is signed in — exactly the case where a /auth round-trip
-    // would bounce back without doing anything.
-    await user.click(screen.getByText('Reconnect'));
-    expect(signInWithSpotify).toHaveBeenCalledOnce();
-  });
-
-  it('disconnects Spotify: deletes stored tokens and refreshes the card', async () => {
-    (getConnectionStatus as Mock)
-      .mockResolvedValueOnce(connectedStatus())
-      .mockResolvedValueOnce(connectedStatus({ connected: false }));
-    (disconnectProvider as Mock).mockResolvedValue({ success: true });
-    const user = userEvent.setup();
-
-    render(<ProviderConnectionStatus provider="spotify" />);
-    await waitFor(() =>
-      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
-    );
-
-    await user.click(screen.getByRole('button', { name: /disconnect/i }));
-
-    await waitFor(() =>
-      expect(screen.getByText('Spotify Not Connected')).toBeInTheDocument()
-    );
-    expect(disconnectProvider).toHaveBeenCalledWith('spotify');
-    // MusicKit is an Apple-only concern.
-    expect(mockUnauthorize).not.toHaveBeenCalled();
   });
 
   it('disconnecting Apple Music also drops the browser-side MusicKit grant', async () => {
@@ -307,16 +234,18 @@ describe('ProviderConnectionStatus', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const user = userEvent.setup();
 
-    render(<ProviderConnectionStatus provider="spotify" />);
+    render(<ProviderConnectionStatus provider="apple_music" />);
     await waitFor(() =>
-      expect(screen.getByText('Spotify Connected')).toBeInTheDocument()
+      expect(screen.getByText('Apple Music Connected')).toBeInTheDocument()
     );
 
     await user.click(screen.getByRole('button', { name: /disconnect/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.getByRole('alert')).toHaveTextContent(/failed to disconnect spotify/i);
-    expect(screen.getByText('Spotify Connected')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /failed to disconnect apple music/i
+    );
+    expect(screen.getByText('Apple Music Connected')).toBeInTheDocument();
     consoleSpy.mockRestore();
   });
 });

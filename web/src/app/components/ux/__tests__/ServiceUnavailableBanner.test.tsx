@@ -7,16 +7,26 @@ describe('ServiceUnavailableBanner', () => {
     render(<ServiceUnavailableBanner />);
 
     expect(
-      screen.getByRole('heading', { name: /service temporarily unavailable/i })
+      screen.getByRole('heading', {
+        name: /radiowash is temporarily unavailable/i,
+      })
     ).toBeInTheDocument();
   });
 
-  it('should display Spotify API limitation message', () => {
+  it('names the outage without blaming the user, and reassures about their data', () => {
     render(<ServiceUnavailableBanner />);
 
     expect(
-      screen.getByText(/due to spotify api limitations/i)
+      screen.getByText(/apple music isn't responding right now/i)
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/your playlists are unaffected/i)
+    ).toBeInTheDocument();
+  });
+
+  it('no longer blames Spotify for the outage', () => {
+    render(<ServiceUnavailableBanner />);
+    expect(screen.queryByText(/spotify/i)).not.toBeInTheDocument();
   });
 
   it('should no longer advertise Apple Music as coming soon (it shipped)', () => {

@@ -1,13 +1,14 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
-import { AuthForm } from './auth-form';
+import { redirect } from 'next/navigation';
+
+import { createClient } from '@/lib/supabase/server';
 import { FloatingFeedbackButton } from '../components/ux/ReportBug-Btn';
-import { signInWithApple, signInWithSpotify } from './actions';
+import { sendMagicLink, signInWithApple, signInWithGoogle } from './actions';
+import { AuthForm } from './auth-form';
 
 export const metadata: Metadata = {
-  title: 'Sign In',
-  description: 'Sign in to RadioWash with your Spotify or Apple account',
+  title: 'Sign in',
+  description: 'Sign in to RadioWash to make clean copies of your playlists.',
   robots: {
     index: false,
     follow: false,
@@ -26,10 +27,11 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
       <AuthForm
-        signInWithSpotify={signInWithSpotify}
+        sendMagicLink={sendMagicLink}
         signInWithApple={signInWithApple}
+        signInWithGoogle={signInWithGoogle}
       />
       <FloatingFeedbackButton />
     </div>

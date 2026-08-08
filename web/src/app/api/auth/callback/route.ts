@@ -1,61 +1,60 @@
-import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+import { createClient } from '@/lib/supabase/server';
+
+/**
+ * OAuth callback for the identity providers (Apple, Google).
+ *
+ * Note what this route no longer does: it used to forward `provider_token` to
+ * the API to register a music connection. That was a Spotify-shaped assumption.
+ * Neither identity provider yields music access — Apple Music requires a
+ * separate MusicKit authorization, which onboarding handles as an explicit step.
+ */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+  const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const platform = searchParams.get('platform');
-  // if "next" is in param, use it as the redirect URL
-  const next = searchParams.get('next') ?? '/dashboard';
+  const next = safeNext(searchParams.get('next'));
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      const baseOrigin =
-        process.env.NODE_ENV === 'development'
-          ? 'https://127.0.0.1:3000'
-          : process.env.NEXT_PUBLIC_WEB_URL;
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (
-        session?.provider_token &&
-        session?.provider_refresh_token &&
-        platform === 'spotify'
-      ) {
-        try {
-          const apiUrl =
-            process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5159';
-
-          await fetch(`${apiUrl}/api/auth/tokens/spotify`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            // Expiry is not sent: the API derives it per provider (Spotify tokens
-            // always live 3600s), so a client-supplied value would only be ignored.
-            body: JSON.stringify({
-              accessToken: session.provider_token,
-              refreshToken: session.provider_refresh_token,
-            }),
-          });
-        } catch (tokenSyncError) {
-          console.error('Failed to sync Spotify tokens:', tokenSyncError);
-        }
-      }
-
-      return NextResponse.redirect(`${baseOrigin}${next}`);
-    }
-    // return the user to an error page with instructions
-    const baseOrigin =
-      process.env.NODE_ENV === 'development'
-        ? 'https://127.0.0.1:3000'
-        : process.env.NEXT_PUBLIC_WEB_URL;
-    return NextResponse.redirect(`${baseOrigin}/auth?error=${error}`);
+  if (!code) {
+    return NextResponse.redirect(
+      `${origin}/auth?error=${encodeURIComponent(
+        'That sign-in link was incomplete. Please try again.'
+      )}`
+    );
   }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error('OAuth code exchange failed:', error);
+    return NextResponse.redirect(
+      `${origin}/auth?error=${encodeURIComponent(
+        'We could not complete that sign-in. Please try again.'
+      )}`
+    );
+  }
+
+  // `origin` comes from the incoming request, so this works in development,
+  // preview deployments, and production without a hardcoded host. Behind a load
+  // balancer the forwarded host is the externally visible one.
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const isLocal = process.env.NODE_ENV === 'development';
+
+  if (!isLocal && forwardedHost) {
+    return NextResponse.redirect(`https://${forwardedHost}${next}`);
+  }
+
+  return NextResponse.redirect(`${origin}${next}`);
+}
+
+/**
+ * Only same-origin relative paths are honoured, so a crafted `next` cannot turn
+ * the callback into an open redirect for a freshly authenticated session.
+ */
+function safeNext(candidate: string | null): string {
+  const fallback = '/onboarding';
+  if (!candidate) return fallback;
+  if (!candidate.startsWith('/') || candidate.startsWith('//')) return fallback;
+  return candidate;
 }

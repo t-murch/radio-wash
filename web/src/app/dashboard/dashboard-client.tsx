@@ -23,10 +23,10 @@ import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { CURRENT_PLAN, FEATURE_DESCRIPTIONS } from '@/lib/constants/pricing';
 
-const OTHER_PROVIDER: Record<MusicProvider, MusicProvider> = {
-  spotify: 'apple_music',
-  apple_music: 'spotify',
-};
+// NOTE: the cross-provider "copy to the other service" affordance below is now
+// unreachable — there is only one provider, so a copy target can only be the
+// source. Phase 6 rewrites this screen and removes it outright; until then the
+// destination is pinned to the active provider so the code still type-checks.
 
 export function DashboardClient({
   initialMe,
@@ -43,22 +43,16 @@ export function DashboardClient({
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const [activeProvider, setActiveProvider] = useState<MusicProvider>('spotify');
+  const [activeProvider, setActiveProvider] = useState<MusicProvider>('apple_music');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [customName, setCustomName] = useState('');
   // 'clean' = same-service clean job; 'copy' = cross-service copy to the other provider.
   const [destination, setDestination] = useState<'clean' | 'copy'>('clean');
   const [swapExplicit, setSwapExplicit] = useState(true);
   const [connections, setConnections] = useState<Record<MusicProvider, boolean>>({
-    spotify: true, // optimistic defaults; updated by the connection cards
     apple_music: false,
   });
 
-  const onSpotifyConnectionChange = useCallback(
-    (connected: boolean) =>
-      setConnections((prev) => ({ ...prev, spotify: connected })),
-    []
-  );
   const onAppleConnectionChange = useCallback(
     (connected: boolean) =>
       setConnections((prev) => ({ ...prev, apple_music: connected })),
@@ -78,7 +72,7 @@ export function DashboardClient({
     queryKey: ['playlists', activeProvider],
     queryFn: () => getUserPlaylists(activeProvider),
     enabled: !!me && connections[activeProvider],
-    placeholderData: activeProvider === 'spotify' ? initialPlaylists : undefined,
+    placeholderData: initialPlaylists,
   });
 
   // Handle the response structure that includes error and playlists fields
@@ -96,8 +90,7 @@ export function DashboardClient({
   const { data: subscriptionStatus } = useSubscriptionStatus();
 
   const activeLabel = PROVIDER_LABELS[activeProvider];
-  const targetProvider =
-    destination === 'copy' ? OTHER_PROVIDER[activeProvider] : activeProvider;
+  const targetProvider = activeProvider;
   const targetLabel = PROVIDER_LABELS[targetProvider];
   const activeConnected = connections[activeProvider];
   // A copy needs the destination account connected too.
@@ -163,33 +156,10 @@ export function DashboardClient({
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <ProviderConnectionStatus
-                provider="spotify"
-                onConnectionChange={onSpotifyConnectionChange}
-              />
-              <ProviderConnectionStatus
-                provider="apple_music"
-                onConnectionChange={onAppleConnectionChange}
-              />
-            </div>
-
-            {/* Source-provider tabs */}
-            <div className="flex gap-2 border-b border-border">
-              {(['spotify', 'apple_music'] as const).map((provider) => (
-                <button
-                  key={provider}
-                  onClick={() => selectProvider(provider)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                    activeProvider === provider
-                      ? 'border-brand text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {PROVIDER_LABELS[provider]}
-                </button>
-              ))}
-            </div>
+            <ProviderConnectionStatus
+              provider="apple_music"
+              onConnectionChange={onAppleConnectionChange}
+            />
 
             <div className="bg-card border rounded-lg p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-foreground mb-4">
@@ -241,7 +211,7 @@ export function DashboardClient({
                         onChange={() => setDestination('copy')}
                       />
                       <span className="text-sm">
-                        Copy to {PROVIDER_LABELS[OTHER_PROVIDER[activeProvider]]}
+                        Copy to {PROVIDER_LABELS[activeProvider]}
                       </span>
                     </label>
                   </div>

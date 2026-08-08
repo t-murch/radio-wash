@@ -12,10 +12,13 @@ export function ServiceUnavailableBanner() {
           <AlertCircle className="w-8 h-8 text-warning" />
         </div>
 
-        <h3 className="text-xl font-bold text-foreground">Service Temporarily Unavailable</h3>
+        <h3 className="font-display text-xl font-semibold text-foreground">
+          RadioWash is temporarily unavailable
+        </h3>
 
         <p className="text-muted-foreground max-w-lg">
-          Due to Spotify API limitations for development applications, we are currently unable to process new user registrations or sync playlists. We are actively working on a resolution.
+          Apple Music isn&apos;t responding right now, so sign-in and cleaning
+          are paused. Your playlists are unaffected — check back shortly.
         </p>
       </div>
     </div>

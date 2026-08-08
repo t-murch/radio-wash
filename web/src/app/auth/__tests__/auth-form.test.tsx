@@ -1,188 +1,175 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { useSearchParams } from 'next/navigation';
-import { AuthForm } from '../auth-form';
 
-// Mock Next.js useSearchParams
+import { AuthForm } from '../auth-form';
+import type { MagicLinkState } from '../actions';
+
 vi.mock('next/navigation', () => ({
   useSearchParams: vi.fn(),
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
+}));
+
+// The check-inbox screen watches for a session so a link opened on another device
+// moves this tab along. Default to "no session yet" so the poller stays quiet.
+const onAuthStateChange = vi.fn(() => ({
+  data: { subscription: { unsubscribe: vi.fn() } },
+}));
+const getSession = vi.fn(async () => ({ data: { session: null } }));
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: () => ({ auth: { getSession, onAuthStateChange } }),
 }));
 
 describe('AuthForm', () => {
-  let mockSignInWithSpotify: Mock;
-  let mockSignInWithApple: Mock;
-  let mockSearchParams: {
-    get: Mock;
-  };
+  let sendMagicLink: Mock;
+  let signInWithApple: Mock;
+  let signInWithGoogle: Mock;
+  let mockSearchParams: { get: Mock };
 
   const renderForm = () =>
     render(
       <AuthForm
-        signInWithSpotify={mockSignInWithSpotify}
-        signInWithApple={mockSignInWithApple}
+        sendMagicLink={sendMagicLink}
+        signInWithApple={signInWithApple}
+        signInWithGoogle={signInWithGoogle}
       />
     );
 
   beforeEach(() => {
-    mockSignInWithSpotify = vi.fn();
-    mockSignInWithApple = vi.fn();
-    mockSearchParams = {
-      get: vi.fn(),
-    };
-
+    sendMagicLink = vi.fn(
+      async (): Promise<MagicLinkState> => ({ status: 'idle' })
+    );
+    signInWithApple = vi.fn();
+    signInWithGoogle = vi.fn();
+    mockSearchParams = { get: vi.fn().mockReturnValue(null) };
     (useSearchParams as Mock).mockReturnValue(mockSearchParams);
+    getSession.mockResolvedValue({ data: { session: null } });
   });
 
-  it('should render auth form with Spotify sign-in button', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    expect(screen.getByText('RadioWash')).toBeInTheDocument();
-    expect(
-      screen.getByText('Create clean versions of your playlists')
-    ).toBeInTheDocument();
-    expect(screen.getByText('Sign up with Spotify')).toBeInTheDocument();
-  });
-
-  it('should render Apple sign-in button wired to its own action', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    const appleButton = screen.getByRole('button', {
-      name: /sign up with apple/i,
-    });
-    expect(appleButton).toBeInTheDocument();
-    expect(appleButton).toHaveAttribute('type', 'submit');
-    // Each button submits its own form/action.
-    expect(appleButton.closest('form')).not.toBe(
-      screen.getByRole('button', { name: /sign up with spotify/i }).closest('form')
-    );
-  });
-
-  it('should display error message when error parameter is present', () => {
-    const errorMessage = 'Authentication failed';
-    mockSearchParams.get.mockReturnValue(errorMessage);
-
-    renderForm();
-
-    const errorAlert = screen.getByRole('alert');
-    expect(errorAlert).toBeInTheDocument();
-    expect(errorAlert).toHaveTextContent(errorMessage);
-    expect(errorAlert).toHaveClass('text-error', 'bg-error-muted');
-  });
-
-  it('should not display error message when no error parameter', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('should render form with submit button that has correct attributes', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    const form = screen
-      .getByRole('button', { name: /sign up with spotify/i })
-      .closest('form');
-    const signInButton = screen.getByText('Sign up with Spotify');
-
-    expect(form).toBeInTheDocument();
-    expect(signInButton).toHaveAttribute('type', 'submit');
-  });
-
-  it('should have correct button styling and attributes', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    const signInButton = screen.getByText('Sign up with Spotify');
-
-    expect(signInButton).toHaveAttribute('type', 'submit');
-    expect(signInButton).toHaveClass(
-      'w-full',
-      'bg-success',
-      'hover:bg-success-hover',
-      'focus:ring-success'
-    );
-  });
-
-  it('should contain Spotify icon SVG', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
-    renderForm();
-
-    const svgElement = screen
-      .getByText('Sign up with Spotify')
-      .querySelector('svg');
-    expect(svgElement).toBeInTheDocument();
-    expect(svgElement).toHaveClass('w-5', 'h-5', 'mr-2');
-  });
-
-  it('should display helpful description text', () => {
-    mockSearchParams.get.mockReturnValue(null);
-
+  it('leads with email and offers Apple and Google as alternatives', () => {
     renderForm();
 
     expect(
-      screen.getByText(/Sign up to instantly access your playlists/)
+      screen.getByRole('heading', { name: /sign in with email/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /send sign-in link/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /apple/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /google/i })).toBeInTheDocument();
+  });
+
+  it('offers no Spotify option', () => {
+    renderForm();
+    expect(screen.queryByText(/spotify/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the check-inbox screen naming the address once the link is sent', async () => {
+    const user = userEvent.setup();
+    sendMagicLink.mockResolvedValue({
+      status: 'sent',
+      email: 'someone@example.com',
+    } satisfies MagicLinkState);
+
+    renderForm();
+    await user.type(screen.getByLabelText(/email address/i), 'someone@example.com');
+    await user.click(screen.getByRole('button', { name: /send sign-in link/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: /someone@example.com/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/expires after 15 minutes/i)).toBeInTheDocument();
+  });
+
+  it('lets the user go back and correct a mistyped address', async () => {
+    const user = userEvent.setup();
+    sendMagicLink.mockResolvedValue({
+      status: 'sent',
+      email: 'typo@example.com',
+    } satisfies MagicLinkState);
+
+    renderForm();
+    await user.type(screen.getByLabelText(/email address/i), 'typo@example.com');
+    await user.click(screen.getByRole('button', { name: /send sign-in link/i }));
+
+    await user.click(await screen.findByRole('button', { name: /change it/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /sign in with email/i })
     ).toBeInTheDocument();
   });
 
-  it('should handle multiple different error messages', () => {
-    const errorMessages = [
-      'Access denied',
-      'Invalid request',
-      'Server error',
-      'Network timeout',
-    ];
-
-    errorMessages.forEach((error, _index) => {
-      mockSearchParams.get.mockReturnValue(error);
-
-      const { unmount } = renderForm();
-
-      const errorAlert = screen.getByRole('alert');
-      expect(errorAlert).toHaveTextContent(error);
-
-      // Clean up between iterations to avoid multiple alerts
-      unmount();
-    });
-  });
-
-  it('should be accessible with proper ARIA attributes', () => {
-    const errorMessage = 'Test error';
-    mockSearchParams.get.mockReturnValue(errorMessage);
+  it('reports a rejected address against the field itself', async () => {
+    const user = userEvent.setup();
+    sendMagicLink.mockResolvedValue({
+      status: 'error',
+      email: 'nope',
+      message: "That doesn't look like an email address. Check it and retry.",
+    } satisfies MagicLinkState);
 
     renderForm();
+    await user.type(screen.getByLabelText(/email address/i), 'nope');
+    await user.click(screen.getByRole('button', { name: /send sign-in link/i }));
 
-    const errorAlert = screen.getByRole('alert');
-    expect(errorAlert).toBeInTheDocument();
-
-    const signInButton = screen.getByRole('button', {
-      name: /sign up with spotify/i,
-    });
-    expect(signInButton).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /doesn't look like an email address/i
+    );
+    expect(screen.getByLabelText(/email address/i)).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    );
   });
 
-  it('should render without Server Action function warnings', () => {
-    // This test ensures the component renders without console warnings
-    // Server Action functionality should be tested separately in integration tests
-    mockSearchParams.get.mockReturnValue(null);
-
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
+  it('surfaces an error passed back through the URL', () => {
+    mockSearchParams.get.mockReturnValue('We could not complete that sign-in.');
     renderForm();
 
-    expect(screen.getByText('RadioWash')).toBeInTheDocument();
-    expect(screen.getByText('Sign up with Spotify')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /could not complete that sign-in/i
+    );
+  });
 
-    // Note: Server Action warnings are expected in test environment
-    // This test documents the current limitation
-    consoleSpy.mockRestore();
+  it('holds the resend button until the cooldown elapses', async () => {
+    const user = userEvent.setup();
+    sendMagicLink.mockResolvedValue({
+      status: 'sent',
+      email: 'someone@example.com',
+    } satisfies MagicLinkState);
+
+    renderForm();
+    await user.type(screen.getByLabelText(/email address/i), 'someone@example.com');
+    await user.click(screen.getByRole('button', { name: /send sign-in link/i }));
+
+    // The countdown must not offer a resend the server would throttle.
+    expect(await screen.findByText(/resend in \d+s/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /resend the link/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('carries on by itself when the link is opened on another device', async () => {
+    const user = userEvent.setup();
+    sendMagicLink.mockResolvedValue({
+      status: 'sent',
+      email: 'someone@example.com',
+    } satisfies MagicLinkState);
+    // A session appearing is exactly what the phone opening the link looks like
+    // from this tab's point of view.
+    getSession.mockResolvedValue({
+      data: { session: { access_token: 'signed-in' } },
+    } as never);
+
+    renderForm();
+    await user.type(screen.getByLabelText(/email address/i), 'someone@example.com');
+    await user.click(screen.getByRole('button', { name: /send sign-in link/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: /signed in here too/i })
+      ).toBeInTheDocument()
+    );
   });
 });

@@ -1,74 +1,309 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
+
+import { createClient } from '@/lib/supabase/client';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import type { MagicLinkState } from './actions';
+import { AppleMark, GoogleMark } from './provider-marks';
+import { Stepper } from './stepper';
 
 export function AuthForm({
-  signInWithSpotify,
+  sendMagicLink,
   signInWithApple,
+  signInWithGoogle,
 }: {
-  signInWithSpotify: () => Promise<void>;
+  sendMagicLink: (
+    prevState: MagicLinkState,
+    formData: FormData
+  ) => Promise<MagicLinkState>;
   signInWithApple: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }) {
   const searchParams = useSearchParams();
-  const error = searchParams.get('error');
+  const urlError = searchParams.get('error');
+
+  const [state, setState] = useState<MagicLinkState>({ status: 'idle' });
+  const [isPending, startTransition] = useTransition();
+
+  // React 18 supports neither useFormState nor a function-valued `action`, so the
+  // server action is invoked from a plain onSubmit handler inside a transition.
+  const submitWith = (formData: FormData) => {
+    startTransition(async () => {
+      setState(await sendMagicLink(state, formData));
+    });
+  };
+
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitWith(new FormData(event.currentTarget));
+  };
+
+  if (state.status === 'sent' && state.email) {
+    return (
+      <CheckInbox
+        email={state.email}
+        onChangeAddress={() => setState({ status: 'idle' })}
+        onResend={() => {
+          const data = new FormData();
+          data.set('email', state.email!);
+          submitWith(data);
+        }}
+        isResending={isPending}
+      />
+    );
+  }
+
+  const fieldError = state.status === 'error' ? state.message : undefined;
 
   return (
-    <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-xl shadow-md">
-      <div className="text-center">
-        <h1 className="text-3xl font-extrabold text-foreground">RadioWash</h1>
-        <p className="mt-2 text-muted-foreground">
-          Create clean versions of your playlists
+    <div className="w-full max-w-md space-y-8">
+      <Stepper current={1} />
+
+      <div className="space-y-2">
+        <h1 className="font-display text-2xl font-semibold text-foreground">
+          Sign in with email
+        </h1>
+        <p className="text-muted-foreground">
+          We&apos;ll email you a link that signs you in.
         </p>
       </div>
 
-      {error && (
-        <div
-          className="p-4 text-sm text-error bg-error-muted rounded-lg"
-          role="alert"
-        >
-          {error}
-        </div>
+      {urlError && (
+        <Alert variant="error">
+          <AlertDescription>{urlError}</AlertDescription>
+        </Alert>
       )}
 
-      <div className="space-y-4">
-        <form action={signInWithSpotify}>
-          <button
-            type="submit"
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-success-foreground bg-success hover:bg-success-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-success font-medium"
-          >
-            <svg
-              className="w-5 h-5 mr-2"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.84-.179-.84-.66 0-.36.24-.66.54-.78 4.56-1.021 8.52-.6 11.64 1.32.36.18.48.66.24 1.021zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.481.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z" />
-            </svg>
-            Sign up with Spotify
-          </button>
-        </form>
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email address</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="you@example.com"
+            defaultValue={state.email}
+            aria-invalid={fieldError ? 'true' : undefined}
+            aria-describedby={fieldError ? 'email-error' : undefined}
+          />
+          {fieldError && (
+            <p id="email-error" role="alert" className="text-sm text-error">
+              {fieldError}
+            </p>
+          )}
+        </div>
 
-        <form action={signInWithApple}>
-          <button
-            type="submit"
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary font-medium"
-          >
-            <svg
-              className="w-5 h-5 mr-2"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z" />
-            </svg>
-            Sign up with Apple
-          </button>
-        </form>
+        <Button type="submit" className="w-full" disabled={isPending}>
+          {isPending && <Loader2 className="size-4 animate-spin" />}
+          {isPending ? 'Sending…' : 'Send sign-in link'}
+        </Button>
+      </form>
+
+      <p className="text-sm text-muted-foreground">
+        No password — not now, not later. The link is the whole sign-in.
+      </p>
+
+      <div className="flex items-center gap-4">
+        <Separator className="flex-1" />
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          or continue with
+        </span>
+        <Separator className="flex-1" />
       </div>
 
-      <p className="text-xs text-muted-foreground text-center">
-        Sign up to instantly access your playlists and start creating clean
-        versions. Connect Spotify or Apple Music from your dashboard at any
-        time.
+      <div className="grid gap-3 sm:grid-cols-2">
+        <form action={signInWithApple}>
+          <Button type="submit" variant="outline" className="w-full">
+            <AppleMark />
+            Apple
+          </Button>
+        </form>
+        <form action={signInWithGoogle}>
+          <Button type="submit" variant="outline" className="w-full">
+            <GoogleMark />
+            Google
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CheckInbox({
+  email,
+  onChangeAddress,
+  onResend,
+  isResending,
+}: {
+  email: string;
+  onChangeAddress: () => void;
+  onResend: () => void;
+  isResending: boolean;
+}) {
+  const signedInElsewhere = useSessionWatch();
+
+  if (signedInElsewhere) {
+    return <SignedInElsewhere />;
+  }
+
+  return (
+    <div className="w-full max-w-md space-y-8">
+      <Stepper current={1} />
+
+      <div className="space-y-2">
+        <h1 className="font-display text-2xl font-semibold text-foreground">
+          A sign-in link is on its way to {email}
+        </h1>
+        <p className="text-muted-foreground">
+          Wrong address?{' '}
+          <button
+            type="button"
+            onClick={onChangeAddress}
+            className="text-primary underline underline-offset-4 hover:text-brand-hover"
+          >
+            Change it
+          </button>
+        </p>
+      </div>
+
+      {/*
+        Both notes are rendered and toggled by viewport rather than by sniffing the
+        user agent, which is unreliable. Each describes what actually happens on
+        that device, and the desktop one is a promise the session poller keeps.
+      */}
+      <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+        <span className="hidden sm:inline">
+          Opening the link on your phone instead? That works — this page checks
+          for your sign-in and carries on here by itself.
+        </span>
+        <span className="sm:hidden">
+          Opening the link on this phone? Your mail app brings you straight back
+          signed in.
+        </span>
+      </div>
+
+      <ResendButton onResend={onResend} isResending={isResending} />
+
+      <p className="text-sm text-muted-foreground">
+        Nothing arriving? Check spam. The link works once and expires after 15
+        minutes.
       </p>
     </div>
+  );
+}
+
+/**
+ * Watches for a session appearing while this tab sits on the check-inbox screen.
+ *
+ * This is what makes the device-switch case work rather than being a dead end:
+ * the link signs in whichever device opens it, so someone who started on a
+ * laptop and tapped the link on their phone would otherwise be stranded on a
+ * page waiting forever. Supabase writes the session to storage and broadcasts
+ * an auth event, so this tab notices and moves itself along.
+ *
+ * The check-inbox copy promises this behaviour in advance, and the screen it
+ * leads to confirms it happened — no fake progress, because the page really is
+ * watching.
+ */
+function useSessionWatch() {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+
+    // Covers the same-tab case and any session already established before mount.
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session) setSignedIn(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) setSignedIn(true);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  return signedIn;
+}
+
+function SignedInElsewhere() {
+  const router = useRouter();
+
+  return (
+    <div className="w-full max-w-md space-y-8">
+      <Stepper current={1} />
+
+      <div className="space-y-2">
+        <h1 className="font-display text-2xl font-semibold text-foreground">
+          You opened the link on your phone — signed in here too
+        </h1>
+        <p className="text-muted-foreground">
+          This page noticed your sign-in, just as it said it would. Carrying on
+          here — connecting Apple Music is next.
+        </p>
+      </div>
+
+      <Button onClick={() => router.push('/onboarding')}>Continue now</Button>
+    </div>
+  );
+}
+
+const RESEND_COOLDOWN_SECONDS = 24;
+
+function ResendButton({
+  onResend,
+  isResending,
+}: {
+  onResend: () => void;
+  isResending: boolean;
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_COOLDOWN_SECONDS);
+
+  // The countdown must not run out ahead of the server's own throttle, or the
+  // button would offer a resend that Supabase then rejects. See `max_frequency`
+  // in supabase/config.toml.
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setTimeout(() => setSecondsLeft((n) => n - 1), 1000);
+    return () => clearTimeout(id);
+  }, [secondsLeft]);
+
+  if (secondsLeft > 0) {
+    return (
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        Resend in {secondsLeft}s
+      </p>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={isResending}
+      onClick={() => {
+        onResend();
+        setSecondsLeft(RESEND_COOLDOWN_SECONDS);
+      }}
+    >
+      {isResending && <Loader2 className="size-4 animate-spin" />}
+      {isResending ? 'Sending…' : 'Resend the link'}
+    </Button>
   );
 }

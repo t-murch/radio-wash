@@ -61,7 +61,13 @@ describe('Input', () => {
 
   it('forwards a ref so forms can focus it', () => {
     let node: HTMLInputElement | null = null;
-    render(<Input ref={(el) => (node = el)} />);
+    render(
+      <Input
+        ref={(el) => {
+          node = el;
+        }}
+      />
+    );
     expect(node).toBeInstanceOf(HTMLInputElement);
   });
 });

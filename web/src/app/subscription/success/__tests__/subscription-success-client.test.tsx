@@ -41,7 +41,7 @@ vi.mock('@/components/GlobalHeader', () => ({
 
 const user = {
   id: 1,
-  spotifyId: 'spotify-1',
+  supabaseId: 'supabase-1',
   displayName: 'Test User',
   email: 'test@example.com',
 };

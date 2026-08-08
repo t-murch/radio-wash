@@ -2,11 +2,16 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createClientClient } from '@/lib/supabase/client';
 
 // e.g., 'types/api.ts', and import them here.
-export type MusicProvider = 'spotify' | 'apple_music';
+/**
+ * The music service RadioWash works with. A union of one today — Apple Music is
+ * the only supported provider — but kept as a named type because the backend
+ * abstraction is provider-neutral and a second service is expected.
+ */
+export type MusicProvider = 'apple_music';
 
 export interface User {
   id: number;
-  spotifyId: string;
+  supabaseId: string;
   displayName: string;
   email: string;
   profileImageUrl?: string;
@@ -264,7 +269,7 @@ export const getMeServer = async (): Promise<User> => {
 };
 
 export const getUserPlaylistsServer = (
-  provider: MusicProvider = 'spotify'
+  provider: MusicProvider = 'apple_music'
 ): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
 > =>
@@ -332,7 +337,7 @@ export const getMusicKitDeveloperToken = (): Promise<{ token: string }> =>
   fetchWithSupabaseAuth(`${API_BASE_URL}/auth/musickit/devtoken`);
 
 export const getUserPlaylists = (
-  provider: MusicProvider = 'spotify'
+  provider: MusicProvider = 'apple_music'
 ): Promise<
   Playlist[] | { error: string; message: string; playlists: Playlist[] }
 > =>
