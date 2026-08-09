@@ -18,7 +18,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${baseUrl}/terms`,
-      lastModified: '2026-08-07',
+      lastModified: '2026-08-09',
       changeFrequency: 'yearly',
       priority: 0.3,
     },

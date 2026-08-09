@@ -38,21 +38,19 @@ export function generateMetadata(): Metadata {
   return {
     metadataBase: new URL('https://radiowash.com'),
     title: {
-      default: 'RadioWash - Clean Your Spotify Playlists',
+      default: 'RadioWash — clean copies of your Apple Music playlists',
       template: '%s | RadioWash',
     },
     description:
-      'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks. Perfect for family listening, work environments, and personal preference.',
+      'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
     applicationName: 'RadioWash',
     keywords: [
-      'Spotify',
-      'clean playlist',
-      'explicit content filter',
-      'family-friendly music',
-      'clean music',
-      'Spotify playlist cleaner',
-      'remove explicit lyrics',
-      'AI music matching',
+      'Apple Music playlist cleaner',
+      'clean version playlist',
+      'radio edit playlist',
+      'remove explicit tracks',
+      'family-friendly Apple Music',
+      'clean playlist generator',
     ],
     authors: [{ name: 'RadioWash' }],
     creator: 'RadioWash',
@@ -67,15 +65,15 @@ export function generateMetadata(): Metadata {
       locale: 'en_US',
       url: 'https://radiowash.com',
       siteName: 'RadioWash',
-      title: 'RadioWash - Clean Your Spotify Playlists',
+      title: 'RadioWash — clean copies of your Apple Music playlists',
       description:
-        'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks.',
+        'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'RadioWash - Clean Your Spotify Playlists',
+      title: 'RadioWash — clean copies of your Apple Music playlists',
       description:
-        'Transform explicit Spotify playlists into clean versions. AI-powered tool finds clean alternatives for explicit tracks.',
+        'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
     },
     robots: {
       index: true,

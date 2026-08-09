@@ -24,7 +24,8 @@ export function StructuredData() {
     '@type': 'Organization',
     name: 'RadioWash',
     url: SITE_URL,
-    logo: `${SITE_URL}/icon.png`,
+    // Next serves the generated app icon at /icon (no extension); /icon.png 404s.
+    logo: `${SITE_URL}/icon`,
     description:
       'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
     foundingDate: '2024',

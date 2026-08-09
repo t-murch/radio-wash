@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms — RadioWash',
+  title: 'Terms',
   description:
     'The terms of using RadioWash: what the service does, what it costs, and what it honestly cannot promise.',
 };

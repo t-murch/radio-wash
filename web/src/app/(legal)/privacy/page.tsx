@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy — RadioWash',
+  title: 'Privacy',
   description:
     'What RadioWash stores, what it never sees, and the controls you have over both.',
 };
