@@ -28,9 +28,11 @@ public static class DatabaseSeeder
             PriceInCents = 500, // $5.00/month
             BillingPeriod = "monthly",
             StripePriceId = stripePriceId,
-            MaxPlaylists = 10, // 10 playlists maximum
-            MaxTracksPerPlaylist = 200, // 200 tracks per playlist maximum
-            Features = """["Daily automatic playlist synchronization", "Up to 10 sync configurations", "Up to 200 tracks per playlist", "Manual sync triggering", "Sync history and status tracking", "Smart track matching and cleaning"]""",
+            MaxPlaylists = 10, // enforced by SubscriptionService.EnforcePlanLimitAsync
+            // No per-playlist track cap: nothing enforces one (CleanPlaylistService accepts any
+            // size), so advertising a number here would be a designed limit that does not exist.
+            MaxTracksPerPlaylist = null,
+            Features = """["Daily automatic playlist synchronization", "Up to 10 sync configurations", "Manual sync triggering", "Sync history and status tracking", "Smart track matching and cleaning"]""",
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
