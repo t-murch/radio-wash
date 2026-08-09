@@ -56,17 +56,12 @@ in a chat log.
 
 ## Azure
 
-- [ ] **Delete the stale `latest` image from ACR.** Pushed manually in
-      May 2025, before `.dockerignore` existed — it contains that era's
-      `appsettings.json`/`appsettings.Development.json` (Supabase DB
-      password, Spotify secrets; no Stripe keys, which didn't exist yet).
-      Production is pinned to a SHA tag, so deletion affects nothing:
-
-      ```bash
-      az acr repository delete --name radiowash --image radiowash-api:latest --yes
-      ```
-
-      With this gone and the DB password rotated (below), nothing the image
+- [x] **Delete the stale `latest` image from ACR** — done 2026-08-09.
+      Pushed manually in May 2025, before `.dockerignore` existed — it
+      contained that era's `appsettings.json`/`appsettings.Development.json`
+      (Supabase DB password, Spotify secrets; no Stripe keys, which didn't
+      exist yet). Production was pinned to a SHA tag, so deletion affected
+      nothing. With the DB password rotation (below), nothing the image
       leaked stays valid. Locally built images no longer bake the file at
       all as of the `.dockerignore` fix.
 
