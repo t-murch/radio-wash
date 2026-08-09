@@ -66,11 +66,11 @@ Order matters: reset first, then rotate, then deploy.
       shipped copy promises a 15-minute magic link in five places;
       `config.toml` only governs local.
 
-- [ ] **Rotate the database password** (Settings → Database). It appeared in
-      git history before `e7b1563` and in the stale ACR image. Then update
-      *both* consumers: the `SUPABASE_DB_CONNECTION` GitHub secret and the
-      App Service `ConnectionStrings__DefaultConnection` setting (or just
-      the secret, followed by a deploy).
+- [x] **Rotate the database password** — done 2026-08-09. Rotated in
+      Supabase, updated in both the `SUPABASE_DB_CONNECTION` GitHub secret
+      and the App Service setting, and redeployed. With the stale ACR image
+      already deleted, every credential that ever leaked through git history
+      or baked images is now invalid.
 
 ## Email / DNS
 
@@ -83,13 +83,11 @@ reputation is isolated if anything goes wrong.
       resolve publicly. The root's DMARC (`p=quarantine`, relaxed alignment)
       covers the subdomain; no extra DMARC record needed.
 
-- [ ] **Point hosted Supabase at Resend SMTP.** Until this is done, magic
-      links go out from Supabase's shared sender, which is rate-limited to a
-      handful of emails per hour — a launch blocker on its own. Supabase
-      dashboard → Project Settings → Authentication → SMTP:
-      host `smtp.resend.com`, port `465`, username `resend`, password = a
-      Resend API key, sender address `sign-in@updates.radiowash.com`, sender
-      name `RadioWash`.
+- [x] **Point hosted Supabase at Resend SMTP** — done 2026-08-09.
+      Custom SMTP enabled: `smtp.resend.com:465`, sender
+      `sign-in@updates.radiowash.com`. Verified end-to-end by triggering a
+      real magic link from the hosted project through Resend. (Cosmetic:
+      sender name is "Radiowash Team" — brand spells it "RadioWash".)
 
 - [ ] **Set the hosted magic-link email template.** `config.toml` and
       `supabase/templates/magic-link.html` only govern local; paste the
@@ -100,8 +98,23 @@ reputation is isolated if anything goes wrong.
 
 - [ ] **`support@radiowash.com` must receive mail** — `/privacy` and
       `/terms` name it as the contact and account-deletion channel, and
-      Resend only handles sending. Simplest: GoDaddy email forwarding from
-      `support@radiowash.com` to a real inbox.
+      Resend only handles sending. GoDaddy's email forwarding product is
+      retired, and Resend's receiving is webhook-based (an endpoint we'd
+      have to build, plus a retrieval API call for the body — too much
+      machinery for a support inbox). The root domain has **no MX records
+      at all** (verified), so a forwarding-only MX service drops in with
+      zero conflicts. Recommended: ImprovMX free tier —
+
+      1. improvmx.com → add domain `radiowash.com`, alias `support` →
+         personal inbox.
+      2. GoDaddy DNS, on the **root** (`@`):
+         - MX `mx1.improvmx.com` priority 10
+         - MX `mx2.improvmx.com` priority 20
+         - TXT `v=spf1 include:spf.improvmx.com ~all`
+      3. Send a test mail to `support@radiowash.com` and confirm it arrives.
+
+      None of this touches `updates.radiowash.com`, so sending is
+      unaffected.
 
 ## Business
 
