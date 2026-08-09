@@ -54,27 +54,24 @@ in a chat log.
 
 ## Supabase (hosted)
 
-- [ ] **Run `docs/ops/reset-hosted-db.sql` — at deploy time, API stopped.**
+- [x] **Reset + deploy — LAUNCHED 2026-08-09.** Sequence executed: API
+      stopped → `feat/apple-only` fast-forwarded into `main` and pushed →
+      reset script run over a direct connection (NOTICEs showed only
+      disposable data: one test account, one plan row, 20 old migration
+      rows; committed) → both deploy workflows green → API started.
 
-      A first reset ran on 2026-08-09 and was silently undone: the old API
-      (still deployed from `main`) restarted and its startup
-      `Database.Migrate()` faithfully rebuilt the old 20-migration schema on
-      the empty database, reseeded the plan, and re-created the old trigger.
-      Verified over a direct connection the same day. Nothing was damaged —
-      but it proves the reset only sticks if the old API never runs again
-      afterwards. The launch-day sequence is therefore:
+      Post-deploy verification, all passed:
+      - `__EFMigrationsHistory` holds exactly `20260807235847_InitialAppleMusic`
+      - Sync Plan seeded: `price_1TNdUV…`, 500¢, no track cap
+      - `on_auth_user_created` trigger present; `auth.users` empty
+      - `CleanPlaylistJobs` provider defaults both `apple_music`
+      - Webhook route answers 400 (signature-gated) on `api.radiowash.com`
+      - `radiowash.com` serves the new landing (Apple Music title, zero
+        "spotify" occurrences); `/privacy`, `/terms`, `/auth` all 200
 
-      1. Merge `feat/apple-only` into `main` (do not deploy yet, or let the
-         deploy fail — the new migration cannot apply over the old schema).
-      2. `az webapp stop --resource-group radio-wash_group --name radiowash-api`
-      3. Run the reset script in the dashboard SQL editor. Read the NOTICEs
-         (it prints per-table row counts and the `auth.users` count), then
-         COMMIT.
-      4. Deploy the new API (workflow_dispatch on api-deploy, or restart if
-         the new image is already set). Startup applies `InitialAppleMusic`,
-         recreates the trigger, and seeds the Sync Plan from the configured
-         $5 price — the 2026-08-09 rebuild already proved the price id flows
-         through the env config correctly.
+      (A first reset earlier the same day was silently undone by the old
+      API restarting and re-running its migration chain — the reason this
+      sequence stops the API first.)
 
 - [x] **Set `otp_expiry = 900`** — done 2026-08-09 in the hosted dashboard
       (it survives the DB reset; auth settings live outside the project's
