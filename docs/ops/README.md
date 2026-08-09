@@ -43,11 +43,13 @@ application will not start.
 
 All RadioWash application data: users, jobs, track mappings, sync configs and
 history, subscriptions, stored music tokens, and the Stripe webhook idempotency
-log.
+log — **and every account in `auth.users`**.
 
-Supabase's own schemas are untouched, so accounts in `auth.users` survive. Their
-RadioWash profile rows do not — the first request from an existing account
-recreates the profile through the trigger.
+The accounts must go with the rest: profile rows are created only by the
+`AFTER INSERT` trigger on `auth.users`, so an account that survived a reset with
+its profile row dropped would hit "User not found" on every request forever —
+the trigger never re-fires for a row that already exists. After the reset,
+everyone signs up again and the trigger provisions them cleanly.
 
 **This is only appropriate where the data is disposable.** For a database with
 real users or live Stripe subscriptions, the alternative is to reconcile in

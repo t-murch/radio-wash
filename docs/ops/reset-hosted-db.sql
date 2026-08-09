@@ -14,10 +14,14 @@
 --   * Deletes ALL RadioWash application data: users, jobs, track mappings, sync
 --     configs and history, subscriptions, stored music tokens, and the Stripe
 --     webhook idempotency log.
---   * Does NOT touch Supabase's own schemas (auth, storage, realtime, extensions).
---     Accounts in auth.users survive; their RadioWash profile rows do not, so the
---     first request from an existing account recreates the profile via the trigger.
---   * Does NOT drop the database itself, so connection details stay valid.
+--   * ALSO deletes every account in auth.users. Profile rows are created only by
+--     the AFTER INSERT trigger on auth.users — an account that survives a reset
+--     with its profile row dropped would be stranded behind "User not found"
+--     forever, because an insert trigger never re-fires for an existing row.
+--     Deleting the accounts means everyone signs up again and the trigger
+--     provisions them cleanly. (Verified the hard way in local dev, Aug 2026.)
+--   * Does NOT touch Supabase's other schemas (storage, realtime, extensions) or
+--     drop the database itself, so connection details stay valid.
 --
 -- Run it in the Supabase dashboard SQL editor for the target project, with the API
 -- stopped or scaled to zero so nothing writes mid-reset.
@@ -47,6 +51,19 @@ END $$;
 --    insert into a table that is disappearing. InitialAppleMusic recreates both.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_auth_user();
+
+-- 2b. Remove the accounts themselves. Supabase cascades from auth.users to its own
+--     dependent tables (identities, sessions, refresh tokens). Without this, any
+--     account that existed before the reset can never regain a profile row — the
+--     trigger only fires on INSERT, and their row already exists.
+DO $$
+DECLARE
+  n BIGINT;
+BEGIN
+  SELECT count(*) INTO n FROM auth.users;
+  RAISE NOTICE 'auth.users accounts about to be deleted: %', n;
+END $$;
+DELETE FROM auth.users;
 
 -- 3. Drop every table the API owns, plus EF's migration ledger. CASCADE clears the
 --    foreign keys between them; order does not matter because of it.
