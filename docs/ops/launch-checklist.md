@@ -32,12 +32,8 @@ in a chat log.
       subscription cancel enabled. "Manage billing" now has something to
       open in production.
 
-- [ ] **Archive the $2.99 live price** (`price_1SLDBHGUEfIc3dIUsYLh8zEH`) so
-      nothing can accidentally reference it again:
-
-      ```bash
-      stripe prices update price_1SLDBHGUEfIc3dIUsYLh8zEH -d "active=false"
-      ```
+- [x] **Archive the $2.99 live price** (`price_1SLDBHGUEfIc3dIUsYLh8zEH`) —
+      done 2026-08-09 via dashboard; verified `active: false` via the API.
 
 ## Azure
 
@@ -78,16 +74,42 @@ Order matters: reset first, then rotate, then deploy.
 
 ## Email / DNS
 
-- [ ] **`sign-in@radiowash.com`** as the magic-link sender with SPF/DKIM
-      (Supabase custom SMTP), or the emails land in spam regardless of copy.
-- [ ] **`support@radiowash.com`** mailbox — `/privacy` and `/terms` name it
-      as the contact and account-deletion channel.
+Sending goes through Resend on the dedicated subdomain
+`updates.radiowash.com` — deliberately not the root, so the root domain's
+reputation is isolated if anything goes wrong.
+
+- [x] **Resend domain verified with SPF/DKIM** — done 2026-08-09. DKIM
+      (`resend._domainkey.updates`), SPF + feedback MX (`send.updates`) all
+      resolve publicly. The root's DMARC (`p=quarantine`, relaxed alignment)
+      covers the subdomain; no extra DMARC record needed.
+
+- [ ] **Point hosted Supabase at Resend SMTP.** Until this is done, magic
+      links go out from Supabase's shared sender, which is rate-limited to a
+      handful of emails per hour — a launch blocker on its own. Supabase
+      dashboard → Project Settings → Authentication → SMTP:
+      host `smtp.resend.com`, port `465`, username `resend`, password = a
+      Resend API key, sender address `sign-in@updates.radiowash.com`, sender
+      name `RadioWash`.
+
+- [ ] **Set the hosted magic-link email template.** `config.toml` and
+      `supabase/templates/magic-link.html` only govern local; paste the
+      template's content into Authentication → Email Templates → Magic Link
+      in the dashboard. The template must link to
+      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink`
+      — the default template's link does not match our confirm route.
+
+- [ ] **`support@radiowash.com` must receive mail** — `/privacy` and
+      `/terms` name it as the contact and account-deletion channel, and
+      Resend only handles sending. Simplest: GoDaddy email forwarding from
+      `support@radiowash.com` to a real inbox.
 
 ## Business
 
-- [ ] **Confirm the refund promise.** The shipped terms promise pro-rated
-      refunds if the service is discontinued. Keep it or amend the terms
-      before launch — it is a real commitment either way.
+- [x] **Refund promise resolved** — done 2026-08-09. Decision: no pro-rated
+      refunds. The terms no longer promise a refund on discontinuation and
+      the Payment section states plainly that payments already made are not
+      refunded; cancellation takes effect at period end with access until
+      then, matching the Stripe cancel-at-period-end configuration.
 
 ## After deploy — verification
 

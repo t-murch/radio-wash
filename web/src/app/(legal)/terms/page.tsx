@@ -14,7 +14,7 @@ export default function TermsPage() {
           Terms of Service
         </h1>
         <p className="text-sm text-muted-foreground">
-          Last updated August 7, 2026
+          Last updated August 9, 2026
         </p>
       </header>
 
@@ -78,6 +78,7 @@ export default function TermsPage() {
           monthly through Stripe at the price shown on the subscription page.
           You can cancel at any time; cancellation takes effect at the end of
           the period you already paid for, and you keep access until then.
+          Payments already made are not refunded.
         </p>
       </section>
 
@@ -88,10 +89,9 @@ export default function TermsPage() {
         <p className="text-muted-foreground">
           RadioWash is provided as-is, without warranties. It depends on
           Apple&apos;s APIs, which can change or break outside our control.
-          Features may change and the service may be discontinued; if that
-          happens while you have an active subscription, the remainder is
-          refunded. Our total liability for anything arising from the service is
-          limited to the amount you paid for it in the preceding twelve months.
+          Features may change and the service may be discontinued. Our total
+          liability for anything arising from the service is limited to the
+          amount you paid for it in the preceding twelve months.
         </p>
       </section>
 
