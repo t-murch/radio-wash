@@ -95,10 +95,12 @@ export interface PlaylistSyncConfig {
   createdAt: string;
 }
 
+// Sync is additive-only: the API's tracksRemoved field is always 0 (Apple Music's
+// REST API cannot remove tracks from a library playlist), so it is deliberately
+// not part of these types — nothing in the UI may claim a removal happened.
 export interface SyncResult {
   success: boolean;
   tracksAdded: number;
-  tracksRemoved: number;
   tracksUnchanged: number;
   errorMessage?: string;
   executionTimeMs: number;
@@ -110,7 +112,6 @@ export interface SyncHistory {
   completedAt?: string;
   status: string;
   tracksAdded?: number;
-  tracksRemoved?: number;
   tracksUnchanged?: number;
   errorMessage?: string;
   executionTimeMs?: number;
@@ -458,19 +459,6 @@ export const disableSync = (
 
 export const getSyncConfigs = (): Promise<PlaylistSyncConfig[]> => {
   return fetchWithSupabaseAuth(`${API_BASE_URL}/playlistsync`);
-};
-
-export const updateSyncFrequency = (
-  syncConfigId: number,
-  frequency: string
-): Promise<PlaylistSyncConfig> => {
-  return fetchWithSupabaseAuth(
-    `${API_BASE_URL}/playlistsync/${syncConfigId}/frequency`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ frequency }),
-    }
-  );
 };
 
 export const triggerManualSync = (
