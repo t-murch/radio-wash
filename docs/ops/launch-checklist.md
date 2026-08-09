@@ -134,3 +134,12 @@ reputation is isolated if anything goes wrong.
    the webhook delivery shows 200 in the Stripe dashboard, and the
    subscription row appears without waiting for the hourly reconciliation
    sweep.
+
+**Verified 2026-08-09 — all of the above passed.** Real $5.00 live charge
+succeeded; `ProcessedWebhookEvents` shows `checkout.session.completed`,
+`invoice.payment_succeeded`, and `customer.subscription.created` all
+processed within 2 seconds of the charge (signature verification passed —
+the webhook secret survived the endpoint edit); `UserSubscriptions` active
+through 2026-09-09; zero pending retries. Note for future log-readers: an
+unsigned 2-byte `{}` POST to the webhook returning 400 is a health probe,
+not a failed Stripe delivery — real deliveries carry kilobytes of JSON.
