@@ -14,38 +14,23 @@ in a chat log.
       pointed at the live $2.99 price while every shipped surface says $5 —
       checkout would have silently undercharged.
 
-- [ ] **Repoint the live webhook endpoint.** It currently targets
-      `https://radiowash.com/api/subscription/webhook`, which is the
-      *frontend* and returns 404 — every live event is being swallowed. The
-      API answers at `https://api.radiowash.com/api/subscription/webhook`
-      (verified: unsigned POST returns 400 from our controller). While
-      editing, add `invoice.payment_succeeded` — the processor handles it but
-      the endpoint doesn't subscribe to it. The signing secret is unchanged
-      by a URL edit, so `Stripe__WebhookSecret` stays as is.
+- [x] **Repoint the live webhook endpoint** — done 2026-08-09 via dashboard.
+      It previously targeted `https://radiowash.com/api/subscription/webhook`
+      (the *frontend*, a 404 — every live event was being swallowed). Now
+      verified via the API: URL is
+      `https://api.radiowash.com/api/subscription/webhook`, status enabled,
+      with all six events the processor handles, including the previously
+      missing `invoice.payment_succeeded`. The endpoint was edited in place,
+      which keeps the signing secret — if webhook deliveries show 400 after
+      launch, the secret changed after all: copy the endpoint's current
+      `whsec_…` into the `STRIPE_WEBHOOK_SECRET` GitHub secret and the App
+      Service `Stripe__WebhookSecret` setting.
 
-      Dashboard: https://dashboard.stripe.com/webhooks → edit the endpoint →
-      set the URL, add the event. Or via CLI:
-
-      ```bash
-      export STRIPE_API_KEY=<live secret key>
-      WE_ID=$(stripe webhook_endpoints list --limit 1 | jq -r '.data[0].id')
-      stripe webhook_endpoints update "$WE_ID" \
-        --url "https://api.radiowash.com/api/subscription/webhook" \
-        -d "enabled_events[]=checkout.session.completed" \
-        -d "enabled_events[]=customer.subscription.created" \
-        -d "enabled_events[]=customer.subscription.updated" \
-        -d "enabled_events[]=customer.subscription.deleted" \
-        -d "enabled_events[]=invoice.payment_failed" \
-        -d "enabled_events[]=invoice.payment_succeeded"
-      ```
-
-- [ ] **Save a Customer Portal configuration in live mode.** None exists
-      (`GET /v1/billing_portal/configurations` returns zero), so the app's
-      "Manage billing" button would 500 in production — portal sessions
-      require a saved configuration. One-time dashboard step:
-      https://dashboard.stripe.com/settings/billing/portal → review → Save.
-      Enable at minimum: invoice history, payment-method update, and
-      cancel-at-period-end (matches the app's own cancellation flow).
+- [x] **Save a Customer Portal configuration in live mode** — done
+      2026-08-09 via dashboard. Verified via the API: one active default
+      configuration with invoice history, payment-method update, and
+      subscription cancel enabled. "Manage billing" now has something to
+      open in production.
 
 - [ ] **Archive the $2.99 live price** (`price_1SLDBHGUEfIc3dIUsYLh8zEH`) so
       nothing can accidentally reference it again:
