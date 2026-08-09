@@ -19,7 +19,7 @@ const request = (url: string, headers: Record<string, string> = {}) =>
   ({
     url,
     headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
-  }) as unknown as Request;
+  } as unknown as Request);
 
 describe('Auth Callback Route', () => {
   let mockSupabase: {
@@ -57,7 +57,9 @@ describe('Auth Callback Route', () => {
 
   it('honours a relative next parameter', async () => {
     await GET(
-      request('https://radiowash.com/api/auth/callback?code=abc&next=/dashboard')
+      request(
+        'https://radiowash.com/api/auth/callback?code=abc&next=/dashboard'
+      )
     );
 
     expect(NextResponse.redirect).toHaveBeenCalledWith(
@@ -111,7 +113,7 @@ describe('Auth Callback Route', () => {
     );
   });
 
-  it('uses the forwarded host in production so redirects survive a load balancer', async () => {
+  it('uses the forwarded host so redirects survive a load balancer', async () => {
     process.env.NODE_ENV = 'production';
 
     await GET(
@@ -122,6 +124,20 @@ describe('Auth Callback Route', () => {
 
     expect(NextResponse.redirect).toHaveBeenCalledWith(
       'https://radiowash.com/onboarding'
+    );
+  });
+
+  it('redirects on the host the browser addressed, not the one in request.url', async () => {
+    // Next's dev server rewrites request.url's host to localhost; the session
+    // cookie was just set for the host the browser is actually on.
+    await GET(
+      request('https://localhost:3000/api/auth/callback?code=abc', {
+        host: '127.0.0.1:3000',
+      })
+    );
+
+    expect(NextResponse.redirect).toHaveBeenCalledWith(
+      'https://127.0.0.1:3000/onboarding'
     );
   });
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
+import { requestOrigin } from '@/lib/request-origin';
 
 /**
  * OAuth callback for the identity providers (Apple, Google).
@@ -11,7 +12,11 @@ import { createClient } from '@/lib/supabase/server';
  * separate MusicKit authorization, which onboarding handles as an explicit step.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // The host the browser addressed, not the one Next reports in request.url —
+  // dev rewrites the latter to localhost, and behind a load balancer it is the
+  // internal host. Cookie-carrying redirects must stay on the browser's host.
+  const origin = requestOrigin(request);
   const code = searchParams.get('code');
   const next = safeNext(searchParams.get('next'));
 
@@ -33,16 +38,6 @@ export async function GET(request: Request) {
         'We could not complete that sign-in. Please try again.'
       )}`
     );
-  }
-
-  // `origin` comes from the incoming request, so this works in development,
-  // preview deployments, and production without a hardcoded host. Behind a load
-  // balancer the forwarded host is the externally visible one.
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  const isLocal = process.env.NODE_ENV === 'development';
-
-  if (!isLocal && forwardedHost) {
-    return NextResponse.redirect(`https://${forwardedHost}${next}`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);

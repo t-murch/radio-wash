@@ -13,7 +13,11 @@ vi.mock('next/server', () => ({
   },
 }));
 
-const request = (url: string) => ({ url }) as never;
+const request = (url: string, headers: Record<string, string> = {}) =>
+  ({
+    url,
+    headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
+  } as never);
 
 describe('Magic link confirm route', () => {
   let mockSupabase: { auth: { verifyOtp: Mock } };
@@ -88,6 +92,35 @@ describe('Magic link confirm route', () => {
 
     expect(NextResponse.redirect).toHaveBeenCalledWith(
       'https://radiowash.com/dashboard'
+    );
+  });
+
+  it('redirects on the host the browser addressed, not the one in request.url', async () => {
+    // Next's dev server rewrites request.url's host to localhost. A user on
+    // 127.0.0.1 whose session cookie was just set for 127.0.0.1 must not be
+    // redirected to localhost, where that cookie does not exist.
+    await GET(
+      request(
+        'https://localhost:3000/auth/confirm?token_hash=h&type=magiclink',
+        { host: '127.0.0.1:3000' }
+      )
+    );
+
+    expect(NextResponse.redirect).toHaveBeenCalledWith(
+      'https://127.0.0.1:3000/onboarding'
+    );
+  });
+
+  it('prefers the forwarded host so redirects survive a load balancer', async () => {
+    await GET(
+      request('http://internal:3000/auth/confirm?token_hash=h&type=magiclink', {
+        host: 'internal:3000',
+        'x-forwarded-host': 'radiowash.com',
+      })
+    );
+
+    expect(NextResponse.redirect).toHaveBeenCalledWith(
+      'https://radiowash.com/onboarding'
     );
   });
 });

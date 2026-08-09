@@ -2,6 +2,7 @@ import { type EmailOtpType } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
+import { requestOrigin } from '@/lib/request-origin';
 
 /**
  * Magic-link landing route.
@@ -12,14 +13,20 @@ import { createClient } from '@/lib/supabase/server';
  * /auth/link-expired, which offers a fresh one.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // Redirect on the host the browser is on. Deriving the origin from
+  // request.url sends dev users from 127.0.0.1 to localhost, stranding the
+  // just-set session cookie on the wrong host.
+  const origin = requestOrigin(request);
   const tokenHash = searchParams.get('token_hash');
   const type = searchParams.get('type') as EmailOtpType | null;
 
   const next = safeNext(searchParams.get('next'));
 
   if (!tokenHash || !type) {
-    return NextResponse.redirect(`${origin}/auth/link-expired?reason=malformed`);
+    return NextResponse.redirect(
+      `${origin}/auth/link-expired?reason=malformed`
+    );
   }
 
   const supabase = await createClient();
