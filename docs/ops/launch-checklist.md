@@ -54,17 +54,31 @@ in a chat log.
 
 ## Supabase (hosted)
 
-Order matters: reset first, then rotate, then deploy.
+- [ ] **Run `docs/ops/reset-hosted-db.sql` — at deploy time, API stopped.**
 
-- [ ] **Run `docs/ops/reset-hosted-db.sql`** in the dashboard SQL editor with
-      the API stopped. It prints row counts (including how many `auth.users`
-      accounts it is about to delete) before anything drops — read the
-      NOTICEs, then COMMIT. The next API deploy applies `InitialAppleMusic`
-      and seeds the Sync Plan from the (now-$5) configured price.
+      A first reset ran on 2026-08-09 and was silently undone: the old API
+      (still deployed from `main`) restarted and its startup
+      `Database.Migrate()` faithfully rebuilt the old 20-migration schema on
+      the empty database, reseeded the plan, and re-created the old trigger.
+      Verified over a direct connection the same day. Nothing was damaged —
+      but it proves the reset only sticks if the old API never runs again
+      afterwards. The launch-day sequence is therefore:
 
-- [ ] **Set `otp_expiry = 900`** (Authentication → Providers → Email). The
-      shipped copy promises a 15-minute magic link in five places;
-      `config.toml` only governs local.
+      1. Merge `feat/apple-only` into `main` (do not deploy yet, or let the
+         deploy fail — the new migration cannot apply over the old schema).
+      2. `az webapp stop --resource-group radio-wash_group --name radiowash-api`
+      3. Run the reset script in the dashboard SQL editor. Read the NOTICEs
+         (it prints per-table row counts and the `auth.users` count), then
+         COMMIT.
+      4. Deploy the new API (workflow_dispatch on api-deploy, or restart if
+         the new image is already set). Startup applies `InitialAppleMusic`,
+         recreates the trigger, and seeds the Sync Plan from the configured
+         $5 price — the 2026-08-09 rebuild already proved the price id flows
+         through the env config correctly.
+
+- [x] **Set `otp_expiry = 900`** — done 2026-08-09 in the hosted dashboard
+      (it survives the DB reset; auth settings live outside the project's
+      Postgres). Config changes apply within a few minutes.
 
 - [x] **Rotate the database password** — done 2026-08-09. Rotated in
       Supabase, updated in both the `SUPABASE_DB_CONNECTION` GitHub secret
@@ -89,32 +103,19 @@ reputation is isolated if anything goes wrong.
       real magic link from the hosted project through Resend. (Cosmetic:
       sender name is "Radiowash Team" — brand spells it "RadioWash".)
 
-- [ ] **Set the hosted magic-link email template.** `config.toml` and
-      `supabase/templates/magic-link.html` only govern local; paste the
-      template's content into Authentication → Email Templates → Magic Link
-      in the dashboard. The template must link to
-      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink`
-      — the default template's link does not match our confirm route.
+- [x] **Set the hosted magic-link email template** — done 2026-08-09 (the
+      custom RadioWash template with the `{{ .TokenHash }}` link is live in
+      the dashboard). Auth settings apply within minutes and, like
+      `otp_expiry`, survive the DB reset.
 
-- [ ] **`support@radiowash.com` must receive mail** — `/privacy` and
-      `/terms` name it as the contact and account-deletion channel, and
-      Resend only handles sending. GoDaddy's email forwarding product is
-      retired, and Resend's receiving is webhook-based (an endpoint we'd
-      have to build, plus a retrieval API call for the body — too much
-      machinery for a support inbox). The root domain has **no MX records
-      at all** (verified), so a forwarding-only MX service drops in with
-      zero conflicts. Recommended: ImprovMX free tier —
-
-      1. improvmx.com → add domain `radiowash.com`, alias `support` →
-         personal inbox.
-      2. GoDaddy DNS, on the **root** (`@`):
-         - MX `mx1.improvmx.com` priority 10
-         - MX `mx2.improvmx.com` priority 20
-         - TXT `v=spf1 include:spf.improvmx.com ~all`
-      3. Send a test mail to `support@radiowash.com` and confirm it arrives.
-
-      None of this touches `updates.radiowash.com`, so sending is
-      unaffected.
+- [x] **`support@radiowash.com` receives mail via ImprovMX** — set up
+      2026-08-09. GoDaddy retired its forwarding product and Resend's
+      receiving is webhook machinery, so forwarding-only MX went on the
+      root (which had no MX records): `mx1`/`mx2.improvmx.com` plus the
+      ImprovMX SPF TXT, all showing verified in the ImprovMX dashboard.
+      Sanity check when convenient: send a mail to
+      `support@radiowash.com` from a second address and confirm it lands.
+      None of this touches `updates.radiowash.com` sending.
 
 ## Business
 
