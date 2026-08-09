@@ -49,8 +49,6 @@ jobs:
         with:
           inlineScript: |
             az webapp config appsettings set --resource-group radio-wash_group --name radiowash-api --settings \
-            "Spotify__ClientId=${{ secrets.SPOTIFY_CLIENT_ID }}" \
-            "Spotify__ClientSecret=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
             "AppleMusic__TeamId=${{ secrets.APPLE_MUSIC_TEAM_ID }}" \
             "AppleMusic__KeyId=${{ secrets.APPLE_MUSIC_KEY_ID }}" \
             "AppleMusic__PrivateKeyBase64=${{ secrets.APPLE_MUSIC_PRIVATE_KEY_B64 }}" \

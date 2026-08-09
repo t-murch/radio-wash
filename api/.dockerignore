@@ -1,5 +1,12 @@
 # Never bake local secrets into the container image. Azure App Service (or any
 # host) must inject these as environment variables at runtime.
+#
+# The bare file needs its own line: `appsettings.*.json` requires a character
+# between the dots, so it matches appsettings.Development.json but NOT
+# appsettings.json — which is exactly the file that holds a developer's copy of
+# the production secrets. (CI images were never affected; the file is untracked,
+# so a clean checkout doesn't have it. Locally built images did bake it.)
+appsettings.json
 appsettings.*.json
 !appsettings.example.json
 
