@@ -37,6 +37,14 @@ services:
       - AppleMusic__TeamId=${APPLE_MUSIC_TEAM_ID:-}
       - AppleMusic__KeyId=${APPLE_MUSIC_KEY_ID:-}
       - AppleMusic__PrivateKeyBase64=${APPLE_MUSIC_PRIVATE_KEY_B64:-}
+      # Stripe — always injected, even when unset. The image bakes appsettings.json (see
+      # api/.dockerignore: `appsettings.*.json` does not match the bare file), whose keys are
+      # LIVE-mode. An empty override makes a missing .env value fail loudly at the Stripe call
+      # instead of silently creating real checkout sessions against live billing.
+      - Stripe__SecretKey=${STRIPE_SECRET_KEY:-}
+      - Stripe__PublishableKey=${STRIPE_PUBLISHABLE_KEY:-}
+      - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET:-}
+      - Stripe__PricePlanId=${STRIPE_PRICE_PLAN_ID:-}
     networks:
       - supabase
 
