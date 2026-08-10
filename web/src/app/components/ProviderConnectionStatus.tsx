@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import posthog from 'posthog-js';
 import { ClientDate } from '@/components/ui/ClientDate';
 import {
   ConnectionStatus,
@@ -90,6 +91,9 @@ export function ProviderConnectionStatus({
       }
 
       await storeProviderTokens('apple_music', musicUserToken);
+      posthog.capture('apple_music_connected', {
+        connection_surface: 'dashboard',
+      });
       await checkStatus();
     } catch (error) {
       console.error('Failed to store Apple Music token:', error);
@@ -107,6 +111,7 @@ export function ProviderConnectionStatus({
     setDisconnecting(true);
     try {
       await disconnectProvider(provider);
+      posthog.capture('apple_music_disconnected');
       try {
         // Drop the browser-side MusicKit grant too, or the next authorize() silently
         // reissues a token without the consent popup. Best-effort: the stored tokens are

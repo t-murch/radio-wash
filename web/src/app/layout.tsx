@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { Metadata, Viewport } from 'next';
 import { Source_Serif_4 } from 'next/font/google';
 import PlausibleProvider from 'next-plausible';
+import { PostHogClient } from './providers/PostHogClient';
 
 /**
  * The display serif that carries the warm editorial direction. Self-hosted at
@@ -101,15 +102,17 @@ export default function RootLayout({
         <PlausibleProvider domain="radiowash.com" />
       </head>
       <body>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <QueryProvider>{children}</QueryProvider>
-          <Toaster position="bottom-right" />
-        </ThemeProvider>
+        <PostHogClient>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <QueryProvider>{children}</QueryProvider>
+            <Toaster position="bottom-right" />
+          </ThemeProvider>
+        </PostHogClient>
       </body>
     </html>
   );

@@ -8,6 +8,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import posthog from 'posthog-js';
 import { ProviderConnectionStatus } from '../components/ProviderConnectionStatus';
 import {
   ApiError,
@@ -99,6 +100,11 @@ export function DashboardClient({
         swapExplicitForClean: true,
       }),
     onSuccess: (job) => {
+      posthog.capture('playlist_cleaning_job_started', {
+        provider: 'apple_music',
+        source_track_count: selectedPlaylist?.trackCount ?? 0,
+        uses_custom_name: Boolean(customName.trim()),
+      });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['playlists'] });
       toast.success(

@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import posthog from 'posthog-js';
 
 import { createClient } from '@/lib/supabase/client';
 
@@ -37,7 +38,11 @@ export function AuthForm({
   // server action is invoked from a plain onSubmit handler inside a transition.
   const submitWith = (formData: FormData) => {
     startTransition(async () => {
-      setState(await sendMagicLink(state, formData));
+      const nextState = await sendMagicLink(state, formData);
+      if (nextState.status === 'sent') {
+        posthog.capture('auth_magic_link_requested');
+      }
+      setState(nextState);
     });
   };
 
