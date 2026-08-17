@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
 import { FAQ, SPECIMEN, type SpecimenRow } from '@/lib/content/landing';
+import { MARKETING_ROUTES } from '@/lib/routes';
 import { signOut } from '../../auth/actions';
 import { ThemeToggle } from '../ui/theme-toggle';
 import { FloatingFeedbackButton } from './ReportBug-Btn';
@@ -33,6 +34,12 @@ export default function LandingPage({
             RadioWash
           </span>
           <div className="flex items-center gap-4">
+            <Link
+              href={MARKETING_ROUTES.howItWorks}
+              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              How it works
+            </Link>
             {signedIn ? (
               <Link
                 href="/dashboard"
@@ -149,7 +156,20 @@ export default function LandingPage({
                 <dt className="font-display text-base font-semibold text-foreground">
                   {item.question}
                 </dt>
-                <dd className="mt-2 text-muted-foreground">{item.answer}</dd>
+                <dd className="mt-2 text-muted-foreground">
+                  {item.answer}
+                  {item.more && (
+                    <>
+                      {' '}
+                      <Link
+                        href={item.more.href}
+                        className="whitespace-nowrap text-foreground underline underline-offset-4 hover:text-primary"
+                      >
+                        {item.more.label}
+                      </Link>
+                    </>
+                  )}
+                </dd>
               </div>
             ))}
           </dl>
@@ -159,7 +179,19 @@ export default function LandingPage({
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>Clean copies of Apple Music playlists.</span>
-          <div className="flex items-center gap-5">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link
+              href={MARKETING_ROUTES.howItWorks}
+              className="hover:text-foreground"
+            >
+              How it works
+            </Link>
+            <Link
+              href={MARKETING_ROUTES.cleanPlaylistGuide}
+              className="hover:text-foreground"
+            >
+              Clean-playlist guide
+            </Link>
             <Link href="/privacy" className="hover:text-foreground">
               Privacy
             </Link>

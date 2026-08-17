@@ -28,6 +28,9 @@ export default function LegalLayout({
           <Link href="/" className="hover:text-foreground">
             Home
           </Link>
+          <Link href="/how-it-works" className="hover:text-foreground">
+            How it works
+          </Link>
           <Link href="/privacy" className="hover:text-foreground">
             Privacy
           </Link>
