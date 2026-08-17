@@ -24,12 +24,13 @@ export function StructuredData() {
     '@type': 'Organization',
     name: 'RadioWash',
     url: SITE_URL,
-    // Next serves the generated app icon at /icon (no extension); /icon.png 404s.
-    logo: `${SITE_URL}/icon`,
+    // Google requires Organization.logo to be at least 112×112. The generated
+    // /icon is 32×32, so this points at the 180×180 /apple-icon instead.
+    logo: `${SITE_URL}/apple-icon`,
     description:
       'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
     foundingDate: '2024',
-    sameAs: [],
+    sameAs: ['https://tillumlabs.com', 'https://github.com/t-murch/'],
   };
 
   const softwareApplicationSchema = {
