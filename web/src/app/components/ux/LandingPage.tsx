@@ -1,10 +1,15 @@
 import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
-import { FAQ, SPECIMEN, type SpecimenRow } from '@/lib/content/landing';
+import {
+  DEFINITION,
+  FAQ,
+  SPECIMEN,
+  type SpecimenRow,
+} from '@/lib/content/landing';
 import { MARKETING_ROUTES } from '@/lib/routes';
-import { signOut } from '../../auth/actions';
 import { ThemeToggle } from '../ui/theme-toggle';
+import { HeaderCta, HeroCta } from './HeroCta';
 import { FloatingFeedbackButton } from './ReportBug-Btn';
 import { ServiceUnavailableBanner } from './ServiceUnavailableBanner';
 
@@ -18,14 +23,12 @@ const isServiceAvailable = process.env.NEXT_PUBLIC_SERVICE_AVAILABLE === 'true';
  * transformation on three real tracks, including one that has no clean version
  * and is therefore left out. That omission is the single most misunderstood thing
  * about the product, so it appears above the fold rather than buried in the FAQ.
+ *
+ * A server component with no props: everything crawlable renders statically,
+ * and the only signed-in differences (header CTA, hero block) live in the
+ * HeroCta client island.
  */
-export default function LandingPage({
-  signedIn = false,
-  email,
-}: {
-  signedIn?: boolean;
-  email?: string;
-}) {
+export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
@@ -40,18 +43,7 @@ export default function LandingPage({
             >
               How it works
             </Link>
-            {signedIn ? (
-              <Link
-                href="/dashboard"
-                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-              >
-                Open dashboard
-              </Link>
-            ) : (
-              <PrimaryLink href="/auth" size="sm">
-                Get started
-              </PrimaryLink>
-            )}
+            <HeaderCta />
             <ThemeToggle />
           </div>
         </nav>
@@ -73,53 +65,11 @@ export default function LandingPage({
             The same playlist. None of the explicit versions.
           </h1>
 
-          {signedIn ? (
-            <>
-              <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-                Welcome back. Your playlists and clean copies are on the
-                dashboard.
-              </p>
-              <div className="mt-8">
-                <PrimaryLink href="/dashboard">Go to your dashboard</PrimaryLink>
-              </div>
-              {email && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Signed in as {email} ·{' '}
-                  {/* A server action, not a link: signing out has to clear the
-                      session cookie server-side, which a GET cannot do. */}
-                  <form action={signOut} className="inline">
-                    <button
-                      type="submit"
-                      className="underline underline-offset-4 hover:text-foreground"
-                    >
-                      sign out
-                    </button>
-                  </form>
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="mt-8">
-                {isServiceAvailable ? (
-                  <PrimaryLink href="/auth">
-                    Make a clean copy — free
-                  </PrimaryLink>
-                ) : (
-                  <span
-                    aria-describedby="service-unavailable-banner"
-                    className="inline-flex cursor-not-allowed items-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground opacity-45"
-                  >
-                    Make a clean copy — free
-                  </span>
-                )}
-              </div>
-              <p className="mt-4 max-w-xl text-sm text-muted-foreground">
-                Works inside your own library, so it needs an active Apple Music
-                subscription.
-              </p>
-            </>
-          )}
+          <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+            {DEFINITION}
+          </p>
+
+          <HeroCta serviceAvailable={isServiceAvailable} />
 
           <Specimen />
         </section>
@@ -208,29 +158,6 @@ export default function LandingPage({
   );
 }
 
-function PrimaryLink({
-  href,
-  children,
-  size = 'default',
-}: {
-  href: string;
-  children: React.ReactNode;
-  size?: 'default' | 'sm';
-}) {
-  return (
-    <Link
-      href={href}
-      className={
-        size === 'sm'
-          ? 'inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-          : 'inline-flex items-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-      }
-    >
-      {children}
-    </Link>
-  );
-}
-
 function Specimen() {
   return (
     <figure className="mt-14 overflow-hidden rounded-md border border-border bg-card">
@@ -257,8 +184,8 @@ function Specimen() {
 
       <figcaption className="border-t border-border px-4 py-4 text-sm text-muted-foreground sm:px-6">
         No clean version of <span className="text-foreground">rockstar</span>{' '}
-        exists, so it&apos;s left out. A clean copy is sometimes shorter than its
-        source — that&apos;s the point: everything in it is actually clean.
+        exists, so it&apos;s left out. A clean copy is sometimes shorter than
+        its source — that&apos;s the point: everything in it is actually clean.
       </figcaption>
     </figure>
   );

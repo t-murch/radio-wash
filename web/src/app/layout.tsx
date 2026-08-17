@@ -2,7 +2,6 @@ import './styles/globals.css';
 import { QueryProvider } from './providers/QueryProvider';
 import { ThemeProvider } from './providers/ThemeProvider';
 import { Toaster } from 'sonner';
-import * as Sentry from '@sentry/nextjs';
 import { Metadata, Viewport } from 'next';
 import { Source_Serif_4 } from 'next/font/google';
 import PlausibleProvider from 'next-plausible';
@@ -34,63 +33,62 @@ export const viewport: Viewport = {
   ],
 };
 
-export function generateMetadata(): Metadata {
-  return {
-    metadataBase: new URL('https://radiowash.com'),
-    title: {
-      default: 'RadioWash — clean copies of your Apple Music playlists',
-      template: '%s | RadioWash',
-    },
+// A plain object, not generateMetadata(): request-scoped values here (this
+// used to spread Sentry.getTraceData()) would either force every route dynamic
+// or bake one build-time trace into all pages. The dynamic app routes add
+// their own per-request Sentry trace metadata instead.
+export const metadata: Metadata = {
+  metadataBase: new URL('https://radiowash.com'),
+  title: {
+    default: 'RadioWash — clean copies of your Apple Music playlists',
+    template: '%s | RadioWash',
+  },
+  description:
+    'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
+  applicationName: 'RadioWash',
+  keywords: [
+    'Apple Music playlist cleaner',
+    'clean version playlist',
+    'radio edit playlist',
+    'remove explicit tracks',
+    'family-friendly Apple Music',
+    'clean playlist generator',
+  ],
+  authors: [{ name: 'RadioWash' }],
+  creator: 'RadioWash',
+  publisher: 'RadioWash',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://radiowash.com',
+    siteName: 'RadioWash',
+    title: 'RadioWash — clean copies of your Apple Music playlists',
     description:
-      'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
-    applicationName: 'RadioWash',
-    keywords: [
-      'Apple Music playlist cleaner',
-      'clean version playlist',
-      'radio edit playlist',
-      'remove explicit tracks',
-      'family-friendly Apple Music',
-      'clean playlist generator',
-    ],
-    authors: [{ name: 'RadioWash' }],
-    creator: 'RadioWash',
-    publisher: 'RadioWash',
-    formatDetection: {
-      email: false,
-      address: false,
-      telephone: false,
-    },
-    openGraph: {
-      type: 'website',
-      locale: 'en_US',
-      url: 'https://radiowash.com',
-      siteName: 'RadioWash',
-      title: 'RadioWash — clean copies of your Apple Music playlists',
-      description:
-        'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: 'RadioWash — clean copies of your Apple Music playlists',
-      description:
-        'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
-    },
-    robots: {
+      'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'RadioWash — clean copies of your Apple Music playlists',
+    description:
+      'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
       index: true,
       follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        'max-video-preview': -1,
-        'max-image-preview': 'large',
-        'max-snippet': -1,
-      },
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
     },
-    other: {
-      ...Sentry.getTraceData(),
-    },
-  };
-}
+  },
+};
 
 export default function RootLayout({
   children,
