@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
@@ -10,10 +11,14 @@ import {
 } from '@/services/api';
 import { OnboardingClient } from './onboarding-client';
 
-export const metadata: Metadata = {
-  title: 'Get started',
-  robots: { index: false, follow: false },
-};
+// Dynamic route: per-request Sentry trace metadata, see dashboard/page.tsx.
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Get started',
+    robots: { index: false, follow: false },
+    other: { ...Sentry.getTraceData() },
+  };
+}
 
 /**
  * The guided route from a signed-in account to a first clean playlist.

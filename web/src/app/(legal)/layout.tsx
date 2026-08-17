@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { MARKETING_ROUTES } from '@/lib/routes';
+
 /**
  * Shared shell for /privacy and /terms. Deliberately not GlobalHeader: these
  * pages are read signed-out from the landing footer, and a static wordmark
@@ -25,16 +27,22 @@ export default function LegalLayout({
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6">{children}</main>
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-2xl gap-6 px-4 py-8 text-sm text-muted-foreground sm:px-6">
-          <Link href="/" className="hover:text-foreground">
+          <Link href={MARKETING_ROUTES.home} className="hover:text-foreground">
             Home
           </Link>
-          <Link href="/how-it-works" className="hover:text-foreground">
+          <Link
+            href={MARKETING_ROUTES.howItWorks}
+            className="hover:text-foreground"
+          >
             How it works
           </Link>
-          <Link href="/privacy" className="hover:text-foreground">
+          <Link
+            href={MARKETING_ROUTES.privacy}
+            className="hover:text-foreground"
+          >
             Privacy
           </Link>
-          <Link href="/terms" className="hover:text-foreground">
+          <Link href={MARKETING_ROUTES.terms} className="hover:text-foreground">
             Terms
           </Link>
         </div>

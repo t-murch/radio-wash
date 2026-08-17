@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { logger } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -27,11 +28,20 @@ export function useBrowserSession(): {
     const supabase = createClient();
     let cancelled = false;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      setSignedIn(Boolean(data.session));
-      setEmail(data.session?.user.email ?? null);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setSignedIn(Boolean(data.session));
+        setEmail(data.session?.user.email ?? null);
+      })
+      .catch((error) => {
+        // Storage access can fail in embedded/private browsing contexts. The
+        // signed-out default is already rendered and correct, so log and move on.
+        logger.warn('Browser session read failed; staying signed-out', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
 
     const {
       data: { subscription },

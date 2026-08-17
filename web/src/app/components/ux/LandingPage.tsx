@@ -142,10 +142,16 @@ export default function LandingPage() {
             >
               Clean-playlist guide
             </Link>
-            <Link href="/privacy" className="hover:text-foreground">
+            <Link
+              href={MARKETING_ROUTES.privacy}
+              className="hover:text-foreground"
+            >
               Privacy
             </Link>
-            <Link href="/terms" className="hover:text-foreground">
+            <Link
+              href={MARKETING_ROUTES.terms}
+              className="hover:text-foreground"
+            >
               Terms
             </Link>
             <span>Not affiliated with Apple.</span>

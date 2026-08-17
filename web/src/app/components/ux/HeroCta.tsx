@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 
+import { CtaLink } from '@/components/ui/cta-link';
 import { useBrowserSession } from '@/hooks/useBrowserSession';
 import { signOut } from '../../auth/actions';
 
@@ -27,9 +28,9 @@ export function HeaderCta() {
       Open dashboard
     </Link>
   ) : (
-    <PrimaryLink href="/auth" size="sm">
+    <CtaLink href="/auth" size="sm">
       Get started
-    </PrimaryLink>
+    </CtaLink>
   );
 }
 
@@ -43,7 +44,7 @@ export function HeroCta({ serviceAvailable }: { serviceAvailable: boolean }) {
           Welcome back. Your playlists and clean copies are on the dashboard.
         </p>
         <div className="mt-8">
-          <PrimaryLink href="/dashboard">Go to your dashboard</PrimaryLink>
+          <CtaLink href="/dashboard">Go to your dashboard</CtaLink>
         </div>
         {email && (
           <p className="mt-4 text-sm text-muted-foreground">
@@ -68,7 +69,7 @@ export function HeroCta({ serviceAvailable }: { serviceAvailable: boolean }) {
     <>
       <div className="mt-8">
         {serviceAvailable ? (
-          <PrimaryLink href="/auth">Make a clean copy — free</PrimaryLink>
+          <CtaLink href="/auth">Make a clean copy — free</CtaLink>
         ) : (
           <span
             aria-describedby="service-unavailable-banner"
@@ -83,28 +84,5 @@ export function HeroCta({ serviceAvailable }: { serviceAvailable: boolean }) {
         subscription.
       </p>
     </>
-  );
-}
-
-function PrimaryLink({
-  href,
-  children,
-  size = 'default',
-}: {
-  href: string;
-  children: React.ReactNode;
-  size?: 'default' | 'sm';
-}) {
-  return (
-    <Link
-      href={href}
-      className={
-        size === 'sm'
-          ? 'inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-          : 'inline-flex items-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-      }
-    >
-      {children}
-    </Link>
   );
 }

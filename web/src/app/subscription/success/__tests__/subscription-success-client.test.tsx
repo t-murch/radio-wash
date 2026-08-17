@@ -1,7 +1,11 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { SubscriptionSuccessClient } from '../subscription-success-client';
-import { ApiError, completeCheckout, getSubscriptionStatus } from '@/services/api';
+import {
+  ApiError,
+  completeCheckout,
+  getSubscriptionStatus,
+} from '@/services/api';
 import { QueryWrapper } from '@/test-utils/react-query-wrapper';
 
 // The real app router identity is stable across renders — mirror that, or the
@@ -210,7 +214,9 @@ describe('SubscriptionSuccessClient with a checkout session', () => {
 
     // Copy matches behavior: the page says it keeps checking, and it does.
     expect(screen.getByText(/Still activating/i)).toBeInTheDocument();
-    expect(screen.getByText(/keeps checking automatically/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/keeps checking automatically/i)
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Go to Dashboard/i })
     ).toBeInTheDocument();

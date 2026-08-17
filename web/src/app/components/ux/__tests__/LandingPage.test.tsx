@@ -37,10 +37,11 @@ async function renderLanding() {
 
 describe('LandingPage', () => {
   it('names Apple Music and never mentions Spotify', async () => {
-    await renderLanding();
+    const { container } = await renderLanding();
 
     expect(screen.getByText(/for apple music/i)).toBeInTheDocument();
-    expect(screen.queryByText(/spotify/i)).not.toBeInTheDocument();
+    // Whole-tree text match so a split across inline elements can't slip by.
+    expect(container.textContent ?? '').not.toMatch(/spotify/i);
   });
 
   it('says what RadioWash is in one server-rendered sentence', async () => {

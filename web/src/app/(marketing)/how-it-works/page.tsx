@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
+import { CtaLink } from '@/components/ui/cta-link';
 import { DEFINITION } from '@/lib/content/landing';
 
 export const metadata: Metadata = {
@@ -125,12 +125,7 @@ export default function HowItWorksPage() {
           RadioWash works inside your own library, so it needs an active Apple
           Music subscription.
         </p>
-        <Link
-          href="/auth"
-          className="inline-flex items-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          Make a clean copy — free
-        </Link>
+        <CtaLink href="/auth">Make a clean copy — free</CtaLink>
       </section>
     </article>
   );

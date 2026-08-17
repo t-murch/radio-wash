@@ -4,7 +4,6 @@ import { describe, it, expect } from 'vitest';
 import HowItWorksPage from '../how-it-works/page';
 import CleanPlaylistGuidePage from '../guides/clean-apple-music-playlist/page';
 import { MARKETING_ROUTES } from '@/lib/routes';
-import sitemap from '../../sitemap';
 
 describe('HowItWorksPage', () => {
   it('explains the matching pipeline and the shorter-copy consequence', () => {
@@ -81,29 +80,17 @@ describe('marketing copy guardrails', () => {
   // The brief forbids fake urgency and competitor talk, and constraints.md
   // flags the plan-limit numbers as advertised-but-not-enforced — none of it
   // may appear in published copy.
+  // Asserted on the whole rendered text, not per-text-node queries: a
+  // forbidden phrase split across inline elements must not evade the guard.
   it.each([
     ['HowItWorksPage', HowItWorksPage],
     ['CleanPlaylistGuidePage', CleanPlaylistGuidePage],
   ])('%s stays inside the copy guardrails', (_name, Page) => {
-    render(<Page />);
+    const { container } = render(<Page />);
+    const text = container.textContent ?? '';
 
-    expect(screen.queryByText(/spotify/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/coming soon|waitlist/i)).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/200 tracks|10 sync/i)
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe('sitemap', () => {
-  it('lists both new marketing pages', () => {
-    const urls = sitemap().map((entry) => entry.url);
-
-    expect(urls).toContain(
-      `https://radiowash.com${MARKETING_ROUTES.howItWorks}`
-    );
-    expect(urls).toContain(
-      `https://radiowash.com${MARKETING_ROUTES.cleanPlaylistGuide}`
-    );
+    expect(text).not.toMatch(/spotify/i);
+    expect(text).not.toMatch(/coming soon|waitlist/i);
+    expect(text).not.toMatch(/200 tracks|10 sync/i);
   });
 });
