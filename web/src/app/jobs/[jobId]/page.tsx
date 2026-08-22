@@ -1,7 +1,19 @@
+import * as Sentry from '@sentry/nextjs';
+import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+
 import { createClient } from '@/lib/supabase/server';
 import { getMeServer, getUserJobDetailsServer } from '@/services/api';
-import { redirect } from 'next/navigation';
 import { JobDetailsClient } from './job-details-client';
+
+// Dynamic route: per-request Sentry trace metadata, see dashboard/page.tsx.
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Job details',
+    robots: { index: false },
+    other: { ...Sentry.getTraceData() },
+  };
+}
 
 // The params object will contain the jobId from the URL
 type JobPageProps = {

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
@@ -6,14 +7,18 @@ import { FloatingFeedbackButton } from '../components/ux/ReportBug-Btn';
 import { sendMagicLink, signInWithApple, signInWithGoogle } from './actions';
 import { AuthForm } from './auth-form';
 
-export const metadata: Metadata = {
-  title: 'Sign in',
-  description: 'Sign in to RadioWash to make clean copies of your playlists.',
-  robots: {
-    index: false,
-    follow: false,
-  },
-};
+// Dynamic route: per-request Sentry trace metadata, see dashboard/page.tsx.
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Sign in',
+    description: 'Sign in to RadioWash to make clean copies of your playlists.',
+    robots: {
+      index: false,
+      follow: false,
+    },
+    other: { ...Sentry.getTraceData() },
+  };
+}
 
 export default async function LoginPage() {
   const supabase = await createClient();

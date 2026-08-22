@@ -1,11 +1,25 @@
+import * as Sentry from '@sentry/nextjs';
+import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+
 import { createClient } from '@/lib/supabase/server';
 import {
   getMeServer,
   getUserPlaylistsServer,
   getUserJobsServer,
 } from '@/services/api';
-import { redirect } from 'next/navigation';
 import { DashboardClient } from './dashboard-client';
+
+// This route is dynamic (auth cookies), so the Sentry trace metadata is fresh
+// per request — it moved here from the root layout when the static marketing
+// pages stopped being able to carry request-scoped values.
+export function generateMetadata(): Metadata {
+  return {
+    title: 'Dashboard',
+    robots: { index: false },
+    other: { ...Sentry.getTraceData() },
+  };
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();

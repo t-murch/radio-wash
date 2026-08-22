@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
 
-import { createClient } from '@/lib/supabase/server';
 import LandingPage from './components/ux/LandingPage';
 import { StructuredData } from './components/StructuredData';
 
@@ -36,19 +35,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function HomePage() {
-  // The landing page greets a returning user differently, so it needs to know
-  // whether there is a session. getUser() validates against Supabase rather than
-  // trusting the cookie's contents.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+// No request APIs here on purpose: the page renders statically, and the
+// signed-in greeting is handled client-side by the HeroCta island inside
+// LandingPage.
+export default function HomePage() {
   return (
     <>
       <StructuredData />
-      <LandingPage signedIn={Boolean(user)} email={user?.email ?? undefined} />
+      <LandingPage />
     </>
   );
 }

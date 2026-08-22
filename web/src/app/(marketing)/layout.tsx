@@ -3,11 +3,12 @@ import Link from 'next/link';
 import { MARKETING_ROUTES } from '@/lib/routes';
 
 /**
- * Shared shell for /privacy and /terms. Deliberately not GlobalHeader: these
- * pages are read signed-out from the landing footer, and a static wordmark
- * needs no Supabase client.
+ * Shared shell for the public content pages (/how-it-works, /guides/*).
+ * Same idea as the (legal) shell: read signed-out, so a static wordmark and no
+ * Supabase client. Kept separate because the marketing footer links a fuller
+ * set of pages than the legal one.
  */
-export default function LegalLayout({
+export default function MarketingLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -17,7 +18,7 @@ export default function LegalLayout({
       <header className="border-b border-border bg-card">
         <div className="mx-auto max-w-2xl px-4 py-3 sm:px-6">
           <Link
-            href="/"
+            href={MARKETING_ROUTES.home}
             className="font-display text-xl font-semibold text-foreground"
           >
             RadioWash
@@ -26,7 +27,7 @@ export default function LegalLayout({
       </header>
       <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6">{children}</main>
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-2xl gap-6 px-4 py-8 text-sm text-muted-foreground sm:px-6">
+        <div className="mx-auto flex max-w-2xl flex-wrap gap-x-6 gap-y-2 px-4 py-8 text-sm text-muted-foreground sm:px-6">
           <Link href={MARKETING_ROUTES.home} className="hover:text-foreground">
             Home
           </Link>
@@ -35,6 +36,12 @@ export default function LegalLayout({
             className="hover:text-foreground"
           >
             How it works
+          </Link>
+          <Link
+            href={MARKETING_ROUTES.cleanPlaylistGuide}
+            className="hover:text-foreground"
+          >
+            Clean-playlist guide
           </Link>
           <Link
             href={MARKETING_ROUTES.privacy}
