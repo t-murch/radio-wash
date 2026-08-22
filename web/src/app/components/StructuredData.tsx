@@ -24,9 +24,9 @@ export function StructuredData() {
     '@type': 'Organization',
     name: 'RadioWash',
     url: SITE_URL,
-    // Google requires Organization.logo to be at least 112×112. The generated
-    // /icon is 32×32, so this points at the 180×180 /apple-icon instead.
-    logo: `${SITE_URL}/apple-icon`,
+    // Google requires Organization.logo to be at least 112×112; the brand mark
+    // is 264×264 and served straight from public/, no route indirection.
+    logo: `${SITE_URL}/logo_assets/radiowash-mark.png`,
     description:
       'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
     foundingDate: '2024',
