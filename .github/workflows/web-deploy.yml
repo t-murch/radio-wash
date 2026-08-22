@@ -68,6 +68,7 @@ jobs:
                 --name ${{ env.APP_NAME }} \
                 --resource-group ${{ env.RESOURCE_GROUP }} \
                 --image ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }} \
+                --min-replicas 1 \
                 --set-env-vars NEXT_PUBLIC_SERVICE_AVAILABLE=${{ secrets.NEXT_PUBLIC_SERVICE_AVAILABLE }} NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }} NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} NEXT_PUBLIC_WEB_URL=${{ secrets.WEB_URL }} NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }} SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             else
               echo "Creating new container app..."
@@ -78,7 +79,7 @@ jobs:
                 --image ${{ secrets.ACR_LOGIN_SERVER }}/radiowash-web:${{ github.sha }} \
                 --target-port 3000 \
                 --ingress 'external' \
-                --min-replicas 0 \
+                --min-replicas 1 \
                 --max-replicas 10 \
                 --cpu 0.25 \
                 --memory 0.5Gi \
