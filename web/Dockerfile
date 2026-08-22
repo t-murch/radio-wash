@@ -57,10 +57,13 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy the standalone build maintaining the expected structure
+# Copy the standalone build maintaining the expected structure.
+# server.js runs from app/web/ and serves public/ from the directory beside it
+# (join(dir, 'public')), while .next/static resolves via the embedded
+# distDir "./../dist/web/.next" — hence the two different destinations.
 COPY --from=builder --chown=nextjs:nodejs /app/dist/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/dist/web/.next/static ./app/dist/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/dist/web/public ./app/dist/web/public
+COPY --from=builder --chown=nextjs:nodejs /app/dist/web/public ./app/web/public
 
 # Set correct permissions
 USER nextjs
