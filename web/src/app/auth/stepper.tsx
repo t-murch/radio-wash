@@ -58,7 +58,10 @@ export function Stepper({
                 <span className="hidden sm:inline">{step.label}</span>
                 <span className="sm:hidden">{step.short}</span>
                 <span className="sr-only">
-                  {done ? ' (completed)' : active ? ' (current step)' : ''}
+                  {/* Whitespace, not '': an empty string renders no text node,
+                      and inserting one later crashes if Chrome Translate has
+                      rewrapped this span's children. AT trims the lone space. */}
+                  {done ? ' (completed)' : active ? ' (current step)' : ' '}
                 </span>
               </span>
 
