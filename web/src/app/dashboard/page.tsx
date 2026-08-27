@@ -8,6 +8,8 @@ import {
   getUserPlaylistsServer,
   getUserJobsServer,
 } from '@/services/api';
+import { RouteErrorFallback } from '../components/ux/RouteErrorFallback';
+import { SentryErrorBoundary } from '../components/ux/SentryErrorBoundary';
 import { DashboardClient } from './dashboard-client';
 
 // This route is dynamic (auth cookies), so the Sentry trace metadata is fresh
@@ -41,11 +43,19 @@ export default async function DashboardPage() {
   ]);
 
   return (
-    <DashboardClient
-      serverUser={user}
-      initialMe={me}
-      initialPlaylists={playlists}
-      initialJobs={jobs}
-    />
+    <SentryErrorBoundary
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+          <RouteErrorFallback retryHref="/dashboard" />
+        </div>
+      }
+    >
+      <DashboardClient
+        serverUser={user}
+        initialMe={me}
+        initialPlaylists={playlists}
+        initialJobs={jobs}
+      />
+    </SentryErrorBoundary>
   );
 }

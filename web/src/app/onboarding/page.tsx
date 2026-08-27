@@ -9,6 +9,8 @@ import {
   type ConnectionStatus,
   type Job,
 } from '@/services/api';
+import { RouteErrorFallback } from '../components/ux/RouteErrorFallback';
+import { SentryErrorBoundary } from '../components/ux/SentryErrorBoundary';
 import { OnboardingClient } from './onboarding-client';
 
 // Dynamic route: per-request Sentry trace metadata, see dashboard/page.tsx.
@@ -61,9 +63,13 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <OnboardingClient
-      email={user.email ?? ''}
-      appleConnected={connection?.connected ?? false}
-    />
+    <SentryErrorBoundary
+      fallback={<RouteErrorFallback retryHref="/onboarding" />}
+    >
+      <OnboardingClient
+        email={user.email ?? ''}
+        appleConnected={connection?.connected ?? false}
+      />
+    </SentryErrorBoundary>
   );
 }

@@ -113,15 +113,18 @@ export function OnboardingClient({
           disabled={connecting || !musicKit.ready}
           className="w-full sm:w-auto"
         >
+          {/* Labels in spans: Chrome Translate rewraps bare text nodes in
+              <font> tags, and React then crashes swapping the icon next to a
+              text node it no longer owns (Sentry JAVASCRIPT-NEXTJS-21/-22). */}
           {connecting ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Waiting for Apple…
+              <span>Waiting for Apple…</span>
             </>
           ) : (
             <>
               <Music className="size-4" />
-              Connect Apple Music
+              <span>Connect Apple Music</span>
             </>
           )}
         </Button>
