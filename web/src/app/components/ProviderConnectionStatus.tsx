@@ -171,9 +171,12 @@ export function ProviderConnectionStatus({
             <h3 className="font-medium text-foreground">
               {status.connected ? `${label} Connected` : `${label} Not Connected`}
             </h3>
+            {/* Both branches render a span so the connect/disconnect swap
+                reconciles element-to-element — a bare text node here crashes
+                React when Chrome Translate has rewrapped it in <font> tags. */}
             <p className="text-sm text-muted-foreground">
               {status.connected ? (
-                <>
+                <span>
                   Connected{' '}
                   {status.connectedAt && (
                     <ClientDate
@@ -181,9 +184,9 @@ export function ProviderConnectionStatus({
                       format="toLocaleDateString"
                     />
                   )}
-                </>
+                </span>
               ) : (
-                `Connect your ${label} account to access playlists`
+                <span>{`Connect your ${label} account to access playlists`}</span>
               )}
             </p>
           </div>

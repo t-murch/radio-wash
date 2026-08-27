@@ -98,14 +98,17 @@ export function AuthForm({
           />
           {fieldError && (
             <p id="email-error" role="alert" className="text-sm text-error">
-              {fieldError}
+              <span>{fieldError}</span>
             </p>
           )}
         </div>
 
         <Button type="submit" className="w-full" disabled={isPending}>
           {isPending && <Loader2 className="size-4 animate-spin" />}
-          {isPending ? 'Sending…' : 'Send sign-in link'}
+          {/* Bare text kept inside a span: Chrome Translate rewraps loose text
+              nodes in <font> tags, and React then crashes inserting the spinner
+              next to a text node it no longer owns (Sentry JAVASCRIPT-NEXTJS-22). */}
+          <span>{isPending ? 'Sending…' : 'Send sign-in link'}</span>
         </Button>
       </form>
 
@@ -162,10 +165,14 @@ function CheckInbox({
 
       <div className="space-y-2">
         <h1 className="font-display text-2xl font-semibold text-foreground">
-          A sign-in link is on its way to {email}
+          <span>A sign-in link is on its way to </span>
+          {/* The address must survive machine translation verbatim. */}
+          <span translate="no" className="notranslate">
+            {email}
+          </span>
         </h1>
         <p className="text-muted-foreground">
-          Wrong address?{' '}
+          <span>Wrong address?</span>{' '}
           <button
             type="button"
             onClick={onChangeAddress}
@@ -287,7 +294,7 @@ function ResendButton({
   if (secondsLeft > 0) {
     return (
       <p className="text-sm text-muted-foreground" aria-live="polite">
-        Resend in {secondsLeft}s
+        <span>Resend in {secondsLeft}s</span>
       </p>
     );
   }
@@ -303,7 +310,7 @@ function ResendButton({
       }}
     >
       {isResending && <Loader2 className="size-4 animate-spin" />}
-      {isResending ? 'Sending…' : 'Resend the link'}
+      <span>{isResending ? 'Sending…' : 'Resend the link'}</span>
     </Button>
   );
 }

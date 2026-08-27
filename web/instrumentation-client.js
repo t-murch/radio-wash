@@ -16,6 +16,14 @@ Sentry.init({
     Sentry.replayIntegration(),
   ],
 
+  // Chrome's page translation (and some extensions) rewrap DOM text nodes in
+  // <font> tags, making React's reconciler throw these two errors. They are
+  // environmental, not ours — see Sentry issue JAVASCRIPT-NEXTJS-22.
+  ignoreErrors: [
+    /Failed to execute 'removeChild' on 'Node'/,
+    /Failed to execute 'insertBefore' on 'Node'/,
+  ],
+
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 0.01,
   // Enable logs to be sent to Sentry

@@ -109,10 +109,12 @@ function SyncConfigCard({
               Last checked
             </dt>
             <dd className="tabular mt-1 font-medium text-foreground">
+              {/* Span, not bare text: the swap to ClientDate after a manual
+                  sync crashes React if Chrome Translate rewrapped the text. */}
               {config.lastSyncedAt ? (
                 <ClientDate date={config.lastSyncedAt} />
               ) : (
-                'Never'
+                <span>Never</span>
               )}
             </dd>
           </div>
@@ -124,7 +126,7 @@ function SyncConfigCard({
               {config.nextScheduledSync ? (
                 <ClientDate date={config.nextScheduledSync} />
               ) : (
-                'Not scheduled'
+                <span>Not scheduled</span>
               )}
             </dd>
           </div>
