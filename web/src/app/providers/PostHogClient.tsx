@@ -1,34 +1,35 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import posthog from 'posthog-js';
 
 import { createClient } from '@/lib/supabase/client';
 
-let isInitialized = false;
+const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
 export function PostHogClient({ children }: { children: React.ReactNode }) {
-  const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
-  const identifiedUserId = useRef<string | null>(null);
-
-  const isConfigured = Boolean(projectToken && host);
-
-  if (projectToken && host && !isInitialized) {
-    posthog.init(projectToken, {
-      api_host: host,
-      defaults: '2026-01-30',
-      capture_exceptions: {
-        capture_unhandled_errors: true,
-        capture_unhandled_rejections: true,
-        capture_console_errors: false,
-      },
-    });
-    isInitialized = true;
-  }
-
   useEffect(() => {
-    if (!isConfigured) return;
+    if (!projectToken || !host) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          'PostHog is disabled: set NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN and NEXT_PUBLIC_POSTHOG_HOST to capture analytics events. Until then, all capture calls are silently dropped.'
+        );
+      }
+      return;
+    }
+
+    if (!posthog.__loaded) {
+      posthog.init(projectToken, {
+        api_host: host,
+        defaults: '2026-01-30',
+        capture_exceptions: {
+          capture_unhandled_errors: true,
+          capture_unhandled_rejections: true,
+          capture_console_errors: false,
+        },
+      });
+    }
 
     const supabase = createClient();
 
@@ -37,7 +38,10 @@ export function PostHogClient({ children }: { children: React.ReactNode }) {
       email?: string;
       user_metadata: Record<string, unknown>;
     }) => {
-      if (identifiedUserId.current && identifiedUserId.current !== user.id) {
+      // Identify-over-identify is a merge PostHog's server refuses; reset first
+      // when a different user was identified on this browser. An anonymous
+      // distinct_id must NOT be reset — identify() links it to the person.
+      if (posthog._isIdentified() && posthog.get_distinct_id() !== user.id) {
         posthog.reset();
       }
 
@@ -48,39 +52,28 @@ export function PostHogClient({ children }: { children: React.ReactNode }) {
       if (typeof name === 'string' && name) properties.name = name;
 
       posthog.identify(user.id, properties);
-      identifiedUserId.current = user.id;
     };
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) identifyUser(session.user);
-    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         posthog.reset();
-        identifiedUserId.current = null;
         return;
       }
 
-      if (event === 'SIGNED_IN' && session?.user) identifyUser(session.user);
+      // INITIAL_SESSION fires on subscribe with any restored session, so no
+      // separate getSession() call (which rejects when storage is blocked).
+      if (
+        (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') &&
+        session?.user
+      ) {
+        identifyUser(session.user);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, [isConfigured]);
-
-  if (!projectToken && process.env.NODE_ENV === 'development') {
-    throw new Error(
-      'NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured'
-    );
-  }
-
-  if (!host && process.env.NODE_ENV === 'development') {
-    throw new Error(
-      'NEXT_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_HOST is configured'
-    );
-  }
+  }, []);
 
   return children;
 }

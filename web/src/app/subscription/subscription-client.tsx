@@ -55,7 +55,10 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     retry: false,
     onSuccess: (data) => {
       if (data?.portalUrl) {
-        posthog.capture('billing_portal_requested');
+        // sendBeacon: the cross-origin navigation below would drop a batched event
+        posthog.capture('billing_portal_requested', undefined, {
+          transport: 'sendBeacon',
+        });
         window.location.href = data.portalUrl;
       } else {
         toast.error('Could not open the billing portal. Please try again.');
@@ -69,7 +72,10 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
 
   const handleSubscribe = async () => {
     try {
-      posthog.capture('subscription_checkout_requested');
+      // sendBeacon: the checkout redirect would drop a batched event
+      posthog.capture('subscription_checkout_requested', undefined, {
+        transport: 'sendBeacon',
+      });
       await subscribeToSyncMutation.mutateAsync();
       // Note: The mutation will redirect to Stripe checkout on success
     } catch (error) {
