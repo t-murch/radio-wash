@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import posthog from 'posthog-js';
+import { trackMagicLinkRequested } from '@/lib/analytics';
 
 import { createClient } from '@/lib/supabase/client';
 
@@ -40,7 +40,7 @@ export function AuthForm({
     startTransition(async () => {
       const nextState = await sendMagicLink(state, formData);
       if (nextState.status === 'sent') {
-        posthog.capture('auth_magic_link_requested');
+        trackMagicLinkRequested();
       }
       setState(nextState);
     });

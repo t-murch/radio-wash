@@ -1,7 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import posthog from 'posthog-js';
+import {
+  trackProviderConnected,
+  trackProviderDisconnected,
+} from '@/lib/analytics';
 import { ClientDate } from '@/components/ui/ClientDate';
 import {
   ConnectionStatus,
@@ -71,7 +74,7 @@ export function ProviderConnectionStatus({
     checkStatus();
   }, [checkStatus]);
 
-  const handleConnect = async () => {
+  const handleConnect = async ({ reconnect = false } = {}) => {
     setConnecting(true);
     try {
       // Two distinct failures live here: Apple declining to issue a Music User Token, and our
@@ -91,8 +94,9 @@ export function ProviderConnectionStatus({
       }
 
       await storeProviderTokens('apple_music', musicUserToken);
-      posthog.capture('apple_music_connected', {
+      trackProviderConnected('apple_music', {
         connection_surface: 'dashboard',
+        reconnect,
       });
       await checkStatus();
     } catch (error) {
@@ -111,7 +115,7 @@ export function ProviderConnectionStatus({
     setDisconnecting(true);
     try {
       await disconnectProvider(provider);
-      posthog.capture('apple_music_disconnected');
+      trackProviderDisconnected(provider);
       try {
         // Drop the browser-side MusicKit grant too, or the next authorize() silently
         // reissues a token without the consent popup. Best-effort: the stored tokens are
@@ -199,7 +203,7 @@ export function ProviderConnectionStatus({
 
         {!status.connected && (
           <button
-            onClick={handleConnect}
+            onClick={() => handleConnect()}
             disabled={connectDisabled}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
           >
@@ -211,7 +215,7 @@ export function ProviderConnectionStatus({
           <div className="flex gap-2">
             {needsReconnect && (
               <button
-                onClick={handleConnect}
+                onClick={() => handleConnect({ reconnect: true })}
                 disabled={connectDisabled}
                 className="px-4 py-2 border border-input bg-background text-foreground rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring text-sm font-medium disabled:opacity-50"
               >

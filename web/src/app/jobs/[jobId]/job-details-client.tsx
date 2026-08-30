@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import posthog from 'posthog-js';
+import { trackAutoSyncEnabled } from '@/lib/analytics';
 
 import { ApiError, getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings';
@@ -214,7 +214,7 @@ function SyncSection({ jobId }: { jobId: number }) {
   const handleEnableSync = async () => {
     try {
       await enableSyncMutation.mutateAsync(jobId);
-      posthog.capture('auto_sync_enabled');
+      trackAutoSyncEnabled();
       toast.success(
         'Auto-Sync is on — new songs get their clean versions added daily.'
       );

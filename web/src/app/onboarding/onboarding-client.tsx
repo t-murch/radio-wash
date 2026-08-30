@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Loader2, Music, X } from 'lucide-react';
-import posthog from 'posthog-js';
+import { trackProviderConnected } from '@/lib/analytics';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -54,7 +54,7 @@ export function OnboardingClient({
 
     try {
       await storeProviderTokens('apple_music', musicUserToken);
-      posthog.capture('apple_music_connected', {
+      trackProviderConnected('apple_music', {
         connection_surface: 'onboarding',
       });
       setConnected(true);

@@ -28,7 +28,10 @@ import {
 } from '../../services/api';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import posthog from 'posthog-js';
+import {
+  trackAutoSyncDisabled,
+  trackSyncCheckRequested,
+} from '@/lib/analytics';
 
 const SYNC_STATUS_BADGE: Record<
   string,
@@ -233,7 +236,7 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
   });
 
   const handleManualSync = (configId: number) => {
-    posthog.capture('sync_check_requested');
+    trackSyncCheckRequested();
     setProcessingConfigId(configId);
     manualSyncMutation.mutate(configId);
   };
@@ -244,7 +247,7 @@ export function SyncDashboardClient({ initialUser }: { initialUser: User }) {
         'Turn off Auto-Sync for this playlist? The copy keeps everything it has — you can turn syncing back on from the playlist page.'
       )
     ) {
-      posthog.capture('auto_sync_disabled');
+      trackAutoSyncDisabled();
       disableSyncMutation.mutate(configId);
     }
   };

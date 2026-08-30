@@ -8,7 +8,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
-import posthog from 'posthog-js';
+import { trackPlaylistCleaningJobStarted } from '@/lib/analytics';
 import { ProviderConnectionStatus } from '../components/ProviderConnectionStatus';
 import {
   ApiError,
@@ -92,18 +92,24 @@ export function DashboardClient({
   const selectedPlaylist = playlists.find((p) => p.id === selectedPlaylistId);
 
   const createJobMutation = useMutation({
-    mutationFn: (vars: { sourcePlaylistId: string; targetName?: string }) =>
+    mutationFn: (vars: {
+      sourcePlaylistId: string;
+      targetName?: string;
+      sourceTrackCount: number;
+    }) =>
       createCleanPlaylistJob(me!.id, {
         sourcePlaylistId: vars.sourcePlaylistId,
         targetPlaylistName: vars.targetName,
         provider: 'apple_music',
         swapExplicitForClean: true,
       }),
-    onSuccess: (job) => {
-      posthog.capture('playlist_cleaning_job_started', {
+    // Read the mutation variables, not component state — the form stays
+    // editable while the request is in flight.
+    onSuccess: (job, vars) => {
+      trackPlaylistCleaningJobStarted({
         provider: 'apple_music',
-        source_track_count: selectedPlaylist?.trackCount ?? 0,
-        uses_custom_name: Boolean(customName.trim()),
+        source_track_count: vars.sourceTrackCount,
+        uses_custom_name: Boolean(vars.targetName),
       });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['playlists'] });
@@ -127,6 +133,7 @@ export function DashboardClient({
     createJobMutation.mutate({
       sourcePlaylistId: selectedPlaylist.id,
       targetName: customName.trim() || undefined,
+      sourceTrackCount: selectedPlaylist.trackCount,
     });
   };
 

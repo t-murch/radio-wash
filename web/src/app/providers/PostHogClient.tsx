@@ -23,11 +23,8 @@ export function PostHogClient({ children }: { children: React.ReactNode }) {
       posthog.init(projectToken, {
         api_host: host,
         defaults: '2026-01-30',
-        capture_exceptions: {
-          capture_unhandled_errors: true,
-          capture_unhandled_rejections: true,
-          capture_console_errors: false,
-        },
+        // Exception capture stays off: Sentry (instrumentation-client) is the
+        // error tracker, and it carries the tuned ignoreErrors rules.
       });
     }
 
