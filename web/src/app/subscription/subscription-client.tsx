@@ -16,6 +16,11 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { CURRENT_PLAN } from '@/lib/constants/pricing';
+import {
+  trackBillingPortalRequested,
+  trackSubscriptionCancellationScheduled,
+  trackSubscriptionCheckoutRequested,
+} from '@/lib/analytics';
 
 const formatDateTime = (dateString: string) => {
   return new Date(dateString).toLocaleString();
@@ -34,6 +39,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
   >({
     mutationFn: cancelSubscription,
     onSuccess: (data) => {
+      trackSubscriptionCancellationScheduled();
       // Cancellation happens at period end — access continues until then.
       toast.success(
         data.activeUntil
@@ -53,6 +59,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
     retry: false,
     onSuccess: (data) => {
       if (data?.portalUrl) {
+        trackBillingPortalRequested();
         window.location.href = data.portalUrl;
       } else {
         toast.error('Could not open the billing portal. Please try again.');
@@ -66,6 +73,7 @@ export function SubscriptionClient({ initialUser }: { initialUser: User }) {
 
   const handleSubscribe = async () => {
     try {
+      trackSubscriptionCheckoutRequested();
       await subscribeToSyncMutation.mutateAsync();
       // Note: The mutation will redirect to Stripe checkout on success
     } catch (error) {

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Loader2, Music, X } from 'lucide-react';
+import { trackProviderConnected } from '@/lib/analytics';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,9 @@ export function OnboardingClient({
 
     try {
       await storeProviderTokens('apple_music', musicUserToken);
+      trackProviderConnected('apple_music', {
+        connection_surface: 'onboarding',
+      });
       setConnected(true);
     } catch (error) {
       // Apple said yes and we lost it. Telling this person to check their

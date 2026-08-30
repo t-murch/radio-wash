@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { trackAutoSyncEnabled } from '@/lib/analytics';
 
 import { ApiError, getJobDetails, Job, User } from '../../services/api';
 import TrackMappings from '@/components/ux/TrackMappings';
@@ -213,6 +214,7 @@ function SyncSection({ jobId }: { jobId: number }) {
   const handleEnableSync = async () => {
     try {
       await enableSyncMutation.mutateAsync(jobId);
+      trackAutoSyncEnabled();
       toast.success(
         'Auto-Sync is on — new songs get their clean versions added daily.'
       );
