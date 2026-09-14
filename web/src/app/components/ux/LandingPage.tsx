@@ -84,7 +84,7 @@ export default function LandingPage() {
             <PriceCard
               price="$0"
               title="Cleaning playlists"
-              body="Cleaning playlists is free and stays free. No trial, no track limit, no credit card."
+              body="Free for your first 10 clean playlists, with no limit on how many tracks each one holds. No trial, no credit card."
             />
             <PriceCard
               price="$5/mo"

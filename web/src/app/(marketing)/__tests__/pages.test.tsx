@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 
 import HowItWorksPage from '../how-it-works/page';
 import CleanPlaylistGuidePage from '../guides/clean-apple-music-playlist/page';
+import AppleMusicCleanPlaylistPage from '../apple-music-clean-playlist/page';
 import { MARKETING_ROUTES } from '@/lib/routes';
 
 describe('HowItWorksPage', () => {
@@ -92,5 +93,55 @@ describe('marketing copy guardrails', () => {
     expect(text).not.toMatch(/spotify/i);
     expect(text).not.toMatch(/coming soon|waitlist/i);
     expect(text).not.toMatch(/200 tracks|10 sync/i);
+  });
+});
+
+describe('AppleMusicCleanPlaylistPage', () => {
+  it('leads with the primary keyword and the replacement mechanic', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /a clean playlist app for apple music/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /replacing, not just filtering/i })
+    ).toBeInTheDocument();
+  });
+
+  it('is honest that tracks without a clean version are omitted', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(
+      screen.getByRole('heading', { name: /when there is no clean version/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/rather than swapped for a cover, a remix/i)
+    ).toBeInTheDocument();
+  });
+
+  // The claim the whole page rests on: free, but capped. "No track limit" on
+  // its own read as unlimited, which the 10-playlist plan cap contradicts.
+  it('states the free-tier playlist cap, not just the track allowance', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    // Stated twice on purpose: in "What it costs" and again in the FAQ answer,
+    // which is also what the FAQPage schema emits.
+    expect(
+      screen.getAllByText(/free for your first 10 clean playlists/i)
+    ).toHaveLength(2);
+  });
+
+  it('links to how-it-works and the guide from the body copy', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(
+      screen.getByRole('link', { name: /how it works/i })
+    ).toHaveAttribute('href', MARKETING_ROUTES.howItWorks);
+    expect(
+      screen.getByRole('link', { name: /clean-playlist guide/i })
+    ).toHaveAttribute('href', MARKETING_ROUTES.cleanPlaylistGuide);
   });
 });

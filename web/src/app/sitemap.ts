@@ -13,6 +13,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
+      url: `${baseUrl}${MARKETING_ROUTES.appleMusicCleanPlaylist}`,
+      lastModified: '2026-09-13',
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}${MARKETING_ROUTES.howItWorks}`,
       lastModified: '2026-08-17',
       changeFrequency: 'monthly',
