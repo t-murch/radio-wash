@@ -5,6 +5,7 @@ import HowItWorksPage from '../how-it-works/page';
 import CleanPlaylistGuidePage from '../guides/clean-apple-music-playlist/page';
 import AppleMusicCleanPlaylistPage from '../apple-music-clean-playlist/page';
 import { MARKETING_ROUTES } from '@/lib/routes';
+import { MANUAL_STEPS } from '@/lib/content/clean-playlist-guide';
 
 describe('HowItWorksPage', () => {
   it('explains the matching pipeline and the shorter-copy consequence', () => {
@@ -143,5 +144,18 @@ describe('AppleMusicCleanPlaylistPage', () => {
     expect(
       screen.getByRole('link', { name: /clean-playlist guide/i })
     ).toHaveAttribute('href', MARKETING_ROUTES.cleanPlaylistGuide);
+  });
+});
+
+describe('CleanPlaylistGuidePage manual steps', () => {
+  // The steps feed both the rendered <ol> and the HowTo schema; rendering from
+  // the same constant is what stops search results describing steps the page
+  // no longer shows.
+  it('renders every step from the shared constant', () => {
+    render(<CleanPlaylistGuidePage />);
+
+    for (const step of MANUAL_STEPS) {
+      expect(screen.getByText(step.text)).toBeInTheDocument();
+    }
   });
 });
