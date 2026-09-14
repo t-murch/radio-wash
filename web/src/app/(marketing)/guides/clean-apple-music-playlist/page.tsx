@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description:
     'Two honest ways to get a clean version of an Apple Music playlist: swapping tracks by hand in the Music app, or making a clean copy with RadioWash.',
   alternates: { canonical: './' },
+  // See how-it-works: without this the page inherits the root layout's og:url
+  // and advertises the homepage as its own social URL.
+  openGraph: { url: './' },
 };
 
 export default function CleanPlaylistGuidePage() {
