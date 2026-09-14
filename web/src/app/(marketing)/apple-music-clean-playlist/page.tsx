@@ -5,6 +5,7 @@ import { CtaLink } from '@/components/ui/cta-link';
 import {
   StructuredData,
   faqPageSchema,
+  softwareApplicationSchema,
   type JsonLdSchema,
 } from '@/components/StructuredData';
 import { LANDING_FAQ } from '@/lib/content/apple-music-clean-playlist';
@@ -21,35 +22,11 @@ export const metadata: Metadata = {
   openGraph: { url: './' },
 };
 
-const SITE_URL = 'https://radiowash.com';
-
-// This page's own schema, rather than the site-level set the homepage emits.
-// SoftwareApplication here carries the same claims the page makes visibly.
+// This page's own schema. The application entity is the shared one, so this
+// page and the homepage describe a single SoftwareApplication under one @id
+// rather than two competing definitions; only the FAQ is page-specific.
 const PAGE_SCHEMAS: JsonLdSchema[] = [
-  {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'RadioWash',
-    applicationCategory: 'MultimediaApplication',
-    operatingSystem: 'Web',
-    url: `${SITE_URL}${MARKETING_ROUTES.appleMusicCleanPlaylist}`,
-    offers: [
-      {
-        '@type': 'Offer',
-        name: 'Playlist cleaning',
-        price: '0',
-        priceCurrency: 'USD',
-      },
-      {
-        '@type': 'Offer',
-        name: 'Auto-Sync',
-        price: '5.00',
-        priceCurrency: 'USD',
-      },
-    ],
-    description:
-      'A clean playlist app for Apple Music. RadioWash copies a playlist into your library with each explicit track replaced by its clean version where one exists, and tracks with no clean release left out. The original playlist is never changed. Free for the first 10 clean playlists; Auto-Sync is $5 per month. Requires an active Apple Music subscription.',
-  },
+  softwareApplicationSchema,
   faqPageSchema(LANDING_FAQ),
 ];
 
