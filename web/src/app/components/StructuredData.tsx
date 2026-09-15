@@ -1,15 +1,103 @@
 import { FAQ } from '@/lib/content/landing';
 
+export type JsonLdSchema = Record<string, unknown>;
+
+type FaqLike = { question: string; answer: string };
+
+type HowToStepLike = { name: string; text: string };
+
 const SITE_URL = 'https://radiowash.com';
 
 /**
- * Schema.org metadata for search results.
+ * The product, as one entity.
  *
- * The FAQ entries come from the same source as the visible page. They used to be
- * hand-copied here, which meant search results could quote answers the page no
- * longer gave.
+ * Both the homepage and the landing page describe the same application, so they
+ * emit this same object under one @id rather than two near-identical anonymous
+ * ones — otherwise search engines see two competing SoftwareApplications and
+ * pick whichever they like. `url` stays the canonical product URL for the same
+ * reason; a page that wants to name itself does that through its own canonical
+ * and og:url, not by redefining the entity.
  */
-export function StructuredData() {
+export const SOFTWARE_APPLICATION_ID = `${SITE_URL}/#software`;
+
+export const softwareApplicationSchema: JsonLdSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  '@id': SOFTWARE_APPLICATION_ID,
+  name: 'RadioWash',
+  applicationCategory: 'MultimediaApplication',
+  operatingSystem: 'Web',
+  url: SITE_URL,
+  // Two offers, because the free and paid parts are genuinely different things:
+  // cleaning is free up to the plan's playlist cap, and Auto-Sync is the only
+  // paid feature.
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Playlist cleaning',
+      price: '0',
+      priceCurrency: 'USD',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Auto-Sync',
+      price: '5.00',
+      priceCurrency: 'USD',
+    },
+  ],
+  description:
+    'RadioWash creates clean copies of Apple Music playlists: the same songs with radio edits substituted where they exist. Tracks without a clean version are left out, so the copy contains only non-explicit material. The original playlist is never changed. Cleaning is free for your first 10 playlists; Auto-Sync ($5/month) keeps a copy in step with its source. Requires an active Apple Music subscription.',
+};
+
+/**
+ * Builds a FAQPage block from the same items a page renders, so the schema
+ * cannot quote answers the page no longer gives.
+ */
+export function faqPageSchema(items: readonly FaqLike[]): JsonLdSchema {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: items.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  };
+}
+
+/**
+ * Builds a HowTo block from the same steps a page renders.
+ *
+ * Same rule as faqPageSchema: the caller passes the list it renders, so the
+ * schema cannot describe steps the page no longer shows.
+ */
+export function howToSchema(input: {
+  name: string;
+  description: string;
+  steps: readonly HowToStepLike[];
+}): JsonLdSchema {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: input.name,
+    description: input.description,
+    step: input.steps.map((step, i) => ({
+      '@type': 'HowToStep',
+      position: i + 1,
+      name: step.name,
+      text: step.text,
+    })),
+  };
+}
+
+/**
+ * Renders JSON-LD blocks. Called bare it emits the site-level schemas the
+ * homepage has always carried; pass `schemas` to emit a page's own instead.
+ */
+export function StructuredData({ schemas }: { schemas?: JsonLdSchema[] }) {
   const websiteSchema = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
@@ -33,53 +121,18 @@ export function StructuredData() {
     sameAs: ['https://tillumlabs.com', 'https://github.com/t-murch/'],
   };
 
-  const softwareApplicationSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'RadioWash',
-    applicationCategory: 'MultimediaApplication',
-    operatingSystem: 'Web',
-    // Two offers, because the free and paid parts are genuinely different things:
-    // cleaning is free without limit, and Auto-Sync is the only paid feature.
-    offers: [
-      {
-        '@type': 'Offer',
-        name: 'Playlist cleaning',
-        price: '0',
-        priceCurrency: 'USD',
-      },
-      {
-        '@type': 'Offer',
-        name: 'Auto-Sync',
-        price: '5.00',
-        priceCurrency: 'USD',
-      },
-    ],
-    description:
-      'RadioWash creates clean copies of Apple Music playlists: the same songs with radio edits substituted where they exist. Tracks without a clean version are left out, so the copy contains only non-explicit material. The original playlist is never changed. Cleaning is free; Auto-Sync ($5/month) keeps a copy in step with its source. Requires an active Apple Music subscription.',
-  };
+  const faqSchema = faqPageSchema(FAQ);
 
-  const faqSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: FAQ.map((item) => ({
-      '@type': 'Question',
-      name: item.question,
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: item.answer,
-      },
-    })),
-  };
+  const blocks = schemas ?? [
+    websiteSchema,
+    organizationSchema,
+    softwareApplicationSchema,
+    faqSchema,
+  ];
 
   return (
     <>
-      {[
-        websiteSchema,
-        organizationSchema,
-        softwareApplicationSchema,
-        faqSchema,
-      ].map((schema, i) => (
+      {blocks.map((schema, i) => (
         <script
           key={i}
           type="application/ld+json"

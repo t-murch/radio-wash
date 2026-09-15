@@ -7,6 +7,7 @@
 export const MARKETING_ROUTES = {
   home: '/',
   howItWorks: '/how-it-works',
+  appleMusicCleanPlaylist: '/apple-music-clean-playlist',
   cleanPlaylistGuide: '/guides/clean-apple-music-playlist',
   privacy: '/privacy',
   terms: '/terms',

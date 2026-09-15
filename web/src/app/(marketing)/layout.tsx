@@ -32,6 +32,12 @@ export default function MarketingLayout({
             Home
           </Link>
           <Link
+            href={MARKETING_ROUTES.appleMusicCleanPlaylist}
+            className="hover:text-foreground"
+          >
+            Clean playlist app
+          </Link>
+          <Link
             href={MARKETING_ROUTES.howItWorks}
             className="hover:text-foreground"
           >

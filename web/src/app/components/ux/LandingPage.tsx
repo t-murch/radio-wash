@@ -62,7 +62,7 @@ export default function LandingPage() {
           </p>
 
           <h1 className="mt-5 max-w-2xl font-display text-4xl font-semibold leading-[1.1] text-foreground sm:text-5xl">
-            The same playlist. None of the explicit versions.
+            The same Apple Music playlist. Clean.
           </h1>
 
           <p className="mt-6 max-w-xl text-lg text-muted-foreground">
@@ -84,7 +84,7 @@ export default function LandingPage() {
             <PriceCard
               price="$0"
               title="Cleaning playlists"
-              body="Cleaning playlists is free and stays free. No trial, no track limit, no credit card."
+              body="Free for your first 10 clean playlists, with no limit on how many tracks each one holds. No trial, no credit card."
             />
             <PriceCard
               price="$5/mo"
