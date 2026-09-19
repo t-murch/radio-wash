@@ -255,6 +255,137 @@ public class PlaylistDeltaCalculatorTests
     Assert.Empty(delta.NewTracks);
   }
 
+  [Fact]
+  public async Task CalculateDelta_WithDuplicateSourceMappings_ShouldNotThrowAndPreferUsableMatch()
+  {
+    // Regression: a song appearing twice in the source playlist produces two mappings with
+    // the same SourceTrackId (catalog id), which used to crash ToDictionary with
+    // "An item with the same key has already been added".
+    var sourceTracks = new List<MusicTrack>
+        {
+            CreateTrack("1551205503", "Duplicated Song"),
+            CreateTrack("1551205503", "Duplicated Song")
+        };
+
+    var targetTracks = new List<MusicTrack>();
+
+    var existingMappings = new List<TrackMapping>
+        {
+            CreateTrackMapping("1551205503", null, false), // matchless duplicate first
+            CreateTrackMapping("1551205503", "clean-1", true)
+        };
+
+    var delta = await _deltaCalculator.CalculateDeltaAsync(sourceTracks, targetTracks, existingMappings);
+
+    // The mapping with the usable clean match wins, and the target mirrors the source's
+    // duplicate: one clean copy per source occurrence.
+    Assert.Equal(new[] { "clean-1", "clean-1" }, delta.TracksToAdd);
+    Assert.Empty(delta.NewTracks);
+    Assert.Empty(delta.TracksToRemove);
+  }
+
+  [Fact]
+  public async Task CalculateDelta_WithDuplicatedSourceTrack_ShouldTopUpTargetToSourceCount()
+  {
+    // The source holds a song twice but the target only has its clean version once:
+    // exactly one more copy is due.
+    var sourceTracks = new List<MusicTrack>
+        {
+            CreateTrack("1", "Duplicated Song"),
+            CreateTrack("1", "Duplicated Song")
+        };
+
+    var targetTracks = new List<MusicTrack>
+        {
+            CreateTrack("clean-1", "Duplicated Song (Clean)")
+        };
+
+    var existingMappings = new List<TrackMapping>
+        {
+            CreateTrackMapping("1", "clean-1", true)
+        };
+
+    var delta = await _deltaCalculator.CalculateDeltaAsync(sourceTracks, targetTracks, existingMappings);
+
+    Assert.Single(delta.TracksToAdd);
+    Assert.Equal("clean-1", delta.TracksToAdd[0]);
+    Assert.Empty(delta.NewTracks);
+    Assert.Empty(delta.TracksToRemove);
+  }
+
+  [Fact]
+  public async Task CalculateDelta_WithDuplicatedNewTrack_ShouldKeepEachOccurrence()
+  {
+    // A brand-new song the source holds twice surfaces once per occurrence so the sync
+    // can mirror the duplicate after matching it once.
+    var sourceTracks = new List<MusicTrack>
+        {
+            CreateTrack("new-1", "New Song"),
+            CreateTrack("new-1", "New Song")
+        };
+
+    var targetTracks = new List<MusicTrack>();
+    var existingMappings = new List<TrackMapping>();
+
+    var delta = await _deltaCalculator.CalculateDeltaAsync(sourceTracks, targetTracks, existingMappings);
+
+    Assert.Equal(2, delta.NewTracks.Count);
+    Assert.All(delta.NewTracks, t => Assert.Equal("new-1", t.Id));
+    Assert.Empty(delta.TracksToAdd);
+    Assert.Empty(delta.TracksToRemove);
+  }
+
+  [Fact]
+  public async Task CalculateDelta_WithDuplicateTargetMappings_ShouldKeepTargetWhileAnySourceRemains()
+  {
+    // Two distinct source tracks can share one clean version. The shared target must not be
+    // flagged for removal while either source track is still in the playlist.
+    var sourceTracks = new List<MusicTrack>
+        {
+            CreateTrack("1", "Track 1")
+            // Track 2 has left the playlist
+        };
+
+    var targetTracks = new List<MusicTrack>
+        {
+            CreateTrack("clean-shared", "Shared Clean Version")
+        };
+
+    var existingMappings = new List<TrackMapping>
+        {
+            CreateTrackMapping("1", "clean-shared", true),
+            CreateTrackMapping("2", "clean-shared", true)
+        };
+
+    var delta = await _deltaCalculator.CalculateDeltaAsync(sourceTracks, targetTracks, existingMappings);
+
+    Assert.Empty(delta.TracksToRemove);
+    Assert.Empty(delta.TracksToAdd);
+    Assert.Empty(delta.NewTracks);
+  }
+
+  [Fact]
+  public async Task CalculateDelta_WithDuplicateTargetMappings_ShouldRemoveTargetWhenAllSourcesGone()
+  {
+    var sourceTracks = new List<MusicTrack>();
+
+    var targetTracks = new List<MusicTrack>
+        {
+            CreateTrack("clean-shared", "Shared Clean Version")
+        };
+
+    var existingMappings = new List<TrackMapping>
+        {
+            CreateTrackMapping("1", "clean-shared", true),
+            CreateTrackMapping("2", "clean-shared", true)
+        };
+
+    var delta = await _deltaCalculator.CalculateDeltaAsync(sourceTracks, targetTracks, existingMappings);
+
+    Assert.Single(delta.TracksToRemove);
+    Assert.Equal("clean-shared", delta.TracksToRemove[0]);
+  }
+
   private static MusicTrack CreateTrack(string id, string name, bool isExplicit = false)
   {
     return new MusicTrack(

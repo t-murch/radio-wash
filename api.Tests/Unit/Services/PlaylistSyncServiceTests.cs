@@ -193,6 +193,56 @@ public class PlaylistSyncServiceTests
         It.IsAny<CancellationToken>()), Times.Once);
   }
 
+  [Fact]
+  public async Task SyncPlaylistAsync_WithDuplicatedNewTrack_ShouldWriteOneMappingButAddBothCopies()
+  {
+    // A song added to the source playlist twice arrives as two NewTracks occurrences with
+    // one catalog id. Exactly one mapping row may be written (unique per job + source id),
+    // while the target playlist still receives a clean copy per occurrence.
+    var config = CreateSyncConfig();
+    _mockUnitOfWork.Setup(x => x.SyncConfigs.GetByIdAsync(config.Id))
+        .ReturnsAsync(config);
+    var newTrack = CreateTrack("2", "New Track");
+    var cleanTrack = CreateTrack("clean-2", "Clean New Track");
+    var delta = new PlaylistDelta
+    {
+      TracksToAdd = new List<string>(),
+      TracksToRemove = new List<string>(),
+      NewTracks = new List<MusicTrack> { newTrack, CreateTrack("2", "New Track") },
+      DesiredTrackOrder = new List<string>()
+    };
+
+    _mockSubscriptionService.Setup(x => x.HasActiveSubscriptionAsync(config.UserId))
+        .ReturnsAsync(true);
+    _mockMusicService.Setup(x => x.GetPlaylistTracksAsync(config.UserId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new List<MusicTrack>());
+    _mockDeltaCalculator.Setup(x => x.CalculateDeltaAsync(
+        It.IsAny<List<MusicTrack>>(),
+        It.IsAny<List<MusicTrack>>(),
+        It.IsAny<List<TrackMapping>>()))
+        .ReturnsAsync(delta);
+    _mockMusicService.Setup(x => x.FindCleanVersionAsync(config.UserId, It.Is<MusicTrack>(t => t.Id == "2"), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(cleanTrack);
+    _mockSyncTimeCalculator.Setup(x => x.CalculateNextSyncTime(It.IsAny<string>(), It.IsAny<DateTime?>()))
+        .Returns(DateTime.UtcNow.AddDays(1));
+
+    var result = await _syncService.SyncPlaylistAsync(config.Id);
+
+    Assert.True(result.Success);
+    Assert.Equal(2, result.TracksAdded);
+
+    // One search and one persisted row for the song…
+    _mockMusicService.Verify(x => x.FindCleanVersionAsync(config.UserId, It.Is<MusicTrack>(t => t.Id == "2"), It.IsAny<CancellationToken>()), Times.Once);
+    _mockUnitOfWork.Verify(x => x.TrackMappings.AddAsync(It.Is<TrackMapping>(m => m.SourceTrackId == "2")), Times.Once);
+
+    // …but two copies of its clean version pushed to the playlist.
+    _mockMusicService.Verify(x => x.AddTracksToPlaylistAsync(
+        config.UserId,
+        config.TargetPlaylistId,
+        It.Is<IEnumerable<string>>(tracks => tracks.Count(id => id == cleanTrack.Id) == 2),
+        It.IsAny<CancellationToken>()), Times.Once);
+  }
+
   /// <summary>
   /// Sync is additive. Apple Music's API cannot remove a track from a library playlist, so
   /// a source-side removal must leave the clean playlist untouched and must not be reported

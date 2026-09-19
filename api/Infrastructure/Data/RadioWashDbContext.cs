@@ -64,6 +64,14 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
         .IsRequired()
         .HasDefaultValue(true);
 
+    // One mapping row per song per job: playlist items are identified by catalog song id,
+    // so a song appearing twice in a playlist must reuse a single row (the sync pipeline
+    // keys lookups by SourceTrackId). The composite covers the JobId FK as its prefix, so
+    // no separate JobId index is kept.
+    modelBuilder.Entity<TrackMapping>()
+        .HasIndex(t => new { t.JobId, t.SourceTrackId })
+        .IsUnique();
+
     modelBuilder.Entity<TrackMapping>()
         .Property(t => t.Isrc)
         .HasMaxLength(20);

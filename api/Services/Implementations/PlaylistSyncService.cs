@@ -100,11 +100,9 @@ public class PlaylistSyncService : IPlaylistSyncService
             var newMappings = await ProcessNewTracksAsync(musicService, delta.NewTracks, config);
 
             // 6. Apply changes to target playlist
-            await ApplyDeltaToPlaylistAsync(musicService, config, delta, newMappings);
+            var tracksAdded = await ApplyDeltaToPlaylistAsync(musicService, config, delta, newMappings);
 
             stopwatch.Stop();
-
-            var tracksAdded = delta.TracksToAdd.Count + newMappings.Count(m => m.HasCleanMatch);
 
             // Sync is additive: nothing is ever removed (see ApplyDeltaToPlaylistAsync), so
             // the removed count is always zero and every pre-existing target track is
@@ -301,9 +299,13 @@ public class PlaylistSyncService : IPlaylistSyncService
             return newMappings;
         }
 
-        _logger.LogInformation("Processing {NewTrackCount} new tracks for config {ConfigId}", newTracks.Count, config.Id);
+        // A song added to the source playlist twice appears here twice under one catalog id;
+        // TrackMappings allows only one row per (job, source track id).
+        var uniqueNewTracks = newTracks.DistinctBy(t => t.Id).ToList();
 
-        foreach (var track in newTracks)
+        _logger.LogInformation("Processing {NewTrackCount} new tracks for config {ConfigId}", uniqueNewTracks.Count, config.Id);
+
+        foreach (var track in uniqueNewTracks)
         {
             try
             {
@@ -350,13 +352,32 @@ public class PlaylistSyncService : IPlaylistSyncService
     /// "fix" this by adding a remove method to <see cref="IMusicService"/> — the interface
     /// is add-only by design. The UI states plainly that removals do not propagate.
     /// </remarks>
-    private async Task ApplyDeltaToPlaylistAsync(
+    private async Task<int> ApplyDeltaToPlaylistAsync(
         IMusicService musicService, PlaylistSyncConfig config, PlaylistDelta delta, List<TrackMapping> newMappings)
     {
         // Add clean versions of new tracks. The adapter owns any provider-specific ID or
         // URI formatting, so bare track IDs are passed through.
         var trackIdsToAdd = delta.TracksToAdd.ToList();
-        trackIdsToAdd.AddRange(newMappings.Where(m => m.HasCleanMatch && !string.IsNullOrEmpty(m.TargetTrackId)).Select(m => m.TargetTrackId!));
+
+        // delta.NewTracks lists every playlist occurrence while newMappings holds one row
+        // per song, so a new song the source holds twice contributes two copies of its
+        // clean version here.
+        var newMappingsBySourceId = new Dictionary<string, TrackMapping>();
+        foreach (var mapping in newMappings)
+        {
+            if (mapping.HasCleanMatch && !string.IsNullOrEmpty(mapping.TargetTrackId))
+            {
+                newMappingsBySourceId[mapping.SourceTrackId] = mapping;
+            }
+        }
+
+        foreach (var track in delta.NewTracks)
+        {
+            if (newMappingsBySourceId.TryGetValue(track.Id, out var mapping))
+            {
+                trackIdsToAdd.Add(mapping.TargetTrackId!);
+            }
+        }
 
         if (trackIdsToAdd.Any())
         {
@@ -364,5 +385,7 @@ public class PlaylistSyncService : IPlaylistSyncService
             await musicService.AddTracksToPlaylistAsync(
                 config.UserId, config.TargetPlaylistId, trackIdsToAdd, CancellationToken.None);
         }
+
+        return trackIdsToAdd.Count;
     }
 }
