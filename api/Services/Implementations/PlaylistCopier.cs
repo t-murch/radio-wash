@@ -113,6 +113,19 @@ public class PlaylistCopier : IPlaylistCopier
     var result = new TrackProcessingResult();
     var mappingBatch = new List<TrackMapping>();
 
+    // Same dedup contract as PlaylistCleaner.ProcessTracks: one mapping row per (job,
+    // source track id) — enforced by a unique index — while the copied playlist still
+    // mirrors the source per occurrence. Rows persisted by an earlier attempt (Hangfire
+    // retry after a mid-run batch commit) are reused instead of re-matched.
+    var mappingsBySourceId = new Dictionary<string, TrackMapping>();
+    foreach (var persisted in await _unitOfWork.TrackMappings.GetByJobIdAsync(job.Id))
+    {
+      if (!mappingsBySourceId.ContainsKey(persisted.SourceTrackId) || persisted.HasCleanMatch)
+      {
+        mappingsBySourceId[persisted.SourceTrackId] = persisted;
+      }
+    }
+
     for (int i = 0; i < tracks.Count; i++)
     {
       var track = tracks[i];
@@ -120,6 +133,18 @@ public class PlaylistCopier : IPlaylistCopier
       if (string.IsNullOrEmpty(track.Id))
       {
         _logger.LogWarning("Skipping invalid track: {TrackName}", track.Name ?? "Unknown");
+        continue;
+      }
+
+      if (mappingsBySourceId.TryGetValue(track.Id, out var knownMapping))
+      {
+        if (knownMapping.HasCleanMatch && !string.IsNullOrEmpty(knownMapping.TargetTrackId))
+        {
+          result.MatchedCount++;
+          result.CleanTrackUris.Add(knownMapping.TargetTrackId);
+        }
+        result.ProcessedCount++;
+        await HandleProgressReporting(job.Id, i + 1, track.Name);
         continue;
       }
 
@@ -144,6 +169,7 @@ public class PlaylistCopier : IPlaylistCopier
       };
 
       mappingBatch.Add(mapping);
+      mappingsBySourceId[track.Id] = mapping;
 
       if (mapping.HasCleanMatch)
       {

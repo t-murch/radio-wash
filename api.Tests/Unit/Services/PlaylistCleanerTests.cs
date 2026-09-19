@@ -42,6 +42,9 @@ public class PlaylistCleanerTests
 
     _mockUnitOfWork.Setup(x => x.TrackMappings).Returns(_mockMappingRepo.Object);
     _mockUnitOfWork.Setup(x => x.Jobs).Returns(_mockJobRepo.Object);
+    _mockMappingRepo
+      .Setup(x => x.GetByJobIdAsync(It.IsAny<int>()))
+      .ReturnsAsync(new List<TrackMapping>());
 
     _mockProgressTracker.Setup(x => x.ShouldReportProgress(It.IsAny<int>())).Returns(false);
     _mockProgressTracker.Setup(x => x.ShouldPersistProgress(It.IsAny<int>())).Returns(false);
@@ -331,6 +334,116 @@ public class PlaylistCleanerTests
       x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t2"), It.IsAny<CancellationToken>()),
       Times.Never);
     Assert.True(hangfireToken.IsCancellationRequested);
+  }
+
+  [Fact]
+  public async Task CleanPlaylistAsync_DuplicatedTrackInPlaylist_WritesOneMappingButKeepsBothCopies()
+  {
+    var job = MakeJob(id: 8, userId: 7, sourceId: "src");
+    var user = new User { Id = 7, SupabaseId = "sb" };
+    var tracks = new[]
+    {
+      MakeTrack("t1", "Repeated Song", isExplicit: true),
+      MakeTrack("t2", "Other Song", isExplicit: true),
+      MakeTrack("t1", "Repeated Song", isExplicit: true)
+    };
+
+    _mockMusic.Setup(x => x.GetPlaylistTracksAsync(user.Id, "src", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(tracks);
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t1"), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(MakeTrack("c1", "Repeated Song", isExplicit: false));
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t2"), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(MakeTrack("c2", "Other Song", isExplicit: false));
+    _mockMusic
+      .Setup(x => x.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PlaylistSummary("target-id", job.TargetPlaylistName, null, null, 0, "owner", null));
+    _mockMusic
+      .Setup(x => x.AddTracksToPlaylistAsync(user.Id, "target-id", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+      .Returns(Task.CompletedTask);
+
+    IEnumerable<TrackMapping>? persistedMappings = null;
+    _mockMappingRepo
+      .Setup(x => x.AddRangeAsync(It.IsAny<IEnumerable<TrackMapping>>()))
+      .Callback<IEnumerable<TrackMapping>>(m => persistedMappings = m.ToList())
+      .Returns(Task.CompletedTask);
+
+    var result = await _cleaner.CleanPlaylistAsync(job, user);
+
+    // The playlist mirrors the source (clean copy per occurrence)…
+    Assert.Equal(3, result.ProcessedTracks);
+    Assert.Equal(3, result.MatchedTracks);
+    Assert.Equal(new[] { "c1", "c2", "c1" }, result.CleanTrackUris);
+
+    // …while the mapping table stores the repeated song once and it is matched only once.
+    Assert.NotNull(persistedMappings);
+    Assert.Equal(2, persistedMappings!.Count());
+    Assert.Single(persistedMappings, m => m.SourceTrackId == "t1");
+    _mockMusic.Verify(
+      x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t1"), It.IsAny<CancellationToken>()),
+      Times.Once);
+  }
+
+  [Fact]
+  public async Task CleanPlaylistAsync_MappingAlreadyPersistedForJob_ReusesItWithoutNewRow()
+  {
+    // A Hangfire retry after a mid-run batch commit re-enters with rows already persisted;
+    // those tracks resume from the stored mapping instead of duplicating it.
+    var job = MakeJob(id: 9, userId: 7, sourceId: "src");
+    var user = new User { Id = 7, SupabaseId = "sb" };
+    var tracks = new[]
+    {
+      MakeTrack("t1", "Persisted Song", isExplicit: true),
+      MakeTrack("t2", "Fresh Song", isExplicit: true)
+    };
+
+    _mockMappingRepo
+      .Setup(x => x.GetByJobIdAsync(job.Id))
+      .ReturnsAsync(new List<TrackMapping>
+      {
+        new()
+        {
+          JobId = job.Id,
+          SourceTrackId = "t1",
+          SourceTrackName = "Persisted Song",
+          SourceArtistName = "Artist",
+          HasCleanMatch = true,
+          TargetTrackId = "c1"
+        }
+      });
+
+    _mockMusic.Setup(x => x.GetPlaylistTracksAsync(user.Id, "src", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(tracks);
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t2"), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(MakeTrack("c2", "Fresh Song", isExplicit: false));
+    _mockMusic
+      .Setup(x => x.CreatePlaylistAsync(user.Id, job.TargetPlaylistName, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PlaylistSummary("target-id", job.TargetPlaylistName, null, null, 0, "owner", null));
+    _mockMusic
+      .Setup(x => x.AddTracksToPlaylistAsync(user.Id, "target-id", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+      .Returns(Task.CompletedTask);
+
+    IEnumerable<TrackMapping>? persistedMappings = null;
+    _mockMappingRepo
+      .Setup(x => x.AddRangeAsync(It.IsAny<IEnumerable<TrackMapping>>()))
+      .Callback<IEnumerable<TrackMapping>>(m => persistedMappings = m.ToList())
+      .Returns(Task.CompletedTask);
+
+    var result = await _cleaner.CleanPlaylistAsync(job, user);
+
+    Assert.Equal(2, result.ProcessedTracks);
+    Assert.Equal(2, result.MatchedTracks);
+    Assert.Equal(new[] { "c1", "c2" }, result.CleanTrackUris);
+
+    // Only the fresh track produced a new row; t1 was neither re-searched nor re-inserted.
+    Assert.NotNull(persistedMappings);
+    Assert.Single(persistedMappings!);
+    Assert.Equal("t2", persistedMappings!.Single().SourceTrackId);
+    _mockMusic.Verify(
+      x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "t1"), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 
   // --- Helpers ---

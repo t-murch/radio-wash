@@ -75,6 +75,22 @@ public class PlaylistCleaner : IPlaylistCleaner
     var result = new TrackProcessingResult();
     var mappingBatch = new List<TrackMapping>();
 
+    // At most one mapping row may exist per (job, source track id): tracks are identified
+    // by catalog id, so a song appearing twice in the playlist arrives as two items with
+    // the same id, and TrackMappings enforces uniqueness. The playlist itself still
+    // mirrors the source — a repeat occurrence re-uses the known mapping and contributes
+    // its clean version again. Mappings already persisted for this job (a Hangfire retry
+    // after a mid-run batch commit) are reused the same way rather than re-searched, so a
+    // retried run resumes instead of violating the index.
+    var mappingsBySourceId = new Dictionary<string, TrackMapping>();
+    foreach (var persisted in await _unitOfWork.TrackMappings.GetByJobIdAsync(job.Id))
+    {
+      if (!mappingsBySourceId.ContainsKey(persisted.SourceTrackId) || persisted.HasCleanMatch)
+      {
+        mappingsBySourceId[persisted.SourceTrackId] = persisted;
+      }
+    }
+
     for (int i = 0; i < tracks.Count; i++)
     {
       var track = tracks[i];
@@ -82,6 +98,18 @@ public class PlaylistCleaner : IPlaylistCleaner
       if (!IsValidTrack(track))
       {
         _logger.LogWarning("Skipping invalid track: {TrackName}", track.Name ?? "Unknown");
+        continue;
+      }
+
+      if (mappingsBySourceId.TryGetValue(track.Id, out var knownMapping))
+      {
+        if (knownMapping.HasCleanMatch && !string.IsNullOrEmpty(knownMapping.TargetTrackId))
+        {
+          result.MatchedCount++;
+          result.CleanTrackUris.Add(knownMapping.TargetTrackId);
+        }
+        result.ProcessedCount++;
+        await HandleProgressReporting(job.Id, i + 1, track.Name);
         continue;
       }
 
@@ -103,6 +131,7 @@ public class PlaylistCleaner : IPlaylistCleaner
       };
 
       mappingBatch.Add(mapping);
+      mappingsBySourceId[track.Id] = mapping;
 
       if (mapping.HasCleanMatch)
       {

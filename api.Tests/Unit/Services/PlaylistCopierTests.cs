@@ -40,6 +40,9 @@ public class PlaylistCopierTests
 
     _unitOfWork.Setup(x => x.TrackMappings).Returns(_mappingRepo.Object);
     _unitOfWork.Setup(x => x.Jobs).Returns(_jobRepo.Object);
+    _mappingRepo
+      .Setup(x => x.GetByJobIdAsync(It.IsAny<int>()))
+      .ReturnsAsync(new List<TrackMapping>());
 
     _progressTracker.Setup(x => x.ShouldReportProgress(It.IsAny<int>())).Returns(false);
     _progressTracker.Setup(x => x.ShouldPersistProgress(It.IsAny<int>())).Returns(false);
