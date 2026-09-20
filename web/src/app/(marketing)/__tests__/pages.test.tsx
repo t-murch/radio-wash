@@ -87,13 +87,14 @@ describe('marketing copy guardrails', () => {
   it.each([
     ['HowItWorksPage', HowItWorksPage],
     ['CleanPlaylistGuidePage', CleanPlaylistGuidePage],
+    ['AppleMusicCleanPlaylistPage', AppleMusicCleanPlaylistPage],
   ])('%s stays inside the copy guardrails', (_name, Page) => {
     const { container } = render(<Page />);
     const text = container.textContent ?? '';
 
     expect(text).not.toMatch(/spotify/i);
     expect(text).not.toMatch(/coming soon|waitlist/i);
-    expect(text).not.toMatch(/200 tracks|10 sync/i);
+    expect(text).not.toMatch(/200 tracks|10 (sync|clean|synced)? ?playlists/i);
   });
 });
 
@@ -123,24 +124,26 @@ describe('AppleMusicCleanPlaylistPage', () => {
     ).toBeInTheDocument();
   });
 
-  // The claim the whole page rests on: free, but capped. "No track limit" on
-  // its own read as unlimited, which the 10-playlist plan cap contradicts.
-  it('states the free-tier playlist cap, not just the track allowance', () => {
+  // The claim the whole page rests on. Cleaning has no cap in the API: the
+  // only plan limit (10) counts enabled Auto-Sync configs on the paid plan,
+  // and free users have no subscription row to check against.
+  it('states that cleaning is free with no track limit', () => {
     render(<AppleMusicCleanPlaylistPage />);
 
     // Stated twice on purpose: in "What it costs" and again in the FAQ answer,
     // which is also what the FAQPage schema emits.
     expect(
-      screen.getAllByText(/free for your first 10 clean playlists/i)
+      screen.getAllByText(/cleaning playlists is free, with no track limit/i)
     ).toHaveLength(2);
   });
 
   it('links to how-it-works and the guide from the body copy', () => {
     render(<AppleMusicCleanPlaylistPage />);
 
-    expect(
-      screen.getByRole('link', { name: /how it works/i })
-    ).toHaveAttribute('href', MARKETING_ROUTES.howItWorks);
+    expect(screen.getByRole('link', { name: /how it works/i })).toHaveAttribute(
+      'href',
+      MARKETING_ROUTES.howItWorks
+    );
     expect(
       screen.getByRole('link', { name: /clean-playlist guide/i })
     ).toHaveAttribute('href', MARKETING_ROUTES.cleanPlaylistGuide);

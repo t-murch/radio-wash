@@ -29,8 +29,7 @@ export const softwareApplicationSchema: JsonLdSchema = {
   operatingSystem: 'Web',
   url: SITE_URL,
   // Two offers, because the free and paid parts are genuinely different things:
-  // cleaning is free up to the plan's playlist cap, and Auto-Sync is the only
-  // paid feature.
+  // cleaning is free without limit, and Auto-Sync is the only paid feature.
   offers: [
     {
       '@type': 'Offer',
@@ -46,7 +45,7 @@ export const softwareApplicationSchema: JsonLdSchema = {
     },
   ],
   description:
-    'RadioWash creates clean copies of Apple Music playlists: the same songs with radio edits substituted where they exist. Tracks without a clean version are left out, so the copy contains only non-explicit material. The original playlist is never changed. Cleaning is free for your first 10 playlists; Auto-Sync ($5/month) keeps a copy in step with its source. Requires an active Apple Music subscription.',
+    'RadioWash creates clean copies of Apple Music playlists: the same songs with radio edits substituted where they exist. Tracks without a clean version are left out, so the copy contains only non-explicit material. The original playlist is never changed. Cleaning is free; Auto-Sync ($5/month) keeps a copy in step with its source. Requires an active Apple Music subscription.',
 };
 
 /**

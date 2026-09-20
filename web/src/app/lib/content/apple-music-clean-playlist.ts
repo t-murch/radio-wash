@@ -31,6 +31,6 @@ export const LANDING_FAQ: FaqItem[] = [
   {
     question: 'Do I have to pay?',
     answer:
-      'Cleaning is free for your first 10 clean playlists, with no limit on how many tracks each one holds and no credit card. Auto-Sync, which keeps a clean copy in step with its source as the source changes, is $5 per month and is the only paid part of RadioWash.',
+      'Cleaning playlists is free, with no track limit and no credit card. Auto-Sync, which keeps a clean copy in step with its source as the source changes, is $5 per month and is the only paid part of RadioWash.',
   },
 ];

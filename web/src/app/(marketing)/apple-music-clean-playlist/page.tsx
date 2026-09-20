@@ -140,11 +140,10 @@ export default function AppleMusicCleanPlaylistPage() {
             What it costs
           </h2>
           <p className="text-muted-foreground">
-            Cleaning is free for your first 10 clean playlists, with no limit on
-            how many tracks each one holds and no credit card. Auto-Sync — which
-            watches a source playlist and adds the clean versions of new songs
-            to the copy — is $5 per month and is the only paid part of
-            RadioWash.
+            Cleaning playlists is free, with no track limit and no credit card.
+            Auto-Sync — which watches a source playlist and adds the clean
+            versions of new songs to the copy — is $5 per month and is the only
+            paid part of RadioWash.
           </p>
         </section>
 

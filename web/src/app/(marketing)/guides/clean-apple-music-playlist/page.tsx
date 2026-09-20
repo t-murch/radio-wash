@@ -92,8 +92,7 @@ export default function CleanPlaylistGuidePage() {
             back to your library as a new playlist. Your original is never
             touched, and tracks with no clean version are left out rather than
             replaced with something that isn&apos;t the same song. Cleaning is
-            free for your first 10 clean playlists, with no limit on how many
-            tracks each one holds and no credit card.
+            free, with no track limit and no credit card.
           </p>
           <p className="text-muted-foreground">
             The{' '}
