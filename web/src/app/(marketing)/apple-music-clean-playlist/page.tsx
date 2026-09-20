@@ -10,6 +10,7 @@ import {
 } from '@/components/StructuredData';
 import { LANDING_FAQ } from '@/lib/content/apple-music-clean-playlist';
 import { SPECIMEN } from '@/lib/content/landing';
+import { pageOpenGraph } from '@/lib/metadata';
 import { MARKETING_ROUTES } from '@/lib/routes';
 
 export const metadata: Metadata = {
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
   alternates: { canonical: './' },
   // Per-page, or this inherits the root layout's og:url and advertises the
   // homepage as its own social URL.
-  openGraph: { url: './' },
+  openGraph: pageOpenGraph(),
 };
 
 // This page's own schema. The application entity is the shared one, so this

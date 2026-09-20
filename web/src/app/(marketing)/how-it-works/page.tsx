@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import { CtaLink } from '@/components/ui/cta-link';
 import { DEFINITION } from '@/lib/content/landing';
+import { pageOpenGraph } from '@/lib/metadata';
 
 export const metadata: Metadata = {
   title: 'How it works',
@@ -9,9 +10,8 @@ export const metadata: Metadata = {
     'How RadioWash finds the clean version of every track: exact recording matches first, careful search second, and honest omission when no clean version exists.',
   alternates: { canonical: './' },
   // Without this the page inherits the root layout's og:url and advertises the
-  // homepage as its own canonical social URL. Relative, like the canonical above:
-  // both resolve against metadataBase.
-  openGraph: { url: './' },
+  // homepage as its own canonical social URL.
+  openGraph: pageOpenGraph(),
 };
 
 // The claims on this page map to the actual matching pipeline (TrackMatcher on

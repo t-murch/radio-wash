@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CtaLink } from '@/components/ui/cta-link';
 import { StructuredData, howToSchema } from '@/components/StructuredData';
 import { MANUAL_STEPS } from '@/lib/content/clean-playlist-guide';
+import { pageOpenGraph } from '@/lib/metadata';
 import { MARKETING_ROUTES } from '@/lib/routes';
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   alternates: { canonical: './' },
   // See how-it-works: without this the page inherits the root layout's og:url
   // and advertises the homepage as its own social URL.
-  openGraph: { url: './' },
+  openGraph: pageOpenGraph(),
 };
 
 const PAGE_SCHEMAS = [
