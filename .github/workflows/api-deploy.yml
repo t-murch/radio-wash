@@ -64,4 +64,6 @@ jobs:
             "Stripe__WebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
             "Stripe__PricePlanId=${{ secrets.STRIPE_PRICE_PLAN_ID }}" \
             "ConnectionStrings__DefaultConnection=${{ secrets.SUPABASE_DB_CONNECTION }}" \
-            "Hangfire__AdminUserIds__0=${{ secrets.HANGFIRE_ADMIN_USER_ID_0 }}"
+            "Hangfire__AdminUserIds__0=${{ secrets.HANGFIRE_ADMIN_USER_ID_0 }}" \
+            "Resend__ApiKey=${{ secrets.RESEND_API_KEY }}" \
+            "Contact__RecipientEmail=${{ secrets.CONTACT_RECIPIENT_EMAIL }}"

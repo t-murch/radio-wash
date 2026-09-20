@@ -20,9 +20,11 @@ import { createClient } from '@/lib/supabase/client';
 export function useBrowserSession(): {
   signedIn: boolean;
   email: string | null;
+  displayName: string | null;
 } {
   const [signedIn, setSignedIn] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -34,6 +36,7 @@ export function useBrowserSession(): {
         if (cancelled) return;
         setSignedIn(Boolean(data.session));
         setEmail(data.session?.user.email ?? null);
+        setDisplayName(readDisplayName(data.session));
       })
       .catch((error) => {
         // Storage access can fail in embedded/private browsing contexts. The
@@ -49,6 +52,7 @@ export function useBrowserSession(): {
       // A null session here means sign-out: revert to the signed-out state.
       setSignedIn(Boolean(session));
       setEmail(session?.user.email ?? null);
+      setDisplayName(readDisplayName(session));
     });
 
     return () => {
@@ -57,5 +61,15 @@ export function useBrowserSession(): {
     };
   }, []);
 
-  return { signedIn, email };
+  return { signedIn, email, displayName };
+}
+
+// Best-effort: OAuth sign-ins (Apple, Google) populate a name in user_metadata,
+// but magic-link users typically have none — callers must handle null.
+function readDisplayName(
+  session: { user: { user_metadata?: Record<string, unknown> } } | null
+): string | null {
+  const metadata = session?.user.user_metadata;
+  const name = metadata?.full_name ?? metadata?.name;
+  return typeof name === 'string' && name.trim() !== '' ? name : null;
 }

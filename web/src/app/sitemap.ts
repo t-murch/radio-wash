@@ -42,5 +42,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'yearly',
       priority: 0.3,
     },
+    {
+      url: `${baseUrl}${MARKETING_ROUTES.contact}`,
+      lastModified: '2026-09-20',
+      changeFrequency: 'yearly',
+      priority: 0.3,
+    },
   ];
 }

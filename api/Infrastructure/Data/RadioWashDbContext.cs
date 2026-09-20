@@ -24,6 +24,9 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
   public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; } = null!;
   public DbSet<WebhookRetry> WebhookRetries { get; set; } = null!;
 
+  // Contact form
+  public DbSet<ContactSubmission> ContactSubmissions { get; set; } = null!;
+
   // Data Protection Keys
   public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
@@ -187,6 +190,39 @@ public class RadioWashDbContext : DbContext, IDataProtectionKeyContext
 
     modelBuilder.Entity<WebhookRetry>()
         .HasIndex(wr => new { wr.Status, wr.NextRetryAt });
+
+    // Contact Submission configuration. Deliberately no FK to Users: anonymous visitors
+    // submit too, and a signed-in submitter may not have a local Users row.
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.Name)
+        .IsRequired()
+        .HasMaxLength(200);
+
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.Email)
+        .IsRequired()
+        .HasMaxLength(320);
+
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.Message)
+        .IsRequired();
+
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.ClientIp)
+        .HasMaxLength(45);
+
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.EmailStatus)
+        .IsRequired()
+        .HasMaxLength(20)
+        .HasDefaultValue(ContactEmailStatus.Pending);
+
+    modelBuilder.Entity<ContactSubmission>()
+        .Property(cs => cs.EmailError)
+        .HasMaxLength(2000);
+
+    modelBuilder.Entity<ContactSubmission>()
+        .HasIndex(cs => cs.CreatedAt);
   }
 
 }
