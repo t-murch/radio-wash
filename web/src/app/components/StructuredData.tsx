@@ -1,10 +1,7 @@
-import { FAQ } from '@/lib/content/landing';
+import type { ManualStep } from '@/lib/content/clean-playlist-guide';
+import { FAQ, type FaqItem } from '@/lib/content/landing';
 
 export type JsonLdSchema = Record<string, unknown>;
-
-type FaqLike = { question: string; answer: string };
-
-type HowToStepLike = { name: string; text: string };
 
 const SITE_URL = 'https://radiowash.com';
 
@@ -52,7 +49,9 @@ export const softwareApplicationSchema: JsonLdSchema = {
  * Builds a FAQPage block from the same items a page renders, so the schema
  * cannot quote answers the page no longer gives.
  */
-export function faqPageSchema(items: readonly FaqLike[]): JsonLdSchema {
+export function faqPageSchema(
+  items: readonly Pick<FaqItem, 'question' | 'answer'>[]
+): JsonLdSchema {
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -76,7 +75,7 @@ export function faqPageSchema(items: readonly FaqLike[]): JsonLdSchema {
 export function howToSchema(input: {
   name: string;
   description: string;
-  steps: readonly HowToStepLike[];
+  steps: readonly ManualStep[];
 }): JsonLdSchema {
   return {
     '@context': 'https://schema.org',
@@ -92,42 +91,43 @@ export function howToSchema(input: {
   };
 }
 
+const websiteSchema: JsonLdSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'RadioWash',
+  url: SITE_URL,
+  description:
+    'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched.',
+};
+
+const organizationSchema: JsonLdSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'RadioWash',
+  url: SITE_URL,
+  // Google requires Organization.logo to be at least 112×112; the brand mark
+  // is 264×264 and served straight from public/, no route indirection.
+  logo: `${SITE_URL}/logo_assets/radiowash-mark.png`,
+  description:
+    'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
+  foundingDate: '2024',
+  sameAs: ['https://tillumlabs.com', 'https://github.com/t-murch/'],
+};
+
+/** The site-level schemas the homepage has always carried. */
+const SITE_SCHEMAS: JsonLdSchema[] = [
+  websiteSchema,
+  organizationSchema,
+  softwareApplicationSchema,
+  faqPageSchema(FAQ),
+];
+
 /**
- * Renders JSON-LD blocks. Called bare it emits the site-level schemas the
- * homepage has always carried; pass `schemas` to emit a page's own instead.
+ * Renders JSON-LD blocks. Called bare it emits the site-level schemas; pass
+ * `schemas` to emit a page's own instead.
  */
 export function StructuredData({ schemas }: { schemas?: JsonLdSchema[] }) {
-  const websiteSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'RadioWash',
-    url: SITE_URL,
-    description:
-      'Make a clean copy of any Apple Music playlist — same songs, radio edits substituted, your original untouched.',
-  };
-
-  const organizationSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: 'RadioWash',
-    url: SITE_URL,
-    // Google requires Organization.logo to be at least 112×112; the brand mark
-    // is 264×264 and served straight from public/, no route indirection.
-    logo: `${SITE_URL}/logo_assets/radiowash-mark.png`,
-    description:
-      'Makes clean copies of Apple Music playlists, substituting radio edits for explicit tracks.',
-    foundingDate: '2024',
-    sameAs: ['https://tillumlabs.com', 'https://github.com/t-murch/'],
-  };
-
-  const faqSchema = faqPageSchema(FAQ);
-
-  const blocks = schemas ?? [
-    websiteSchema,
-    organizationSchema,
-    softwareApplicationSchema,
-    faqSchema,
-  ];
+  const blocks = schemas ?? SITE_SCHEMAS;
 
   return (
     <>
