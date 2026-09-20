@@ -8,19 +8,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
       url: baseUrl,
-      lastModified: '2026-08-17',
+      lastModified: '2026-09-19',
       changeFrequency: 'weekly',
       priority: 1,
     },
     {
+      url: `${baseUrl}${MARKETING_ROUTES.appleMusicCleanPlaylist}`,
+      lastModified: '2026-09-19',
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}${MARKETING_ROUTES.howItWorks}`,
-      lastModified: '2026-08-17',
+      lastModified: '2026-09-19',
       changeFrequency: 'monthly',
       priority: 0.8,
     },
     {
       url: `${baseUrl}${MARKETING_ROUTES.cleanPlaylistGuide}`,
-      lastModified: '2026-08-17',
+      lastModified: '2026-09-19',
       changeFrequency: 'monthly',
       priority: 0.7,
     },

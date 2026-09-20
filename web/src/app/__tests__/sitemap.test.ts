@@ -9,6 +9,7 @@ describe('sitemap', () => {
 
     expect(urls).toEqual([
       'https://radiowash.com',
+      `https://radiowash.com${MARKETING_ROUTES.appleMusicCleanPlaylist}`,
       `https://radiowash.com${MARKETING_ROUTES.howItWorks}`,
       `https://radiowash.com${MARKETING_ROUTES.cleanPlaylistGuide}`,
       `https://radiowash.com${MARKETING_ROUTES.privacy}`,

@@ -6,6 +6,7 @@ import { Metadata, Viewport } from 'next';
 import { Source_Serif_4 } from 'next/font/google';
 import PlausibleProvider from 'next-plausible';
 import { PostHogClient } from './providers/PostHogClient';
+import { SITE_OPEN_GRAPH } from './lib/metadata';
 
 /**
  * The display serif that carries the warm editorial direction. Self-hosted at
@@ -64,10 +65,8 @@ export const metadata: Metadata = {
     telephone: false,
   },
   openGraph: {
-    type: 'website',
-    locale: 'en_US',
+    ...SITE_OPEN_GRAPH,
     url: 'https://radiowash.com',
-    siteName: 'RadioWash',
     title: 'RadioWash — clean copies of your Apple Music playlists',
     description:
       'Same songs, radio edits substituted, your original untouched. Free to use; requires an Apple Music subscription.',

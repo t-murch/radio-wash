@@ -3,7 +3,9 @@ import { describe, it, expect } from 'vitest';
 
 import HowItWorksPage from '../how-it-works/page';
 import CleanPlaylistGuidePage from '../guides/clean-apple-music-playlist/page';
+import AppleMusicCleanPlaylistPage from '../apple-music-clean-playlist/page';
 import { MARKETING_ROUTES } from '@/lib/routes';
+import { MANUAL_STEPS } from '@/lib/content/clean-playlist-guide';
 
 describe('HowItWorksPage', () => {
   it('explains the matching pipeline and the shorter-copy consequence', () => {
@@ -85,12 +87,78 @@ describe('marketing copy guardrails', () => {
   it.each([
     ['HowItWorksPage', HowItWorksPage],
     ['CleanPlaylistGuidePage', CleanPlaylistGuidePage],
+    ['AppleMusicCleanPlaylistPage', AppleMusicCleanPlaylistPage],
   ])('%s stays inside the copy guardrails', (_name, Page) => {
     const { container } = render(<Page />);
     const text = container.textContent ?? '';
 
     expect(text).not.toMatch(/spotify/i);
     expect(text).not.toMatch(/coming soon|waitlist/i);
-    expect(text).not.toMatch(/200 tracks|10 sync/i);
+    expect(text).not.toMatch(/200 tracks|10 (sync|clean|synced)? ?playlists/i);
+  });
+});
+
+describe('AppleMusicCleanPlaylistPage', () => {
+  it('leads with the primary keyword and the replacement mechanic', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /a clean playlist app for apple music/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /replacing, not just filtering/i })
+    ).toBeInTheDocument();
+  });
+
+  it('is honest that tracks without a clean version are omitted', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(
+      screen.getByRole('heading', { name: /when there is no clean version/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/rather than swapped for a cover, a remix/i)
+    ).toBeInTheDocument();
+  });
+
+  // The claim the whole page rests on. Cleaning has no cap in the API: the
+  // only plan limit (10) counts enabled Auto-Sync configs on the paid plan,
+  // and free users have no subscription row to check against.
+  it('states that cleaning is free with no track limit', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    // Stated twice on purpose: in "What it costs" and again in the FAQ answer,
+    // which is also what the FAQPage schema emits.
+    expect(
+      screen.getAllByText(/cleaning playlists is free, with no track limit/i)
+    ).toHaveLength(2);
+  });
+
+  it('links to how-it-works and the guide from the body copy', () => {
+    render(<AppleMusicCleanPlaylistPage />);
+
+    expect(screen.getByRole('link', { name: /how it works/i })).toHaveAttribute(
+      'href',
+      MARKETING_ROUTES.howItWorks
+    );
+    expect(
+      screen.getByRole('link', { name: /clean-playlist guide/i })
+    ).toHaveAttribute('href', MARKETING_ROUTES.cleanPlaylistGuide);
+  });
+});
+
+describe('CleanPlaylistGuidePage manual steps', () => {
+  // The steps feed both the rendered <ol> and the HowTo schema; rendering from
+  // the same constant is what stops search results describing steps the page
+  // no longer shows.
+  it('renders every step from the shared constant', () => {
+    render(<CleanPlaylistGuidePage />);
+
+    for (const step of MANUAL_STEPS) {
+      expect(screen.getByText(step.text)).toBeInTheDocument();
+    }
   });
 });
