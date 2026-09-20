@@ -8,9 +8,10 @@ import type { FaqItem } from './landing';
  * searching for a tool has different questions than someone who landed cold.
  *
  * Every answer here is checked against the API. The timing answer stays
- * qualitative on purpose — a clean job searches the catalog once per explicit
- * track and backs off when Apple rate-limits (AppleMusicService.cs), so wall
- * time depends on the playlist and the catalog, not on a number we can quote.
+ * qualitative on purpose — a clean job prefetches exact-recording (ISRC)
+ * matches in batches, falls back to a catalog search per unmatched track, and
+ * backs off when Apple rate-limits (AppleMusicService.cs), so wall time
+ * depends on the playlist and the catalog, not on a number we can quote.
  */
 export const LANDING_FAQ: FaqItem[] = [
   {
@@ -21,7 +22,7 @@ export const LANDING_FAQ: FaqItem[] = [
   {
     question: 'How long does a large playlist take?',
     answer:
-      'It runs as a background job, so you can close the page and come back. Longer playlists take longer: RadioWash looks up each explicit track in the Apple Music catalog one at a time, and waits when Apple asks it to slow down. Progress updates as it goes, and the job page shows how every track was matched.',
+      'It runs as a background job, so you can close the page and come back. Longer playlists take longer: RadioWash looks up exact recording matches in batches, searches the Apple Music catalog for each track that still needs one, and waits when Apple asks it to slow down. Progress updates as it goes, and the job page shows how every track was matched.',
   },
   {
     question: 'What happens to songs with no clean version?',
