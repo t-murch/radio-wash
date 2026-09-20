@@ -14,6 +14,7 @@ describe('sitemap', () => {
       `https://radiowash.com${MARKETING_ROUTES.cleanPlaylistGuide}`,
       `https://radiowash.com${MARKETING_ROUTES.privacy}`,
       `https://radiowash.com${MARKETING_ROUTES.terms}`,
+      `https://radiowash.com${MARKETING_ROUTES.contact}`,
     ]);
   });
 });

@@ -45,6 +45,8 @@ services:
       - Stripe__PublishableKey=${STRIPE_PUBLISHABLE_KEY:-}
       - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET:-}
       - Stripe__PricePlanId=${STRIPE_PRICE_PLAN_ID:-}
+      - Resend__ApiKey=${RESEND_API_KEY:-}
+      - Contact__RecipientEmail=${CONTACT_RECIPIENT_EMAIL:-}
     networks:
       - supabase
 

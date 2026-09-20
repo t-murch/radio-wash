@@ -1,11 +1,22 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import HowItWorksPage from '../how-it-works/page';
 import CleanPlaylistGuidePage from '../guides/clean-apple-music-playlist/page';
 import AppleMusicCleanPlaylistPage from '../apple-music-clean-playlist/page';
+import ContactPage from '../contact/page';
 import { MARKETING_ROUTES } from '@/lib/routes';
 import { MANUAL_STEPS } from '@/lib/content/clean-playlist-guide';
+
+// ContactPage renders the client-side form, whose session-based prefill would
+// otherwise reach for a real Supabase client in jsdom.
+vi.mock('@/hooks/useBrowserSession', () => ({
+  useBrowserSession: () => ({ signedIn: false, email: null, displayName: null }),
+}));
+vi.mock('@/services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  submitContact: vi.fn(),
+}));
 
 describe('HowItWorksPage', () => {
   it('explains the matching pipeline and the shorter-copy consequence', () => {
@@ -147,6 +158,22 @@ describe('AppleMusicCleanPlaylistPage', () => {
     expect(
       screen.getByRole('link', { name: /clean-playlist guide/i })
     ).toHaveAttribute('href', MARKETING_ROUTES.cleanPlaylistGuide);
+  });
+});
+
+describe('ContactPage', () => {
+  it('renders the contact heading and form', () => {
+    render(<ContactPage />);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: /contact/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^message$/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /send message/i })
+    ).toBeInTheDocument();
   });
 });
 

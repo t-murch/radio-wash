@@ -11,4 +11,5 @@ export const MARKETING_ROUTES = {
   cleanPlaylistGuide: '/guides/clean-apple-music-playlist',
   privacy: '/privacy',
   terms: '/terms',
+  contact: '/contact',
 } as const;
