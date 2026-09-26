@@ -2,6 +2,7 @@ using Hangfire;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.Music;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Interfaces;
 
 namespace RadioWash.Api.Services.Implementations;
@@ -114,7 +115,18 @@ public class PlaylistCleaner : IPlaylistCleaner
       }
 
       HangfireCancellationHelper.ThrowIfCancellationRequested(cancellationToken);
-      var cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, shutdownToken);
+      MusicTrack? cleanVersion;
+      try
+      {
+        cleanVersion = await _musicService.FindCleanVersionAsync(user.Id, track, shutdownToken);
+      }
+      catch (Exception ex) when (ex is not OperationCanceledException)
+      {
+        // Shutdown cancellation passes through untouched (Hangfire's own abort check runs
+        // above, outside this block); anything else is tagged with the track so a failure
+        // deep in a multi-thousand-track playlist is locatable from the error alone.
+        throw new TrackProcessingException(job.Id, i + 1, track, ex);
+      }
 
       var mapping = new TrackMapping
       {
