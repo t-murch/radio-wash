@@ -6,6 +6,7 @@ using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models;
 using RadioWash.Api.Models.Domain;
 using RadioWash.Api.Models.Music;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -459,6 +460,53 @@ public class PlaylistCleanerTests
     Status = JobStatus.Processing,
     TotalTracks = 0
   };
+
+  [Fact]
+  public async Task CleanPlaylistAsync_CleanVersionLookupThrows_WrapsWithTrackContext()
+  {
+    var job = MakeJob(id: 9, userId: 7, sourceId: "src");
+    var user = new User { Id = 7, SupabaseId = "sb" };
+    var tracks = new[]
+    {
+      MakeTrack("ok", "Fine", isExplicit: true),
+      MakeTrack("bad", "Untagged Upload", isExplicit: true)
+    };
+    var cause = new InvalidOperationException("provider blew up");
+
+    _mockMusic.Setup(x => x.GetPlaylistTracksAsync(user.Id, "src", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(tracks);
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "ok"), It.IsAny<CancellationToken>()))
+      .ReturnsAsync((MusicTrack?)null);
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.Is<MusicTrack>(t => t.Id == "bad"), It.IsAny<CancellationToken>()))
+      .ThrowsAsync(cause);
+
+    var ex = await Assert.ThrowsAsync<TrackProcessingException>(() => _cleaner.CleanPlaylistAsync(job, user));
+
+    Assert.Equal(9, ex.JobId);
+    Assert.Equal(2, ex.Position);
+    Assert.Equal("bad", ex.SourceTrackId);
+    Assert.Equal("Untagged Upload", ex.SourceTrackName);
+    Assert.Same(cause, ex.InnerException);
+    Assert.Contains("Untagged Upload", ex.Message);
+    Assert.Contains("provider blew up", ex.Message);
+  }
+
+  [Fact]
+  public async Task CleanPlaylistAsync_CleanVersionLookupCancelled_PropagatesCancellationUnwrapped()
+  {
+    var job = MakeJob(id: 10, userId: 7, sourceId: "src");
+    var user = new User { Id = 7, SupabaseId = "sb" };
+
+    _mockMusic.Setup(x => x.GetPlaylistTracksAsync(user.Id, "src", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new[] { MakeTrack("t1", "Song", isExplicit: true) });
+    _mockMusic
+      .Setup(x => x.FindCleanVersionAsync(user.Id, It.IsAny<MusicTrack>(), It.IsAny<CancellationToken>()))
+      .ThrowsAsync(new OperationCanceledException());
+
+    await Assert.ThrowsAsync<OperationCanceledException>(() => _cleaner.CleanPlaylistAsync(job, user));
+  }
 
   private static MusicTrack MakeTrack(string id, string name, bool isExplicit) =>
     new(id, name, isExplicit, new[] { new MusicArtist("Artist") });

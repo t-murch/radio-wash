@@ -19,16 +19,18 @@ public static class TrackMatching
 
   /// <summary>
   /// Compares track titles ignoring case and any trailing clean-edition marker.
+  /// Null is treated as an empty title.
   /// </summary>
-  public static bool NamesMatch(string a, string b) =>
+  public static bool NamesMatch(string? a, string? b) =>
     string.Equals(NormalizeName(a), NormalizeName(b), StringComparison.OrdinalIgnoreCase);
 
   /// <summary>
   /// Strips a trailing clean-edition marker so "Song (Clean)" compares equal to "Song".
+  /// Null normalizes to an empty string.
   /// </summary>
-  public static string NormalizeName(string name)
+  public static string NormalizeName(string? name)
   {
-    var normalized = name.Trim();
+    var normalized = (name ?? string.Empty).Trim();
     foreach (var suffix in CleanSuffixes)
     {
       if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
@@ -41,7 +43,9 @@ public static class TrackMatching
 
   /// <summary>
   /// Providers shape artist lists differently (some give one entry per artist; Apple: a single
-  /// joined string), so overlap checks containment in both directions.
+  /// joined string), so overlap checks containment in both directions. A null or blank name on
+  /// either side never overlaps: unknown metadata is no evidence of a match, and a blank
+  /// string would otherwise be "contained" in every name.
   /// </summary>
   public static bool HasArtistOverlap(
     IReadOnlyList<MusicArtist> source,
@@ -53,12 +57,14 @@ public static class TrackMatching
   /// </summary>
   public static bool HasArtistOverlap(
     IReadOnlyList<MusicArtist> source,
-    string candidateArtistName) =>
+    string? candidateArtistName) =>
     source.Any(s => NamesOverlap(s.Name, candidateArtistName));
 
-  private static bool NamesOverlap(string a, string b) =>
-    a.Contains(b, StringComparison.OrdinalIgnoreCase) ||
-    b.Contains(a, StringComparison.OrdinalIgnoreCase);
+  private static bool NamesOverlap(string? a, string? b) =>
+    !string.IsNullOrWhiteSpace(a) &&
+    !string.IsNullOrWhiteSpace(b) &&
+    (a.Contains(b, StringComparison.OrdinalIgnoreCase) ||
+     b.Contains(a, StringComparison.OrdinalIgnoreCase));
 
   /// <summary>
   /// Unknown durations never disqualify a candidate — only a known, large gap does.
