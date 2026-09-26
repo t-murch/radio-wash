@@ -4,6 +4,7 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -23,6 +24,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Configuration
 builder.Services.Configure<AppleMusicSettings>(builder.Configuration.GetSection(AppleMusicSettings.SectionName));
 builder.Services.Configure<RadioWash.Api.Configuration.BatchProcessingSettings>(builder.Configuration.GetSection(RadioWash.Api.Configuration.BatchProcessingSettings.SectionName));
+builder.Services.Configure<ContactSettings>(builder.Configuration.GetSection(ContactSettings.SectionName));
+builder.Services.Configure<ResendSettings>(builder.Configuration.GetSection(ResendSettings.SectionName));
 var frontendUrl = builder.Configuration["FrontendUrl"] ?? "http://localhost:3000";
 
 // `.dockerignore` keeps appsettings.*.json out of the image, so a containerised Development run
@@ -71,6 +74,7 @@ builder.Services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanReposito
 builder.Services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
 builder.Services.AddScoped<IPlaylistSyncConfigRepository, PlaylistSyncConfigRepository>();
 builder.Services.AddScoped<IPlaylistSyncHistoryRepository, PlaylistSyncHistoryRepository>();
+builder.Services.AddScoped<IContactSubmissionRepository, ContactSubmissionRepository>();
 
 // Services
 builder.Services.AddScoped<IUserService, UserService>();
@@ -129,6 +133,17 @@ builder.Services.AddScoped<IErrorClassifier, ErrorClassifier>();
 // Time and random abstractions
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 builder.Services.AddSingleton<IRandomProvider, SystemRandomProvider>();
+
+// Contact form: submissions persist first, then the owner-notification email goes out
+// through Resend. Typed client so the single REST call gets an explicit timeout instead of
+// HttpClient's 100s default; the dispatcher (Hangfire vs inline) is registered with the
+// Hangfire block below.
+builder.Services.AddScoped<IContactService, ContactService>();
+builder.Services.AddScoped<IContactEmailJob, ContactEmailJob>();
+builder.Services.AddHttpClient<IContactEmailSender, ResendEmailSender>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 
 // Apple Music developer token (ES256 JWT). Singleton so the signed token is cached
 // process-wide; missing configuration fails at first use rather than at startup, so an
@@ -374,6 +389,15 @@ if (!builder.Environment.IsEnvironment("Testing") && !builder.Environment.IsEnvi
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     builder.Services.AddSingleton(new RadioWash.Api.Infrastructure.Hangfire.SupabaseAdminAuthorization(adminIds));
     builder.Services.AddSingleton<RadioWash.Api.Infrastructure.Hangfire.SupabaseAdminAuthorizationFilter>();
+
+    // Contact emails ride Hangfire's automatic retries when it's available.
+    builder.Services.AddScoped<IContactEmailDispatcher, HangfireContactEmailDispatcher>();
+}
+else
+{
+    // No Hangfire (tests): run the contact email job inline so the persist → send path is
+    // still exercised end-to-end. Failures are recorded on the row, never thrown at the user.
+    builder.Services.AddScoped<IContactEmailDispatcher, InlineContactEmailDispatcher>();
 }
 
 // Background services
@@ -421,6 +445,24 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            });
+    });
+
+    // The contact form is anonymous, so the user-id partitioning above would put every
+    // visitor in one shared bucket — one spammer would 429 everyone. Partition by client IP
+    // instead (real IP restored by UseForwardedHeaders below). 3 per 5 minutes is generous
+    // for a human retrying a typo and hostile to scripts.
+    options.AddPolicy("contact", httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "__unknown__";
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            clientIp,
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(5),
                 QueueLimit = 0,
                 AutoReplenishment = true,
             });
@@ -592,6 +634,20 @@ if (!app.Environment.IsEnvironment("Testing") && !skipMigrations)
         }
     }
 }
+
+// Restore the real client IP behind Azure's front end so the per-IP "contact" rate-limit
+// partitions correctly. ForwardLimit stays at its default of 1: only the rightmost
+// X-Forwarded-For value — the one appended by the proxy directly in front of the app — is
+// honored, so a client-spoofed header can't choose its own partition (worst case spoofing
+// degrades to rotating IPs, which the honeypot still catches). KnownNetworks/KnownProxies
+// are cleared because Azure front-end addresses aren't stable enough to enumerate.
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseCors("AllowFrontend");
 app.UseMiddleware<RadioWash.Api.Middleware.GlobalExceptionMiddleware>();

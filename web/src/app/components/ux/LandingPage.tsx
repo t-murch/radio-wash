@@ -154,6 +154,12 @@ export default function LandingPage() {
             >
               Terms
             </Link>
+            <Link
+              href={MARKETING_ROUTES.contact}
+              className="hover:text-foreground"
+            >
+              Contact
+            </Link>
             <span>Not affiliated with Apple.</span>
           </div>
         </div>

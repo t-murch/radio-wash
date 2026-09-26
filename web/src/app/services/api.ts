@@ -241,6 +241,52 @@ export const fetchWithSupabaseAuth = async (
   options: RequestInit = {}
 ) => fetchWithAuth(createClientClient(), url, options);
 
+// --- Public API Functions (work without a session) ---
+
+/**
+ * Sends a contact-form submission. Unlike fetchWithSupabaseAuth this must work
+ * signed out; when a session does exist, the bearer token rides along so the
+ * API can record which account wrote in. `website` is the honeypot field and
+ * carries the untouched (empty) value from the form's hidden input.
+ */
+export const submitContact = async (payload: {
+  name: string;
+  email: string;
+  message: string;
+  website: string;
+}): Promise<{ status: string }> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    const {
+      data: { session },
+    } = await createClientClient().auth.getSession();
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch {
+    // Session lookup is best-effort; an anonymous submission is fine.
+  }
+
+  const response = await fetch(`${API_BASE_URL}/contact`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw toApiError(
+      response.status,
+      response.statusText,
+      await response.text()
+    );
+  }
+
+  return response.json();
+};
+
 // --- Server-side API Functions ---
 export const getMeServer = async (): Promise<User> => {
   const result = await fetchWithSupabaseAuthServer(`${API_BASE_URL}/auth/me`);

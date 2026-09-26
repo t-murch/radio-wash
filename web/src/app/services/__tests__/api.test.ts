@@ -3,6 +3,7 @@ import {
   ApiError,
   API_BASE_URL,
   fetchWithSupabaseAuth,
+  submitContact,
   subscribeToSync,
 } from '../api';
 import { createClient } from '@/lib/supabase/client';
@@ -204,5 +205,82 @@ describe('subscribeToSync', () => {
     expect(body.planId).toBeNull();
     expect(body.clientRequestId).toEqual(expect.any(String));
     expect(body.clientRequestId.length).toBeGreaterThan(0);
+  });
+});
+
+describe('submitContact', () => {
+  const contactPayload = {
+    name: 'Ada Lovelace',
+    email: 'ada@example.com',
+    message: 'The sync feature stopped working for me yesterday.',
+    website: '',
+  };
+
+  const okResponse = {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({ status: 'received' }),
+    headers: new Headers({ 'content-type': 'application/json' }),
+  };
+
+  it('posts without an Authorization header when there is no session', async () => {
+    (createClient as Mock).mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      },
+    });
+    mockFetch.mockResolvedValue(okResponse);
+
+    const result = await submitContact(contactPayload);
+
+    expect(result).toEqual({ status: 'received' });
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/contact`);
+    expect(options.method).toBe('POST');
+    expect(options.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(options.body)).toEqual(contactPayload);
+  });
+
+  it('attaches the bearer token when a session exists', async () => {
+    (createClient as Mock).mockReturnValue({
+      auth: {
+        getSession: vi
+          .fn()
+          .mockResolvedValue({ data: { session: { access_token: 'token' } } }),
+      },
+    });
+    mockFetch.mockResolvedValue(okResponse);
+
+    await submitContact(contactPayload);
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers.Authorization).toBe('Bearer token');
+  });
+
+  it('throws ApiError with detail from a Problem Details 400', async () => {
+    (createClient as Mock).mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      },
+    });
+    mockFetch.mockResolvedValue(
+      problemResponse(400, {
+        title: 'Invalid contact submission',
+        detail: 'Email must be a valid email address.',
+        status: 400,
+        type: 'https://radiowash.com/problems/contact-validation',
+      })
+    );
+
+    const error = await submitContact(contactPayload).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(400);
+    expect(error.message).toBe('Invalid contact submission');
+    expect(error.detail).toBe('Email must be a valid email address.');
+    expect(error.problemType).toBe(
+      'https://radiowash.com/problems/contact-validation'
+    );
   });
 });
