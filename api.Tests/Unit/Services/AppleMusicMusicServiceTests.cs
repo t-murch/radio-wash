@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RadioWash.Api.Models.AppleMusic;
@@ -28,7 +29,7 @@ public class AppleMusicMusicServiceTests
 
   private static AppleLibrarySong CreateLibrarySong(
     string libraryId, string name, string? catalogId = null, string? contentRating = null,
-    string artistName = "Test Artist", string? catalogRelationshipId = null)
+    string? artistName = "Test Artist", string? catalogRelationshipId = null)
   {
     return new AppleLibrarySong
     {
@@ -53,7 +54,7 @@ public class AppleMusicMusicServiceTests
   }
 
   private static AppleCatalogSong CreateCatalogSong(
-    string id, string name, string? contentRating = null, string artistName = "Test Artist",
+    string id, string name, string? contentRating = null, string? artistName = "Test Artist",
     string? isrc = null, int? durationMs = 200_000)
   {
     return new AppleCatalogSong
@@ -158,6 +159,82 @@ public class AppleMusicMusicServiceTests
     // no catalog linkage → library id passes through (unmatchable downstream, never an error)
     Assert.Equal("i.4", tracks[3].Id);
     Assert.Null(tracks[3].Isrc);
+  }
+
+  [Fact]
+  public async Task GetPlaylistTracksAsync_LibrarySongMissingArtist_FallsBackToCatalogArtist()
+  {
+    // A catalog-linked track whose local iCloud tags lack an artist: the catalog record is
+    // authoritative and recovers the name so the track stays matchable.
+    _appleMusic.Setup(x => x.GetPlaylistTracksAsync(UserId, "p.abc", It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[]
+        {
+          CreateLibrarySong("i.1", "Untagged", catalogId: "cat100", contentRating: "explicit", artistName: null)
+        });
+    _appleMusic.Setup(x => x.GetCatalogSongsByIdsAsync(UserId, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[] { CreateCatalogSong("cat100", "Untagged", contentRating: "explicit", artistName: "Catalog Artist") });
+
+    var tracks = await _adapter.GetPlaylistTracksAsync(UserId, "p.abc", CancellationToken.None);
+
+    var track = Assert.Single(tracks);
+    var artist = Assert.Single(track.Artists);
+    Assert.Equal("Catalog Artist", artist.Name);
+  }
+
+  [Fact]
+  public async Task GetPlaylistTracksAsync_UploadDeserializedWithoutNameOrArtist_YieldsEmptyValuesNotNulls()
+  {
+    // Exercise the real deserialization path: Apple simply omits the fields for untagged
+    // personal uploads, and System.Text.Json leaves them null regardless of declared type.
+    var untagged = JsonSerializer.Deserialize<AppleLibrarySong>(
+      """{"id":"i.9","type":"library-songs","attributes":{"contentRating":"explicit","durationInMillis":180000}}""",
+      new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+    Assert.Null(untagged.Attributes.ArtistName);
+
+    _appleMusic.Setup(x => x.GetPlaylistTracksAsync(UserId, "p.abc", It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[] { untagged });
+    _appleMusic.Setup(x => x.GetCatalogSongsByIdsAsync(UserId, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(Array.Empty<AppleCatalogSong>());
+
+    var tracks = await _adapter.GetPlaylistTracksAsync(UserId, "p.abc", CancellationToken.None);
+
+    var track = Assert.Single(tracks);
+    Assert.Equal("i.9", track.Id);
+    Assert.Equal(string.Empty, track.Name);
+    Assert.Empty(track.Artists);
+    Assert.True(track.IsExplicit);
+  }
+
+  [Fact]
+  public async Task FindCleanVersionAsync_ExplicitSourceWithoutArtist_ReturnsNullWithoutSearching()
+  {
+    // No artist means no candidate can ever pass the artist check; skip the Apple call.
+    var track = new MusicTrack("i.9", "Untagged", true, Array.Empty<MusicArtist>());
+
+    var result = await _adapter.FindCleanVersionAsync(UserId, track, CancellationToken.None);
+
+    Assert.Null(result);
+    _appleMusic.Verify(
+      x => x.SearchCatalogSongsAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+      Times.Never);
+  }
+
+  [Fact]
+  public async Task FindCleanVersionAsync_CandidateMissingArtistName_IsRejectedNotThrown()
+  {
+    var explicitTrack = new MusicTrack("cat1", "Bad Song", true, new List<MusicArtist> { new("Test Artist") });
+
+    _appleMusic.Setup(x => x.SearchCatalogSongsAsync(UserId, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new[]
+        {
+          CreateCatalogSong("cat9", "Bad Song", contentRating: "clean", artistName: null),
+          CreateCatalogSong("cat10", "Bad Song", contentRating: "clean", artistName: "Test Artist")
+        });
+
+    var result = await _adapter.FindCleanVersionAsync(UserId, explicitTrack, CancellationToken.None);
+
+    Assert.NotNull(result);
+    Assert.Equal("cat10", result.Id);
   }
 
   [Fact]

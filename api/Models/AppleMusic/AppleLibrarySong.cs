@@ -26,11 +26,13 @@ public class AppleLibrarySong
 
 public class AppleLibrarySongAttributes
 {
+  // Apple omits name/artistName for untagged iCloud uploads; System.Text.Json leaves an
+  // absent field null regardless of the declared nullability, so these must be nullable.
   [JsonPropertyName("name")]
-  public string Name { get; set; } = null!;
+  public string? Name { get; set; }
 
   [JsonPropertyName("artistName")]
-  public string ArtistName { get; set; } = null!;
+  public string? ArtistName { get; set; }
 
   [JsonPropertyName("albumName")]
   public string? AlbumName { get; set; }

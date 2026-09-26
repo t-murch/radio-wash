@@ -73,14 +73,28 @@ public class AppleMusicMusicService : IMusicService
     // Tracks without catalog linkage (personal uploads, region gaps) keep their library id;
     // they can't be searched, matched, or re-added cross-catalog and flow through the
     // pipeline as unmatchable rather than erroring.
-    return songs.Select(s =>
+    //
+    // Library attributes mirror the user's own iCloud tags and can lack name/artistName
+    // entirely (untagged uploads). The catalog record, when linked, is the fallback; a track
+    // that still has no name or artist stays in the list as unmatchable, never as a null.
+    return songs.Select((s, position) =>
     {
       var catalog = s.CatalogId is not null && catalogById.TryGetValue(s.CatalogId, out var c) ? c : null;
+      var name = s.Attributes.Name ?? catalog?.Attributes.Name ?? string.Empty;
+      var artists = SplitArtists(s.Attributes.ArtistName ?? catalog?.Attributes.ArtistName);
+
+      if (name.Length == 0 || artists.Count == 0)
+      {
+        _logger.LogWarning(
+          "Apple library track at position {Position} in playlist {PlaylistId} has no {MissingField} (library id {LibraryId}, catalog id {CatalogId}); it will be treated as unmatchable",
+          position + 1, playlistId, name.Length == 0 ? "name" : "artist", s.Id, s.CatalogId ?? "none");
+      }
+
       return new MusicTrack(
         Id: s.CatalogId ?? s.Id,
-        Name: s.Attributes.Name,
+        Name: name,
         IsExplicit: IsExplicitRating(s.Attributes.ContentRating ?? catalog?.Attributes.ContentRating),
-        Artists: SplitArtists(s.Attributes.ArtistName),
+        Artists: artists,
         Isrc: catalog?.Attributes.Isrc,
         DurationMs: s.Attributes.DurationInMillis ?? catalog?.Attributes.DurationInMillis,
         AlbumName: s.Attributes.AlbumName ?? catalog?.Attributes.AlbumName);
@@ -124,6 +138,16 @@ public class AppleMusicMusicService : IMusicService
     CancellationToken cancellationToken)
   {
     if (!explicitTrack.IsExplicit) return explicitTrack;
+
+    // A candidate must match on both title and artist, so a source missing either can never
+    // match; skip the Apple call rather than search on a half-empty term.
+    if (explicitTrack.Name.Length == 0 || explicitTrack.Artists.Count == 0)
+    {
+      _logger.LogDebug(
+        "Skipping clean-version search for track {TrackId}: missing {MissingField}",
+        explicitTrack.Id, explicitTrack.Name.Length == 0 ? "name" : "artist");
+      return null;
+    }
 
     var artists = string.Join(" ", explicitTrack.Artists.Select(a => a.Name));
     // Apple search has no explicit-exclusion operator;
@@ -191,7 +215,7 @@ public class AppleMusicMusicService : IMusicService
 
   internal static MusicTrack MapCatalogSong(AppleCatalogSong song) => new(
     Id: song.Id,
-    Name: song.Attributes.Name,
+    Name: song.Attributes.Name ?? string.Empty,
     IsExplicit: IsExplicitRating(song.Attributes.ContentRating),
     Artists: SplitArtists(song.Attributes.ArtistName),
     Isrc: song.Attributes.Isrc,
@@ -207,9 +231,12 @@ public class AppleMusicMusicService : IMusicService
     string.Equals(contentRating, "explicit", StringComparison.OrdinalIgnoreCase);
 
   // Apple returns one joined artist string ("Artist A & Artist B"); keep it as a single
-  // MusicArtist so name-overlap checks work against the full string.
-  private static IReadOnlyList<MusicArtist> SplitArtists(string artistName) =>
-    new List<MusicArtist> { new(artistName) };
+  // MusicArtist so name-overlap checks work against the full string. A missing or blank
+  // string yields no artists at all rather than one artist with a null name.
+  private static IReadOnlyList<MusicArtist> SplitArtists(string? artistName) =>
+    string.IsNullOrWhiteSpace(artistName)
+      ? Array.Empty<MusicArtist>()
+      : new List<MusicArtist> { new(artistName) };
 
   private static string? SizedArtworkUrl(string? templateUrl) =>
     templateUrl?

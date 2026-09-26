@@ -132,10 +132,13 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
     var explicitWithMatch = MakeTrack("e1", "Explicit Hit", isExplicit: true);
     var explicitNoMatch = MakeTrack("e2", "Unreleased Mix", isExplicit: true);
     var alreadyClean = MakeTrack("c1", "Squeaky Clean", isExplicit: false);
+    // An untagged personal upload: the provider adapter yields no artists at all for it, and
+    // the pipeline must carry it through as unmatched rather than fail the whole job.
+    var untaggedUpload = new MusicTrack("u1", "Untagged Upload", IsExplicit: true, Artists: Array.Empty<MusicArtist>());
 
-    _fakeMusic.SourcePlaylistTracks["source-pl"] = new[] { explicitWithMatch, explicitNoMatch, alreadyClean };
+    _fakeMusic.SourcePlaylistTracks["source-pl"] = new[] { explicitWithMatch, explicitNoMatch, alreadyClean, untaggedUpload };
     _fakeMusic.CleanVersionsBySourceId["e1"] = MakeTrack("e1-clean", "Explicit Hit", isExplicit: false);
-    // e2 has no clean version — FindCleanVersion will return null for it
+    // e2 and u1 have no clean version — FindCleanVersion will return null for them
     _fakeMusic.UserPlaylists[user.Id] = new[]
     {
       new PlaylistSummary(
@@ -182,7 +185,7 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
       persistedJob.Status == "Completed",
       $"Expected Completed, got {persistedJob.Status}. ErrorMessage: {persistedJob.ErrorMessage}");
     Assert.Equal("target-pl", persistedJob.TargetPlaylistId);
-    Assert.Equal(3, persistedJob.ProcessedTracks);
+    Assert.Equal(4, persistedJob.ProcessedTracks);
     Assert.Equal(2, persistedJob.MatchedTracks); // e1 matched + c1 passed through
 
     // Assert — track mappings
@@ -190,10 +193,13 @@ public class CleanPlaylistPipelineIntegrationTests : PostgreSqlIntegrationTestBa
       .Where(m => m.JobId == persistedJob.Id)
       .OrderBy(m => m.Id)
       .ToList();
-    Assert.Equal(3, mappings.Count);
+    Assert.Equal(4, mappings.Count);
     Assert.True(mappings.Single(m => m.SourceTrackId == "e1").HasCleanMatch);
     Assert.False(mappings.Single(m => m.SourceTrackId == "e2").HasCleanMatch);
     Assert.True(mappings.Single(m => m.SourceTrackId == "c1").HasCleanMatch);
+    var untaggedMapping = mappings.Single(m => m.SourceTrackId == "u1");
+    Assert.False(untaggedMapping.HasCleanMatch);
+    Assert.Equal("Unknown", untaggedMapping.SourceArtistName);
 
     // Assert — the provider received the expected track list. IMusicService takes raw
     // platform-native IDs; any URI formatting is the adapter's business, below this seam.

@@ -13,11 +13,13 @@ public class AppleCatalogSong
 
 public class AppleCatalogSongAttributes
 {
+  // Documented as required, but an absent field deserializes to null regardless of the
+  // declared nullability; keep these nullable so consumers are forced to handle it.
   [JsonPropertyName("name")]
-  public string Name { get; set; } = null!;
+  public string? Name { get; set; }
 
   [JsonPropertyName("artistName")]
-  public string ArtistName { get; set; } = null!;
+  public string? ArtistName { get; set; }
 
   [JsonPropertyName("albumName")]
   public string? AlbumName { get; set; }
