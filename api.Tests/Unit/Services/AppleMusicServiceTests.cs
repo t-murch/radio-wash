@@ -225,6 +225,119 @@ public class AppleMusicServiceTests
     Assert.Equal(TimeSpan.FromSeconds(2), observedDelays[0]);
   }
 
+  private static HttpResponseMessage SearchResponse(params AppleCatalogSong[] songs) => new(HttpStatusCode.OK)
+  {
+    Content = new StringContent(
+      JsonSerializer.Serialize(new AppleSearchResponse
+      {
+        Results = new AppleSearchResults { Songs = new AppleSearchSongs { Data = songs } }
+      }), Encoding.UTF8, "application/json")
+  };
+
+  [Theory]
+  [InlineData(HttpStatusCode.InternalServerError)]
+  [InlineData(HttpStatusCode.BadGateway)]
+  [InlineData(HttpStatusCode.ServiceUnavailable)]
+  [InlineData(HttpStatusCode.GatewayTimeout)]
+  public async Task SearchCatalogSongsAsync_OnTransientServerError_BacksOffAndRetries(HttpStatusCode status)
+  {
+    // Job 33 died on a single 504 from catalog search, 290 tracks into a 933-track playlist.
+    CacheStorefront();
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .ReturnsAsync(new HttpResponseMessage(status))
+        .ReturnsAsync(SearchResponse(CreateCatalogSong("s1", "Complexion", "clean")));
+
+    var observedDelays = new List<TimeSpan>();
+    var service = CreateService((ts, _) =>
+    {
+      observedDelays.Add(ts);
+      return Task.CompletedTask;
+    });
+
+    var songs = await service.SearchCatalogSongsAsync(UserId, "Complexion Kendrick Lamar", 10);
+
+    Assert.Equal("s1", Assert.Single(songs).Id);
+    Assert.Equal(new[] { TimeSpan.FromSeconds(2) }, observedDelays);
+  }
+
+  [Fact]
+  public async Task SearchCatalogSongsAsync_WhenServerErrorPersists_ThrowsWithStatusAfterMaxAttempts()
+  {
+    CacheStorefront();
+    SetupHttpResponse(HttpStatusCode.GatewayTimeout, "");
+    var service = CreateService((_, _) => Task.CompletedTask);
+
+    var ex = await Assert.ThrowsAsync<HttpRequestException>(
+      () => service.SearchCatalogSongsAsync(UserId, "term", 10));
+
+    // The status survives so the job layer can classify the failure as transient.
+    Assert.Equal(HttpStatusCode.GatewayTimeout, ex.StatusCode);
+    _mockHttpMessageHandler.Protected().Verify(
+        "SendAsync", Times.Exactly(3), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+  }
+
+  [Fact]
+  public async Task CreateLibraryPlaylistAsync_OnServerError_DoesNotResendTheWrite()
+  {
+    // A 504 on a POST may arrive after Apple already created the playlist; resending would
+    // leave the user with a duplicate.
+    SetupHttpResponse(HttpStatusCode.GatewayTimeout, "");
+    var service = CreateService((_, _) => Task.CompletedTask);
+
+    await Assert.ThrowsAsync<HttpRequestException>(
+      () => service.CreateLibraryPlaylistAsync(UserId, "Clean Mix", null));
+
+    _mockHttpMessageHandler.Protected().Verify(
+        "SendAsync", Times.Once(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+  }
+
+  [Fact]
+  public async Task SearchCatalogSongsAsync_OnHttpClientTimeout_RetriesTheRead()
+  {
+    CacheStorefront();
+    _mockHttpMessageHandler.Protected()
+        .SetupSequence<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        // What HttpClient throws when its own Timeout elapses.
+        .ThrowsAsync(new TaskCanceledException("timed out", new TimeoutException()))
+        .ReturnsAsync(SearchResponse(CreateCatalogSong("s1", "Hit", "clean")));
+    var service = CreateService((_, _) => Task.CompletedTask);
+
+    var songs = await service.SearchCatalogSongsAsync(UserId, "term", 10);
+
+    Assert.Single(songs);
+  }
+
+  [Fact]
+  public async Task SearchCatalogSongsAsync_WhenCallerCancels_DoesNotRetry()
+  {
+    CacheStorefront();
+    using var cts = new CancellationTokenSource();
+    _mockHttpMessageHandler.Protected()
+        .Setup<Task<HttpResponseMessage>>(
+            "SendAsync",
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>())
+        .Returns(() =>
+        {
+          cts.Cancel();
+          return Task.FromException<HttpResponseMessage>(new TaskCanceledException());
+        });
+    var service = CreateService((_, _) => Task.CompletedTask);
+
+    await Assert.ThrowsAsync<TaskCanceledException>(
+      () => service.SearchCatalogSongsAsync(UserId, "term", 10, cts.Token));
+
+    _mockHttpMessageHandler.Protected().Verify(
+        "SendAsync", Times.Once(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+  }
+
   [Fact]
   public async Task SendWithRetry_On429WithLargeRetryAfter_CapsDelayAtMaximum()
   {
