@@ -9,14 +9,15 @@ namespace RadioWash.Api.Infrastructure.Hangfire;
 /// <summary>
 /// Global Hangfire job filter that emits a structured log event for each lifecycle
 /// transition a background job goes through: Performing, Performed, Succeeded, Failed,
-/// Deleted. Registered once via GlobalJobFilters; any job Hangfire runs gets this visibility
-/// without per-job opt-in.
+/// Deleted. Only a terminal Failed state logs at Error; a throw that will be retried is a
+/// Warning, so recovered transient failures don't page. Registered once via
+/// GlobalJobFilters; any job Hangfire runs gets this visibility without per-job opt-in.
 ///
 /// The lifecycle events are the only Hangfire-side observability this codebase currently has.
 /// They give on-call a single structured-log handle to watch when diagnosing stuck jobs or
 /// verifying a deploy didn't break the queue, without having to rely on Sentry alone.
 /// </summary>
-public class LogJobLifecycleAttribute : JobFilterAttribute, IServerFilter, IElectStateFilter, IApplyStateFilter
+public class LogJobLifecycleAttribute : JobFilterAttribute, IServerFilter, IApplyStateFilter
 {
   private readonly ILogger<LogJobLifecycleAttribute> _logger;
 
@@ -38,7 +39,9 @@ public class LogJobLifecycleAttribute : JobFilterAttribute, IServerFilter, IElec
   {
     if (context.Exception != null)
     {
-      _logger.LogError(
+      // Warning: a throw is not terminal while AutomaticRetry has attempts left. The job's
+      // own code logs its failure, and OnStateApplied logs the terminal Failed transition.
+      _logger.LogWarning(
         context.Exception,
         "Hangfire job {JobId} threw {ExceptionType}: {JobType}.{JobMethod}",
         context.BackgroundJob.Id,
@@ -56,9 +59,11 @@ public class LogJobLifecycleAttribute : JobFilterAttribute, IServerFilter, IElec
     }
   }
 
-  public void OnStateElection(ElectStateContext context)
+  public void OnStateApplied(ApplyStateContext context, IWriteOnlyTransaction transaction)
   {
-    if (context.CandidateState is FailedState failed)
+    // Checked on apply, not at state election: during election AutomaticRetry may still swap
+    // a Failed candidate for a scheduled retry, so only an applied Failed state is terminal.
+    if (context.NewState is FailedState failed)
     {
       _logger.LogError(
         failed.Exception,
@@ -66,10 +71,7 @@ public class LogJobLifecycleAttribute : JobFilterAttribute, IServerFilter, IElec
         context.BackgroundJob.Id,
         failed.Reason);
     }
-  }
 
-  public void OnStateApplied(ApplyStateContext context, IWriteOnlyTransaction transaction)
-  {
     _logger.LogDebug(
       "Hangfire job {JobId} state {OldState} -> {NewState}",
       context.BackgroundJob.Id,
