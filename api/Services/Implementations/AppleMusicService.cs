@@ -100,6 +100,23 @@ public class AppleMusicService : IAppleMusicService
           continue;
         }
 
+        // 5xx from Apple or its edge gateway is transient. Only idempotent requests are
+        // resent: a 504 on a POST may land after Apple already created the playlist or
+        // added the tracks, and resending would duplicate them.
+        if (IsTransientServerError(response.StatusCode) && IsIdempotent(request.Method) && attempt < maxRetries)
+        {
+          var delay = BackoffDelay(attempt);
+          _logger.LogWarning(
+            "Apple Music returned {StatusCode} (attempt {Attempt}/{MaxRetries}), retrying after {Delay}s",
+            (int)response.StatusCode, attempt, maxRetries, delay.TotalSeconds);
+
+          response.Dispose();
+          await _delay(delay, cancellationToken);
+
+          request = CloneRequestForRetry(request);
+          continue;
+        }
+
         // 401 means Apple rejected the developer token (the app credential, not the user's).
         // Regenerate it once and retry; a second 401 is a configuration problem.
         if (response.StatusCode == HttpStatusCode.Unauthorized && !developerTokenRegenerated)
@@ -129,8 +146,20 @@ public class AppleMusicService : IAppleMusicService
       }
       catch (HttpRequestException ex) when (attempt < maxRetries)
       {
-        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+        var delay = BackoffDelay(attempt);
         _logger.LogWarning(ex, "HTTP request failed (attempt {Attempt}/{MaxRetries}), retrying after {Delay}s",
+          attempt, maxRetries, delay.TotalSeconds);
+        await _delay(delay, cancellationToken);
+
+        request = CloneRequestForRetry(request);
+      }
+      // HttpClient.Timeout elapsing surfaces as TaskCanceledException while the caller's token
+      // is still live; a caller-initiated cancel (shutdown) must propagate untouched.
+      catch (TaskCanceledException ex) when (
+        !cancellationToken.IsCancellationRequested && IsIdempotent(request.Method) && attempt < maxRetries)
+      {
+        var delay = BackoffDelay(attempt);
+        _logger.LogWarning(ex, "Apple Music request timed out (attempt {Attempt}/{MaxRetries}), retrying after {Delay}s",
           attempt, maxRetries, delay.TotalSeconds);
         await _delay(delay, cancellationToken);
 
@@ -140,6 +169,17 @@ public class AppleMusicService : IAppleMusicService
 
     throw new HttpRequestException($"Failed to complete Apple Music API request after {maxRetries} attempts");
   }
+
+  private static TimeSpan BackoffDelay(int attempt) => TimeSpan.FromSeconds(Math.Pow(2, attempt));
+
+  private static bool IsTransientServerError(HttpStatusCode statusCode) => statusCode is
+    HttpStatusCode.InternalServerError or
+    HttpStatusCode.BadGateway or
+    HttpStatusCode.ServiceUnavailable or
+    HttpStatusCode.GatewayTimeout;
+
+  private static bool IsIdempotent(HttpMethod method) =>
+    method == HttpMethod.Get || method == HttpMethod.Head || method == HttpMethod.Put || method == HttpMethod.Delete;
 
   private static HttpRequestMessage CloneRequestForRetry(HttpRequestMessage original)
   {
