@@ -1,9 +1,17 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Hangfire;
+using Hangfire.Common;
+using Hangfire.Server;
+using Hangfire.States;
+using Hangfire.Storage;
+using RadioWash.Api.Infrastructure.Hangfire;
 using RadioWash.Api.Infrastructure.Patterns;
 using RadioWash.Api.Infrastructure.Repositories;
 using RadioWash.Api.Models.Domain;
+using RadioWash.Api.Models.Music;
+using RadioWash.Api.Services.Exceptions;
 using RadioWash.Api.Services.Implementations;
 using RadioWash.Api.Services.Interfaces;
 
@@ -152,46 +160,147 @@ public class CleanPlaylistJobProcessorTests
       Times.AtLeastOnce);
   }
 
-  [Fact]
-  public async Task ProcessJobAsync_WhenCleanerThrows_MarksJobFailedAndDoesNotRethrow()
+  private CleanPlaylistJob ArrangeJobThatThrows(Exception failure)
   {
-    // Arrange
-    var jobId = 42;
-    var userId = 7;
     var job = new CleanPlaylistJob
     {
-      Id = jobId,
-      UserId = userId,
-      Provider = "spotify",
+      Id = 42,
+      UserId = 7,
+      Provider = "apple_music",
       SourcePlaylistId = "src",
       SourcePlaylistName = "Source",
       TargetPlaylistName = "Clean - Source",
       Status = JobStatus.Pending,
-      TotalTracks = 10
+      ProcessedTracks = 280
     };
-    var user = new User { Id = userId, SupabaseId = "sb-abc" };
+    var user = new User { Id = 7, SupabaseId = "sb-abc" };
 
-    _mockJobRepo.Setup(x => x.GetByIdAsync(jobId)).ReturnsAsync(job);
-    _mockUserRepo.Setup(x => x.GetByIdAsync(userId)).ReturnsAsync(user);
+    _mockJobRepo.Setup(x => x.GetByIdAsync(job.Id)).ReturnsAsync(job);
+    _mockUserRepo.Setup(x => x.GetByIdAsync(user.Id)).ReturnsAsync(user);
+    _mockJobRepo
+      .Setup(x => x.UpdateAsync(It.IsAny<CleanPlaylistJob>()))
+      .ReturnsAsync((CleanPlaylistJob j) => j);
     _mockCleaner
       .Setup(x => x.CleanPlaylistAsync(job, user, It.IsAny<IJobCancellationToken>()))
-      .ThrowsAsync(new InvalidOperationException("Spotify exploded"));
+      .ThrowsAsync(failure);
+    return job;
+  }
 
-    // Act — must not rethrow; Hangfire retry policy owns retries via [AutomaticRetry]
-    await _processor.ProcessJobAsync(jobId, Hangfire.JobCancellationToken.Null);
+  /// <summary>The 504 that killed production job 33, as the cleaner surfaces it.</summary>
+  private static TrackProcessingException AppleGatewayTimeout() => new(
+    33,
+    290,
+    new MusicTrack("1440829776", "Complexion (A Zulu Love)", true, new[] { new MusicArtist("Kendrick Lamar") }),
+    new HttpRequestException(
+      "Response status code does not indicate success: 504 (Gateway Time-out).",
+      null,
+      HttpStatusCode.GatewayTimeout));
 
-    // Assert — error persisted via repository
-    _mockJobRepo.Verify(
-      x => x.UpdateErrorAsync(jobId, "Spotify exploded"),
-      Times.Once);
+  /// <summary>
+  /// A real PerformContext whose storage reports the given RetryCount job parameter, the
+  /// way AutomaticRetryAttribute leaves it (absent on the first run).
+  /// </summary>
+  private static PerformContext PerformContextWithRetryCount(int? retryCount)
+  {
+    var connection = new Mock<IStorageConnection>();
+    connection
+      .Setup(c => c.GetJobParameter("hf-1", JobRetryPolicy.RetryCountParameter))
+      .Returns(retryCount?.ToString());
+    var backgroundJob = new BackgroundJob(
+      "hf-1",
+      Job.FromExpression<ICleanPlaylistJobProcessor>(p => p.ProcessJobAsync(42, null, JobCancellationToken.Null)),
+      DateTime.UtcNow);
+    return new PerformContext(new Mock<JobStorage>().Object, connection.Object, backgroundJob, new StubJobCancellationToken());
+  }
 
-    // Assert — failure broadcast fires, success broadcast does not
-    _mockProgressService.Verify(
-      x => x.BroadcastJobFailed(jobId, "Spotify exploded"),
-      Times.Once);
+  private void VerifyMarkedFailed(int jobId, Times times)
+  {
+    _mockJobRepo.Verify(x => x.UpdateErrorAsync(jobId, It.IsAny<string>()), times);
+    _mockProgressService.Verify(x => x.BroadcastJobFailed(jobId, It.IsAny<string>()), times);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_WhenCleanerThrowsPermanentError_MarksJobFailedWithoutRetrying()
+  {
+    // A retry cannot fix a revoked Music User Token, so even with attempts left the job fails
+    // now and Hangfire is not asked to run it again.
+    var job = ArrangeJobThatThrows(new UnauthorizedAccessException("Apple Music authorization expired"));
+
+    await _processor.ProcessJobAsync(job.Id, PerformContextWithRetryCount(null), JobCancellationToken.Null);
+
+    _mockJobRepo.Verify(x => x.UpdateErrorAsync(job.Id, "Apple Music authorization expired"), Times.Once);
+    _mockProgressService.Verify(x => x.BroadcastJobFailed(job.Id, "Apple Music authorization expired"), Times.Once);
     _mockProgressService.Verify(
       x => x.BroadcastJobCompleted(It.IsAny<int>(), It.IsAny<string>()),
       Times.Never);
+  }
+
+  [Theory]
+  [InlineData(null, 30)] // first run: RetryCount not yet set
+  [InlineData(1, 120)]   // first retry
+  public async Task ProcessJobAsync_WhenTransientFailureHasRetriesLeft_RethrowsForHangfireAndKeepsJobLive(
+    int? retryCount, int expectedDelaySeconds)
+  {
+    var job = ArrangeJobThatThrows(AppleGatewayTimeout());
+
+    await Assert.ThrowsAsync<TrackProcessingException>(
+      () => _processor.ProcessJobAsync(job.Id, PerformContextWithRetryCount(retryCount), JobCancellationToken.Null));
+
+    // Not failed: the user keeps seeing a live job, with the pause explained.
+    VerifyMarkedFailed(job.Id, Times.Never());
+    Assert.Equal(JobStatus.Processing, job.Status);
+    _mockJobRepo.Verify(
+      x => x.UpdateProgressAsync(job.Id, 280, It.Is<string>(m => m.Contains($"retrying in {expectedDelaySeconds}s"))),
+      Times.Once);
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_WhenTransientFailureOnFinalAttempt_MarksJobFailedAndDoesNotRethrow()
+  {
+    var job = ArrangeJobThatThrows(AppleGatewayTimeout());
+
+    await _processor.ProcessJobAsync(
+      job.Id, PerformContextWithRetryCount(JobRetryPolicy.Attempts), JobCancellationToken.Null);
+
+    VerifyMarkedFailed(job.Id, Times.Once());
+  }
+
+  [Fact]
+  public async Task ProcessJobAsync_LegacySignature_RunsAsFinalAttempt()
+  {
+    // Jobs enqueued before the PerformContext parameter existed carry no retry context; they
+    // must still end in a terminal state rather than rethrow into a retry nobody tracks.
+    var job = ArrangeJobThatThrows(AppleGatewayTimeout());
+
+    await _processor.ProcessJobAsync(job.Id, JobCancellationToken.Null);
+
+    VerifyMarkedFailed(job.Id, Times.Once());
+  }
+
+  [Fact]
+  public void EnqueuedJob_ResolvesToTheTwoAttemptRetryPolicy()
+  {
+    // Hangfire reads filter attributes from the enqueued type, which is the interface. An
+    // [AutomaticRetry] on the implementation class is silently ignored and the global
+    // 10-attempt default applies instead; pin the policy on the job exactly as enqueued.
+    Job? enqueued = null;
+    var client = new Mock<IBackgroundJobClient>();
+    client
+      .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
+      .Callback<Job, IState>((j, _) => enqueued = j)
+      .Returns("hf-1");
+
+    new HangfireJobOrchestrator(client.Object).EnqueueJobAsync(42);
+
+    Assert.NotNull(enqueued);
+    var retry = JobFilterProviders.Providers.GetFilters(enqueued)
+      .Select(f => f.Instance)
+      .OfType<AutomaticRetryAttribute>()
+      .Single();
+    Assert.Equal(JobRetryPolicy.Attempts, retry.Attempts);
+    Assert.Equal(
+      new[] { JobRetryPolicy.FirstRetryDelaySeconds, JobRetryPolicy.SecondRetryDelaySeconds },
+      retry.DelaysInSeconds);
   }
 
   [Fact]
